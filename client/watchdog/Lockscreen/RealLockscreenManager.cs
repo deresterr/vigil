@@ -114,6 +114,9 @@ public sealed class RealLockscreenManager : ILockscreenManager, IDisposable
         try
         {
             _launcher.Launch(_options.LockscreenExePath, sessionId.Value, desktopName);
+            // Expected to run from the moment it is spawned: a kill loop usually strikes before the
+            // lockscreen even connects to the pipe.
+            _expectedRunning = true;
         }
         catch (Exception ex)
         {
@@ -147,7 +150,6 @@ public sealed class RealLockscreenManager : ILockscreenManager, IDisposable
         }
 
         await _pipe.SendAsync(setState, ct).ConfigureAwait(false);
-        _expectedRunning = true;
         _logger.LogInformation("Lockscreen aktywny, state={Reason}, desktop={Desktop}",
             state.Reason, desktopName);
     }

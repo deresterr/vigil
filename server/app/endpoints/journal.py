@@ -32,6 +32,7 @@ JOURNAL_TYPES = (
     "watchdog_started", "watchdog_shutdown", "watchdog_offline",
     "lock_started", "pause_toggled",
     "manual_lock_set", "manual_lock_cleared", "manual_unlock", "grant_applied", "extensions_cleared",
+    "offline_unlock",
 )
 
 MAX_DAYS = 14

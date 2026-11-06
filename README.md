@@ -12,6 +12,7 @@ pokazuje pełnoekranową blokadę. Rodzic zarządza z przeglądarki i odblokowuj
 
 - dzienny limit czasu (osobno dni robocze / weekend) i cisza nocna,
 - blokada ręczna z panelu, przedłużanie czasu z panelu lub kodem TOTP wpisanym na ekranie blokady,
+- odblokowanie kodem z telefonu działa także, gdy serwer jest niedostępny,
 - pauza uruchamiana przez dziecko (czas nie leci, ekran zablokowany),
 - fail-closed: brak połączenia z serwerem = blokada,
 - dziennik zdarzeń w panelu rodzica.
@@ -46,7 +47,7 @@ Build.cmd            → dist\
 na PC dziecka i uruchom jako administrator:
 
 ```
-Install.cmd          (tryb interaktywny: adres serwera, kod parowania, konto dziecka, hasło awaryjne)
+Install.cmd          (tryb interaktywny: adres serwera, kod parowania, konto dziecka)
 ```
 
 Odinstalowanie: `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE, gdy system nie startuje).

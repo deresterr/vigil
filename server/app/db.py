@@ -165,6 +165,7 @@ def log_event(
     conn: sqlite3.Connection,
     event_type: str,
     details: dict | None = None,
+    ts_utc: datetime | None = None,
 ) -> None:
     """Wpis do `events`. details serializowany do JSON jeśli niepusty.
 
@@ -174,7 +175,7 @@ def log_event(
     payload = json.dumps(details, separators=(",", ":"), default=str) if details else None
     conn.execute(
         "INSERT INTO events(event_type, details_json, ts_utc) VALUES (?, ?, ?)",
-        (event_type, payload, datetime.now(timezone.utc).isoformat()),
+        (event_type, payload, (ts_utc or datetime.now(timezone.utc)).isoformat()),
     )
 
 

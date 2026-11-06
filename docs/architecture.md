@@ -96,7 +96,6 @@ Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cook
 ## Watchdog loop (`Worker.cs`)
 
 Every 5 s (1 s while locked, up to 60 s if the server says so):
-1. `BypassFlagChecker.IsActive()` — if a valid `bypass.flag` exists: dismiss lock, send heartbeat, stop.
 2. `SessionDetector` — any WTS session ≠ 0 in Active/Connected state.
 3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, push state to tray.
 4. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message).
@@ -119,20 +118,25 @@ installer policies (`DisableTaskMgr`, `DisableLockWorkstation`, `NoLogoff`, …)
 
 Pipe DACL: SYSTEM + Administrators full, Authenticated Users read/write.
 
-## Emergency unlock (offline)
+## Offline unlock (`offline.py`, `Offline/OfflineUnlock.cs`)
 
-Hotkey Ctrl+Shift+Alt+E in the lockscreen → password compared with `emergency.dat`
-(DPAPI LocalMachine, plaintext password) → lockscreen writes `C:\Users\Public\Vigil\bypass.flag`
-(DPAPI LocalMachine, `valid_until_utc`, 24 h). See review: both files are forgeable/readable by the child.
+When the watchdog has failed closed (`server_unreachable`), a TOTP code typed on the lockscreen is
+verified by the watchdog itself: ±1 step, each step once, every 3rd failure locks 60/300/900 s (cap),
+grant ≤ 120 min, ended as soon as the server answers. The secret comes from the server in the signed
+heartbeat response whenever the watchdog's `totp_fp` (sha256[:16]) differs — after pairing or a TOTP
+regeneration — and is stored in `totp.dat` (DPAPI LocalMachine, entropy `Vigil-Totp-v1`, SYSTEM full /
+Administrators read). Grants are queued and sent as `offline_grants` with the next successful heartbeat;
+the server logs `offline_unlock` (journal) and burns the step. Friction + detection: an admin child can
+read `totp.dat`. Installs before v0.5 used `emergency.dat` + `C:\Users\Public\Vigil\bypass.flag`;
+the installer removes both.
 
 ## Windows footprint
 
 ```
 C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_lockscreen.exe, vigil_tray.exe, vigil_guardian.ps1,
-                        vigil.toml (server_url only), signing.dat, emergency.dat, guardian.dat,
+                        vigil.toml (server_url only), signing.dat, totp.dat, guardian.dat,
                         backup\vigil_watchdog.exe
                         ACL: SYSTEM full, Administrators modify, Authenticated Users read+execute (inherited)
-C:\Users\Public\Vigil\  bypass.flag
 Service        vigil_watchdog ("Vigil Watchdog"), auto start, restart ×3, restricted DACL
 Tasks          "Vigil Guardian" (SYSTEM, boot + 5 min), "Vigil Tray" (child, at logon)
 Registry       HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\{Minimal,Network}\vigil_watchdog

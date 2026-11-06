@@ -48,7 +48,7 @@ public sealed class TrayIpcServer : IDisposable
             {
                 await AcceptAndServeAsync(ct).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) { return; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "TrayIpc: pipe error, recreating");

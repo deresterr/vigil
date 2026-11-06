@@ -242,7 +242,9 @@ public sealed class NamedPipeIpcServer : IDisposable
                 }
             }
         }
-        catch (OperationCanceledException) { /* expected */ }
+        // Only our own cancellation is expected; any other OperationCanceledException (e.g. a timeout
+        // inside a handler) must be logged, not silently end the loop (#31).
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { /* expected */ }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Reader loop crashed");

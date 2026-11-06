@@ -50,6 +50,9 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - One account (D12): policies the installer sets in HKCU (e.g. `DisableRegistryTools` → blocks `reg.exe`) also
   hit the installer itself on uninstall/reinstall. Edit user hives via the PowerShell registry provider first.
 - `.ps1` syntax is checked in CI with Windows PowerShell 5.1; locally a Linux `pwsh` can run the same parser.
+- C#: never filter with `when (ex is not OperationCanceledException)` — an `HttpClient` timeout is a
+  `TaskCanceledException` and slipped past the fail-closed check (#31). Filter on the caller's token:
+  `when (!ct.IsCancellationRequested)`.
 - `client/tray` has `ImplicitUsings=disable`: add `System.IO`, `System.IO.Pipes`, `System.Text`,
   `System.Text.Json` explicitly (`System.IO.Pipes` does not bring `System.IO`).
 - XAML `x:Class` must match the code-behind namespace (`Vigil.Lockscreen.*`).

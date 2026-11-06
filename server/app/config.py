@@ -44,6 +44,8 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "pairing_attempts":           "0",
     # Last accepted TOTP time step (replay protection). Not editable.
     "totp_last_step":             "0",
+    # Last lock reason seen by the heartbeat; lock_started events are logged on change. Not editable.
+    "last_lock_reason":           "",
 }
 
 # === Stałe nieprzechowywane w DB ===

@@ -83,6 +83,13 @@ stored: `pairing_code_hash`, `pairing_expires_utc`, `pairing_attempts`); `Instal
 and stores the returned key in `signing.dat`. Pairing again (reinstall, new PC) rotates the key, so the
 previously paired PC fails closed.
 
+Journal tab (`endpoints/journal.py`, `GET /admin/api/journal?days=&before=`): per local day, newest first —
+PC on/off (`watchdog_*`), lock starts (`lock_started`, logged by the heartbeat when `last_lock_reason` changes
+to limit/night), pause (on/off paired into one entry), parent actions that change locking, and alerts.
+Alerts = `tamper_*` + `totp_lockout`, `admin_login_locked`, `pairing_code_invalidated`; unconfirmed ones are
+highlighted and counted on the tab (`alerts_unacked` in `/status`), confirmed via `POST /admin/api/alerts/ack`
+(`events.acked_utc`). Polish wording and filters live in `admin.html`.
+
 Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cookie `vigil_session`
 (24 h, HttpOnly, SameSite=Strict, path `/admin`). Password: argon2id.
 

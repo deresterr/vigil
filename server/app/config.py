@@ -34,6 +34,10 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "nonce_cache_seconds":        "120",
     "max_request_age_seconds":    "60",
     "events_retention_days":      "90",
+    # Last watchdog telemetry seen (tamper.py). Not editable.
+    "wd_instance_id":             "",
+    "wd_awake_ms":                "-1",
+    "wd_goodbye":                 "",
     # One-time pairing code (endpoints/pairing.py). Only the hash is stored.
     "pairing_code_hash":          "",
     "pairing_expires_utc":        "",

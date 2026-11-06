@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using Vigil.Watchdog;
 using Vigil.Watchdog.Configuration;
@@ -56,6 +57,9 @@ builder.Services.AddWindowsService(options =>
 {
     options.ServiceName = "vigil_watchdog";
 });
+// Replaces the default lifetime registered above (last registration wins).
+if (WindowsServiceHelpers.IsWindowsService())
+    builder.Services.AddSingleton<IHostLifetime, VigilServiceLifetime>();
 
 builder.Services.AddSingleton(vigilConfig);
 builder.Services.AddSingleton(sp => new HeartbeatClient(

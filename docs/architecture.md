@@ -32,6 +32,7 @@ signature like "server unreachable".
 | Endpoint | Body | Notes |
 |---|---|---|
 | `POST /v1/heartbeat` | `session_active, user_active, current_time_utc, uptime_seconds` | → `lock_required, lock_reason, minutes_used, minutes_remaining, next_check_seconds, server_time_utc, ui_state` |
+| `POST /v1/goodbye` | `instance_id, reason` (`service_stop`\|`shutdown`) | sent from the service's StopAsync; see Tamper detection |
 | `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`. every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` | refused while a higher-priority lock is active |
 | `POST /v1/pair` | `code` | **unauthenticated**; one-time 8-digit code from the panel (10 min, 5 attempts) → new `signing_key` + `server_url`. Every pairing rotates the key |
@@ -55,6 +56,23 @@ A new day's row inherits `manual_lock` and a still-active `night_extension_until
 Other tables: `config` (key/value incl. secrets: `signing_key`, `totp_secret`,
 `admin_session_key`, `parent_password_hash`), `events` (audit log, pruned after `events_retention_days`),
 `totp_lockout` (single row), `used_nonces`.
+
+## Tamper detection (`tamper.py`)
+
+Heartbeats also carry `instance_id` (new per watchdog process), `awake_ms` (QueryUnbiasedInterruptTime:
+system time without sleep/hibernate, restarts near 0 on boot), `awake_ms_at_start`, `failed_attempts`.
+Compared with the previous heartbeat (`wd_*` config keys, reset on pairing):
+
+| Situation | Event |
+|---|---|
+| new instance, same boot, no goodbye | `tamper_watchdog_restarted` (`down_awake_seconds`) |
+| goodbye `service_stop` | `tamper_service_stopped` |
+| same instance, awake gap > 90 s, 0 failed attempts | `tamper_watchdog_silent` (suspended/frozen) |
+| same instance, awake gap > 90 s, retries | `watchdog_offline` (info) |
+| new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
+
+`tamper_*` = alerts for the parent. Not detected: a watchdog that is stopped and never comes back
+(the panel only shows "offline"), and anything an admin forges with the signing key.
 
 ## Server lifecycle
 

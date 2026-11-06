@@ -143,4 +143,10 @@ public static partial class Win32
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool CloseHandle(IntPtr hObject);
+
+    // === Awake clock (tamper telemetry, Detection/AwakeClock.cs) ===
+    // 100 ns units since boot, excluding time spent in sleep/hibernate.
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool QueryUnbiasedInterruptTime(out ulong unbiasedTime);
 }

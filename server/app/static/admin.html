@@ -319,9 +319,9 @@
   </div>
 
   <div class="card">
-    <h2>Tryb inicjalizacji</h2>
-    <p class="muted muted-block">Aktywuj tryb inicjalizacji gdy chcesz zainstalować watchdoga na nowym PC lub przeinstalować na istniejącym. Tryb zamyka się automatycznie po pierwszym udanym heartbeat.</p>
-    <button class="btn btn-warn" onclick="enableInitMode()" id="btnEnableInit">Aktywuj tryb inicjalizacji</button>
+    <h2>Parowanie komputera dziecka</h2>
+    <p class="muted muted-block">Wygeneruj jednorazowy kod i wpisz go w <code>Install.cmd</code> na PC dziecka. Kod jest ważny 10 minut. Sparowanie generuje nowy klucz — poprzednio sparowany komputer przestanie się łączyć.</p>
+    <button class="btn btn-warn" onclick="newPairingCode()">Wygeneruj kod parowania</button>
 
     <h2 style="margin-top: 24px;">Klucz podpisujący</h2>
     <p class="muted muted-block">Klucz, którym komputer dziecka podpisuje połączenia z serwerem — generowany raz przy instalacji. „Wygeneruj nowy”, jeśli podejrzewasz, że ktoś go przejął; po zmianie uruchom update-config na PC dziecka.</p>
@@ -431,11 +431,11 @@ function renderStatus(s) {
   }
 
 
-if (s.init_open && !s.watchdog_online) {
-    // Tryb inicjalizacji: pomarańczowy dot, biały tekst (podmienia Online/Offline)
+if (s.pairing_active && !s.watchdog_online) {
+    // Kod parowania aktywny: pomarańczowy dot, podmienia Online/Offline
     dot.className = 'dot';
     dot.style.background = '#f59e0b';
-    text.textContent = 'Tryb inicjalizacji aktywny';
+    text.textContent = 'Czeka na sparowanie';
   } else if (s.watchdog_online) {
     dot.className = 'dot online';
     dot.style.background = '';
@@ -720,13 +720,16 @@ async function showTokens() {
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }
 
-async function enableInitMode() {
-  if (!confirm('Aktywować tryb inicjalizacji? Ważny do pierwszego heartbeat.')) return;
+async function newPairingCode() {
+  if (!confirm('Wygenerować kod parowania?\n\nPo użyciu kodu obecnie sparowany komputer przestanie się łączyć z serwerem.')) return;
   try {
-    await api('/admin/api/enable_init_mode', {method: 'POST'});
-    showModal('Tryb inicjalizacji', '<p>Tryb inicjalizacji aktywny.</p><p class="muted">Uruchom Install.cmd na PC dziecka — tryb zamknie się po pierwszym połączeniu watchdoga.</p>');
+    const r = await api('/admin/api/pairing_code', {method: 'POST', body: {}});
+    showModal('Kod parowania',
+      '<p style="font-size: 2.2em; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 12px 0;">' + r.code + '</p>' +
+      '<p class="muted">Ważny do ' + r.expires_local + ', jednorazowy. Uruchom <code>Install.cmd</code> na PC dziecka jako administrator i wpisz ten kod, gdy instalator o niego poprosi.</p>'
+    );
     loadStatus();
-  } catch(e) { notice('Błąd: ' + e.message, 'error'); }
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }
 
 async function regenTokens() {

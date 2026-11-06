@@ -2,7 +2,7 @@
 
 GET  /setup           — strona wizarda (serwuje setup.html)
 GET  /setup/totp_qr   — QR code TOTP dla wizarda (tylko gdy setup_complete == 0)
-POST /setup/complete  — finalizuje konfigurację, ustawia setup_complete + init_open
+POST /setup/complete  — finalizuje konfigurację, ustawia setup_complete
 """
 
 from __future__ import annotations
@@ -123,7 +123,6 @@ async def setup_complete(request: Request,
         ("night_lock_start",     night_start),
         ("night_lock_end",       night_end),
         ("watchdog_server_url",  watchdog_server_url),
-        ("init_open",            "1"),
         ("setup_complete",       "1"),
     ]
     for key, value in settings:

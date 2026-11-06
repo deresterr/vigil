@@ -9,6 +9,7 @@ Endpointy:
 - POST /admin/api/config            — update config (single key lub batch)
 - POST /admin/api/regen_totp        — wygeneruj nowy TOTP secret + zwróć QR
 - POST /admin/api/regen_tokens      — wygeneruj nowy signing_key dla watchdoga
+- POST /admin/api/pairing_code      — jednorazowy kod parowania PC dziecka (Install.cmd)
 - GET  /admin/api/events            — lista ostatnich N events
 - POST /admin/api/change_password   — zmiana hasła rodzica
 """
@@ -46,6 +47,7 @@ from ..lock_logic import (
     parse_hhmm,
     parse_iso_utc,
 )
+from .pairing import active_pairing_expiry, create_pairing_code
 from .totp import _compute_night_extension_until
 
 router = APIRouter(prefix="/admin/api", dependencies=[Depends(require_admin_session)])
@@ -121,7 +123,7 @@ async def status(db: sqlite3.Connection = Depends(get_db)) -> dict:
         "watchdog_online": watchdog_online,
         "last_heartbeat_utc": state["last_heartbeat_utc"],
         "last_heartbeat_ago_seconds": last_heartbeat_ago,
-        "init_open": get_config_value(db, "init_open") == "1",
+        "pairing_active": active_pairing_expiry(db, now_utc) is not None,
     }
 
 
@@ -504,23 +506,15 @@ async def change_password(request: Request, db: sqlite3.Connection = Depends(get
     return {"ok": True}
 
 
-# === GET /admin/api/init_status + POST /admin/api/enable_init_mode ===
+# === POST /admin/api/pairing_code ===
 
 
-@router.get("/init_status")
-async def init_status(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Status trybu inicjalizacji (redundantne z /status → init_open, zachowane dla API compat)."""
-    return {
-        "init_open": get_config_value(db, "init_open") == "1",
-        "watchdog_server_url": get_config_value(db, "watchdog_server_url") or "",
-    }
-
-
-@router.post("/enable_init_mode")
-async def enable_init_mode(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Ponownie otwiera tryb inicjalizacji — gdy trzeba zainstalować watchdoga drugi raz
-    (np. nowy PC, reinstall systemu).
-    Uruchom Install.cmd na PC dziecka — zamknie się po pierwszym heartbeat."""
-    set_config_value(db, "init_open", "1")
-    log_event(db, "init_reopened", {"via": "admin_ui"})
-    return {"ok": True}
+@router.post("/pairing_code")
+async def new_pairing_code(db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """One-time code for Install.cmd on the child PC. Generating a new one invalidates the previous one;
+    using it rotates the signing key (a previously paired PC stops authenticating)."""
+    now = datetime.now(timezone.utc)
+    code, expires = create_pairing_code(db, now)
+    log_event(db, "pairing_code_created", {"via": "admin_ui"})
+    tz = ZoneInfo(get_config_value(db, "timezone"))
+    return {"code": f"{code[:4]} {code[4:]}", "expires_local": expires.astimezone(tz).strftime("%H:%M")}

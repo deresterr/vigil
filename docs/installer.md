@@ -68,7 +68,8 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
 
 ### Wymagane dla `install`
 - `-ServerUrl http://...` — adres FastAPI servera w LAN
-- `-SigningKey ...` — z admin UI (zakładka „Bezpieczeństwo" → klucz podpisujący); bez niego installer pobiera klucz z serwera w trybie inicjalizacji
+- `-SigningKey ...` — z admin UI (zakładka „Bezpieczeństwo" → klucz podpisujący); zwykle niepotrzebny
+- `-PairingCode 12345678` — jednorazowy kod z panelu (ważny 10 min); bez `-SigningKey` installer paruje się nim z serwerem i dostaje nowy klucz (w trybie interaktywnym pyta o kod)
 
 ### Opcjonalne
 - `-SourceDir <path>` — gdzie szukać binarek, default `$PSScriptRoot`

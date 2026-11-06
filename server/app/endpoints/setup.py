@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import re
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -20,7 +21,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from ..admin_auth import issue_session_cookie, set_session_cookie
 from ..config import TOTP_ISSUER
-from ..crypto import hash_password
+from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
 
 router = APIRouter()
@@ -106,8 +107,11 @@ async def setup_complete(request: Request,
     if totp_code:
         # Weryfikacja: użytkownik podał kod — sprawdź czy pasuje do sekretu
         secret = get_config_value(db, "totp_secret")
-        if not pyotp.TOTP(secret).verify(totp_code, valid_window=1):
+        totp_step = match_totp_step(secret, totp_code, datetime.now(timezone.utc))
+        if totp_step is None:
             raise HTTPException(status_code=422, detail={"totp_code": "invalid"})
+        # The code typed in the wizard must not work again on the lockscreen.
+        db.execute("INSERT OR REPLACE INTO config(key, value) VALUES ('totp_last_step', ?)", (str(totp_step),))
 
     # --- Zapis ---
     settings = [

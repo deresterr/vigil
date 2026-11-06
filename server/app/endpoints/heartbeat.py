@@ -281,3 +281,22 @@ async def goodbye(
         raise HTTPException(status_code=422, detail="invalid_reason")
     process_goodbye(db, instance_id, reason)
     return {"ok": True}
+
+
+# Tamper events the watchdog observes itself (#10). Wire type -> journal event type.
+_TAMPER_EVENTS = {"lockscreen_killed": "tamper_lockscreen_killed"}
+
+
+@router.post("/v1/tamper_event")
+async def tamper_event(
+    request: Request,
+    _: None = Depends(authenticate_request),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    body = await request.json()
+    if not isinstance(body, dict) or body.get("type") not in _TAMPER_EVENTS:
+        raise HTTPException(status_code=422, detail="invalid_type")
+    details = {k: body[k] for k in ("kills", "window_seconds", "logged_off")
+               if isinstance(body.get(k), int | bool)}
+    log_event(db, _TAMPER_EVENTS[body["type"]], details)
+    return {"ok": True}

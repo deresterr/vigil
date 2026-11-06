@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Detection;
+using Vigil.Watchdog.Native;
+using Vigil.Watchdog.Server;
 
 namespace Vigil.Watchdog.Lockscreen;
 
@@ -32,6 +34,15 @@ public sealed class RealLockscreenManager : ILockscreenManager, IDisposable
     private Task? _connectTask;
     private bool _disposed;
 
+    // Kill-loop detection (#10). A lock we spawned and did not dismiss should keep running; if it
+    // exits on its own repeatedly (a script killing it the moment it appears), log the session off.
+    // Friction + detection: an elevated attacker can still stop the watchdog itself, which #7 reports.
+    private const int KillsBeforeLogoff = 3;
+    private static readonly TimeSpan KillWindow = TimeSpan.FromSeconds(60);
+    private readonly HeartbeatClient _client;
+    private readonly Queue<DateTime> _unexpectedExits = new();
+    private bool _expectedRunning;
+
     public bool IsLocked => _launcher.IsRunning;
 
     public event Func<TotpFromLockscreen, CancellationToken, Task<TotpResult>>? OnTotpAttempt;
@@ -43,8 +54,10 @@ public sealed class RealLockscreenManager : ILockscreenManager, IDisposable
         LockscreenProcessLauncher launcher,
         SessionDetector sessions,
         LockscreenManagerOptions options,
+        HeartbeatClient client,
         ILogger<RealLockscreenManager> logger)
     {
+        _client = client;
         _pipe = pipe;
         _launcher = launcher;
         _sessions = sessions;
@@ -83,6 +96,9 @@ public sealed class RealLockscreenManager : ILockscreenManager, IDisposable
                 "EnsureLocked: nie ma aktywnej sesji użytkownika — nie mogę spawnować lockscreen.");
             return;
         }
+
+        if (_expectedRunning && await HandleUnexpectedExitAsync(sessionId.Value, ct).ConfigureAwait(false))
+            return;  // session logged off; nothing to lock until the next logon
 
         // Czyść stary state jeśli był (na wypadek crashu lockscreen)
         _launcher.Kill();
@@ -131,12 +147,15 @@ public sealed class RealLockscreenManager : ILockscreenManager, IDisposable
         }
 
         await _pipe.SendAsync(setState, ct).ConfigureAwait(false);
+        _expectedRunning = true;
         _logger.LogInformation("Lockscreen aktywny, state={Reason}, desktop={Desktop}",
             state.Reason, desktopName);
     }
 
     public async Task DismissAsync(CancellationToken ct)
     {
+        _expectedRunning = false;
+        _unexpectedExits.Clear();
         if (!_launcher.IsRunning) return;
 
         _logger.LogInformation("Dismissing lockscreen");
@@ -189,6 +208,49 @@ public sealed class RealLockscreenManager : ILockscreenManager, IDisposable
         {
             _logger.LogWarning(ex, "Nie udało się uruchomić restore-taskbar helper — pasek może zostać ukryty");
         }
+    }
+
+    /// <summary>
+    /// The lockscreen we expected to be running is gone. Returns true if the session was logged off.
+    /// </summary>
+    private async Task<bool> HandleUnexpectedExitAsync(uint sessionId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        _unexpectedExits.Enqueue(now);
+        while (_unexpectedExits.Count > 0 && now - _unexpectedExits.Peek() > KillWindow)
+            _unexpectedExits.Dequeue();
+        var count = _unexpectedExits.Count;
+        _logger.LogWarning("Lockscreen exited unexpectedly ({Count} in {Window}s), respawning",
+            count, (int)KillWindow.TotalSeconds);
+        if (count < KillsBeforeLogoff) return false;
+
+        _unexpectedExits.Clear();
+        _expectedRunning = false;
+        var loggedOff = Win32.WTSLogoffSession(IntPtr.Zero, sessionId, false);
+        if (loggedOff)
+            _logger.LogWarning("Lockscreen killed {Count} times — session {Session} logged off", count, sessionId);
+        else
+            _logger.LogError("Lockscreen killed {Count} times — logoff of session {Session} failed (error {Err})",
+                count, sessionId, System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            await _client.SendTamperEventAsync(new TamperEventRequest
+            {
+                Type = "lockscreen_killed",
+                Kills = count,
+                WindowSeconds = (int)KillWindow.TotalSeconds,
+                LoggedOff = loggedOff,
+            }, cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Offline: only the Event Log has it. Detection, best effort.
+            _logger.LogWarning(ex, "Could not report lockscreen kill-loop to the server");
+        }
+        return loggedOff;
     }
 
     /// <summary>

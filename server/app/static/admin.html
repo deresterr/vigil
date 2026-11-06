@@ -504,6 +504,8 @@ const JOURNAL = {
   tamper_watchdog_restarted: d => ({title: 'Vigil został zatrzymany i uruchomiony ponownie',
                              sub: 'Komputer nie był wyłączany · przerwa ok. ' + fmtMin(Math.max(1, Math.round(d.down_awake_seconds / 60)))}),
   tamper_service_stopped:    () => ({title: 'Usługa Vigil została zatrzymana', sub: 'Również przy deinstalacji lub update-config'}),
+  tamper_lockscreen_killed:  d => ({title: 'Ekran blokady był wielokrotnie zamykany',
+                             sub: `${d.kills ?? '?'} razy w ${d.window_seconds ?? '?'} s · ` + (d.logged_off ? 'użytkownik został wylogowany' : 'wylogowanie się nie powiodło')}),
   tamper_watchdog_silent:    d => ({title: 'Vigil nie odzywał się, choć komputer działał',
                              sub: 'Ok. ' + fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60))) + ' — proces mógł zostać wstrzymany'}),
   totp_lockout:              d => ({title: 'Kilka błędnych kodów na ekranie blokady', sub: 'Odblokowanie wstrzymane na ' + fmtSec(d.seconds || 0)}),

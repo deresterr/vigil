@@ -1,161 +1,101 @@
-"""Walidacja request od watchdoga: bearer + nonce + timestamp.
+"""Authentication of /v1/* requests from the watchdog (protocol v2).
 
-Każdy fail → 401. Dependency zapisuje state w `request.state` dla HMAC signing middleware.
-Single-tenant: bearer_token i signing_key trzymane jako pojedyncze klucze w `config` table.
+Every request carries:
+    X-Timestamp: unix time in ms
+    X-Nonce:     random string (<= 256 chars), never reused
+    X-Signature: base64(HMAC-SHA256(signing_key, canonical_request(...)))
+
+canonical = METHOD "\\n" PATH "\\n" TIMESTAMP "\\n" NONCE "\\n" hex(sha256(body))
+
+PATH is the API route as the app sees it ("/v1/heartbeat"), without any reverse-proxy prefix.
+Responses are signed by HmacSigningMiddleware (signing.py) over nonce + body.
+
+Threat model: friction, not protection. The key lives in signing.dat (DPAPI LocalMachine, SYSTEM-only
+ACL), which a non-elevated process cannot read but an admin can. What it stops: forging or replaying
+requests without the key, e.g. from another device on the LAN or from the child's non-elevated session.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 import sqlite3
-import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
 
-from .db import get_connection
+from .db import get_config_value, get_connection
+
+_MAX_FUTURE_SKEW_MS = 5000
 
 
-def _decode_signing_key(b64: str) -> bytes:
-    """Decode base64 urlsafe (bez paddingu) — format z generate_token_b64()."""
-    padding = "=" * (-len(b64) % 4)
-    return base64.urlsafe_b64decode(b64 + padding)
+def decode_signing_key(b64: str) -> bytes:
+    """Decode base64 urlsafe without padding (format produced by generate_token_b64())."""
+    return base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4))
 
 
-# ── In-memory cache konfiguracji auth ────────────────────────────────────────
-# bearer_token, signing_key*, max_request_age_seconds, nonce_cache_seconds
-# nigdy nie zmieniają się w runtime — czytamy raz i cachujemy.
-# invalidate_auth_cache() wołane przez admin_api.regen_tokens po commicie nowych tokenów.
-#
-# signing_key_bytes dekodowany przy załadowaniu cache (NIE wewnątrz transakcji z nonce INSERT)
-# — żeby ewentualny ValueError nie spowodował rollback nonce'a.
-_auth_cfg: dict | None = None
-_auth_cfg_ts: float = 0.0
-_AUTH_CFG_TTL = 300.0   # 5 min safety net
+def canonical_request(method: str, path: str, timestamp: str, nonce: str, body: bytes) -> bytes:
+    return "\n".join((method.upper(), path, timestamp, nonce, hashlib.sha256(body).hexdigest())).encode()
 
 
-def invalidate_auth_cache() -> None:
-    """Czyść cache — wołane przez admin_api.regen_tokens PO commicie nowych tokenów."""
-    global _auth_cfg
-    _auth_cfg = None
+def sign(key: bytes, message: bytes) -> bytes:
+    return hmac.new(key, message, hashlib.sha256).digest()
 
 
-def _get_auth_cfg(db: sqlite3.Connection) -> dict:
-    """Zwraca konfigurację auth z cache lub odczytuje z DB."""
-    global _auth_cfg, _auth_cfg_ts
-    now = time.monotonic()
-    if _auth_cfg is not None and now - _auth_cfg_ts < _AUTH_CFG_TTL:
-        return _auth_cfg
-
-    rows = dict(
-        db.execute(
-            "SELECT key, value FROM config WHERE key IN "
-            "('bearer_token', 'signing_key', 'max_request_age_seconds', 'nonce_cache_seconds')"
-        ).fetchall()
-    )
-    signing_key_b64 = rows.get("signing_key", "")
-    # Dekoduj signing_key TUTAJ (poza transakcją INSERT nonce) — jeśli b64 jest
-    # nieprawidłowy, wyjątek pada podczas cache load, nie po INSERT.
-    try:
-        signing_key_bytes = _decode_signing_key(signing_key_b64) if signing_key_b64 else None
-    except Exception:
-        signing_key_bytes = None
-
-    _auth_cfg = {
-        "bearer_token":        rows.get("bearer_token", ""),
-        "signing_key_b64":     signing_key_b64,
-        "signing_key_bytes":   signing_key_bytes,
-        "max_age_ms":          int(rows.get("max_request_age_seconds", "60")) * 1000,
-        "nonce_cache_seconds": int(rows.get("nonce_cache_seconds", "120")),
-    }
-    _auth_cfg_ts = now
-    return _auth_cfg
-
-
-# Throttle nonce cleanup — nie co request, tylko co N requestów.
-_auth_counter = 0
-_NONCE_CLEANUP_INTERVAL = 50
-
-
-def _maybe_cleanup_nonces(conn: sqlite3.Connection, cache_seconds: int) -> None:
-    global _auth_counter
-    _auth_counter += 1
-    if _auth_counter % _NONCE_CLEANUP_INTERVAL != 0:
-        return
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=cache_seconds)
-    conn.execute("DELETE FROM used_nonces WHERE ts_utc < ?", (cutoff.isoformat(),))
+def _reject(detail: str) -> HTTPException:
+    return HTTPException(status_code=401, detail=detail)
 
 
 async def authenticate_request(request: Request) -> None:
-    """Dependency dla wszystkich endpointów `/v1/*`. Single-tenant — brak client_id.
+    """Dependency for every /v1/* endpoint.
 
-    Używa własnego krótkotrwałego connection + in-memory cache konfiguracji.
-    Write lock (nonce INSERT) trzymany tylko ~1ms.
+    Order matters: everything is checked before the nonce is stored, so a rejected request never
+    burns a nonce. Uses its own short-lived connection so the write lock is held only for the INSERT.
 
-    Side effect: ustawia request.state.{signing_key_bytes, nonce} dla middleware.
+    Side effect: request.state.{signing_key_bytes, nonce} for the response-signing middleware.
     """
-    # 1. Fail-fast bez otwierania DB
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing_bearer")
-    bearer = auth_header[len("Bearer "):]
-
     ts_header = request.headers.get("X-Timestamp")
-    if not ts_header:
-        raise HTTPException(status_code=401, detail="missing_timestamp")
-
     nonce = request.headers.get("X-Nonce")
-    if not nonce:
-        raise HTTPException(status_code=401, detail="missing_nonce")
+    sig_header = request.headers.get("X-Signature")
+    if not ts_header or not nonce or not sig_header:
+        raise _reject("missing_auth_headers")
     if len(nonce) > 256:
-        raise HTTPException(status_code=401, detail="nonce_too_long")
+        raise _reject("nonce_too_long")
+    try:
+        ts_ms = int(ts_header)
+        provided = base64.b64decode(sig_header, validate=True)
+    except ValueError as e:
+        raise _reject("malformed_auth_headers") from e
 
-    # 2. Krótkotrwały connection — commit i close zaraz po auth
+    body = await request.body()  # cached by Starlette; the endpoint reads it again
+
     with get_connection() as db:
-        cfg = _get_auth_cfg(db)  # cache miss → 1 SELECT; hit → 0 DB ops
-
-        # Bearer token (constant-time compare)
-        if not cfg["bearer_token"] or not hmac.compare_digest(bearer, cfg["bearer_token"]):
-            raise HTTPException(status_code=401, detail="invalid_bearer")
-
-        # signing_key_bytes sprawdzamy przed INSERT — błąd konfiguracji, nie auth failure
-        if not cfg["signing_key_bytes"]:
+        key_b64 = get_config_value(db, "signing_key")
+        if not key_b64:
             raise HTTPException(status_code=500, detail="missing_signing_key")
+        key = decode_signing_key(key_b64)
 
-        # Timestamp
+        expected = sign(key, canonical_request(request.method, request.url.path, ts_header, nonce, body))
+        if not hmac.compare_digest(expected, provided):
+            raise _reject("invalid_signature")
+
+        now = datetime.now(timezone.utc)
+        diff_ms = int(now.timestamp() * 1000) - ts_ms
+        max_age_ms = int(get_config_value(db, "max_request_age_seconds") or 60) * 1000
+        if diff_ms > max_age_ms:
+            raise _reject("timestamp_too_old")
+        if diff_ms < -_MAX_FUTURE_SKEW_MS:
+            raise _reject("timestamp_in_future")
+
         try:
-            ts_ms = int(ts_header)
-        except ValueError as e:
-            raise HTTPException(status_code=401, detail="invalid_timestamp") from e
-
-        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-        diff_ms = now_ms - ts_ms
-        if diff_ms > cfg["max_age_ms"]:
-            raise HTTPException(status_code=401, detail="timestamp_too_old")
-        if diff_ms < -5000:
-            raise HTTPException(status_code=401, detail="timestamp_in_future")
-
-        # Nonce INSERT — jedyna write operacja. Wszystkie HTTPException powyżej
-        # są rzucane PRZED tym INSERT-em, więc rollback jest zawsze semantycznie poprawny.
-        try:
-            db.execute(
-                "INSERT INTO used_nonces(nonce, ts_utc) VALUES (?, ?)",
-                (nonce, datetime.now(timezone.utc).isoformat()),
-            )
+            db.execute("INSERT INTO used_nonces(nonce, ts_utc) VALUES (?, ?)", (nonce, now.isoformat()))
         except sqlite3.IntegrityError as e:
-            raise HTTPException(status_code=401, detail="duplicate_nonce") from e
+            raise _reject("duplicate_nonce") from e
 
-        # Nonce cleanup — throttled. Opakowane try/except: ewentualny błąd DELETE
-        # NIE może rollbackować INSERT — cleanup jest opcjonalny housekeeping.
-        try:
-            _maybe_cleanup_nonces(db, cfg["nonce_cache_seconds"])
-        except Exception:
-            pass  # cleanup to housekeeping — nie przerywaj autentykacji
+        # Nonces older than the accepted request age can never be replayed anyway.
+        keep_s = int(get_config_value(db, "nonce_cache_seconds") or 120)
+        db.execute("DELETE FROM used_nonces WHERE ts_utc < ?", ((now - timedelta(seconds=keep_s)).isoformat(),))
 
-        # signing_key_bytes już zdekodowane w _get_auth_cfg (przed INSERT)
-        signing_key_bytes = cfg["signing_key_bytes"]
-
-    # Connection zamknięty — write lock zwolniony ZANIM endpoint zacznie
-    request.state.signing_key_bytes = signing_key_bytes
+    request.state.signing_key_bytes = key
     request.state.nonce = nonce

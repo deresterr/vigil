@@ -16,7 +16,7 @@ PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_
 |------|------|------------------|
 | `install` | Fresh install | Tak (z `-SourceDir`) |
 | `uninstall` | Remove all | Nie |
-| `update-config` | Update vigil.toml (server_url / bearer / signing_key) | Nie |
+| `update-config` | Update server_url (vigil.toml) / signing_key (signing.dat) | Nie |
 | `reinstall` | Uninstall + install | Tak |
 
 ## Quick start
@@ -26,10 +26,9 @@ PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_
 ```powershell
 # Skopiuj na docelowy PC: zawartość dist\ na PC dziecka
 
-# Z bootstrap logów servera weź: bearer_token, signing_key
+# Signing key z panelu rodzica (Bezpieczeństwo → Klucz podpisujący)
 Install.cmd -Mode install `
     -ServerUrl 'http://192.168.0.2:8088' `
-    -BearerToken 'AbCdEfGhIjKl...' `
     -SigningKey 'XyZ123abc...' `
     -ChildUsername 'jasiek' `
     -EmergencyPassword 'silne_haslo_zapamietane_przez_rodzica' `
@@ -41,7 +40,6 @@ Install.cmd -Mode install `
 ```powershell
 Install.cmd -Mode install `
     -ServerUrl 'http://192.168.0.2:8088' `
-    -BearerToken 'AbCdEfGhIjKl...' `
     -SigningKey 'XyZ123abc...'
 ```
 
@@ -63,15 +61,14 @@ Install.cmd -Mode update-config -ServerUrl 'http://192.168.0.5:8088'
 ### Pełny reset (uninstall + install)
 
 ```powershell
-Install.cmd -Mode reinstall -ServerUrl '...' -BearerToken '...' -SigningKey '...'
+Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
 ```
 
 ## Parametry
 
 ### Wymagane dla `install`
 - `-ServerUrl http://...` — adres FastAPI servera w LAN
-- `-BearerToken ...` — z admin UI (zakładka „Bezpieczeństwo" → tokeny Vigil)
-- `-SigningKey ...` — j.w.
+- `-SigningKey ...` — z admin UI (zakładka „Bezpieczeństwo" → klucz podpisujący); bez niego installer pobiera klucz z serwera w trybie inicjalizacji
 
 ### Opcjonalne
 - `-SourceDir <path>` — gdzie szukać binarek, default `$PSScriptRoot`
@@ -100,7 +97,7 @@ Install.cmd -Mode reinstall -ServerUrl '...' -BearerToken '...' -SigningKey '...
 4. Tworzy `C:\ProgramData\Vigil\` z ACL: SYSTEM full, Admin modify, AuthUsers r+x
 5. Kopiuje 4 binarki + backup `vigil_watchdog.exe` do `backup\`
 6. Generuje SHA256 hash, szyfruje DPAPI LocalMachine, zapisuje `guardian.dat` (dla vigil_guardian)
-7. Tworzy `vigil.toml` z server_url + bearer_token (BEZ signing_key!)
+7. Tworzy `vigil.toml` z server_url (bez sekretów; signing_key idzie do `signing.dat`)
 8. Szyfruje signing_key DPAPI LocalMachine z entropy `"Vigil-SigningKey-v1"`,
    zapisuje `signing.dat`
 9. Jeśli podano `-EmergencyPassword`: szyfruje DPAPI z entropy `"Vigil-Emergency-v1"`,

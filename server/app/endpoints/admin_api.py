@@ -8,7 +8,7 @@ Endpointy:
 - GET  /admin/api/config            — wszystkie config values (oprócz secrets)
 - POST /admin/api/config            — update config (single key lub batch)
 - POST /admin/api/regen_totp        — wygeneruj nowy TOTP secret + zwróć QR
-- POST /admin/api/regen_tokens      — wygeneruj nowy bearer + signing_key dla klienta
+- POST /admin/api/regen_tokens      — wygeneruj nowy signing_key dla watchdoga
 - GET  /admin/api/events            — lista ostatnich N events
 - POST /admin/api/change_password   — zmiana hasła rodzica
 """
@@ -26,14 +26,12 @@ import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..admin_auth import require_admin_session, verify_admin_password
-from ..auth import invalidate_auth_cache
 from ..config import TOTP_ISSUER
 from ..crypto import generate_token_b64, hash_password
 from ..db import (
     ensure_daily_state,
     get_config_int,
     get_config_value,
-    get_connection,
     get_db,
     log_event,
     set_config_value,
@@ -426,60 +424,26 @@ async def regen_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
     }
 
 
-# === GET /admin/api/tokens — zwraca obecne bearer + signing_key dla klienta ===
+# === GET /admin/api/tokens + POST /admin/api/regen_tokens — the watchdog's signing key ===
 
 
 @router.get("/tokens")
 async def get_tokens(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Zwraca AKTUALNE tokeny watchdoga — do wyświetlenia w UI gdy rodzic chce skopiować
-    je do Install.cmd lub vigil.toml. UWAGA: signing_key to secret, nie wycieka poza
-    sesję admin."""
-    bearer = get_config_value(db, "bearer_token")
+    """Current signing key, for reinstalling the watchdog by hand. Secret: admin session only."""
     signing = get_config_value(db, "signing_key")
-    if not bearer or not signing:
+    if not signing:
         raise HTTPException(status_code=404, detail="tokens_not_found")
-    return {
-        "bearer_token": bearer,
-        "signing_key": signing,
-    }
-
-
-# === POST /admin/api/regen_tokens ===
+    return {"signing_key": signing}
 
 
 @router.post("/regen_tokens")
-async def regen_tokens() -> dict:
-    """Generuje nowe bearer + signing_key. Po tym vigil.toml na dziecięcym PC wymaga
-    aktualizacji — bez tego watchdog przestanie się autoryzować.
-
-    Używa get_connection() bezpośrednio zamiast Depends(get_db) — invalidate_auth_cache()
-    musi być wywołany PO commicie, żeby żaden heartbeat nie wypełnił cache starymi tokenami.
-    """
-    new_bearer      = generate_token_b64(32)
+async def regen_tokens(db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """New signing key. The watchdog stops authenticating until update-config is run on the child PC
+    (it then fails closed: server_unreachable lock)."""
     new_signing_key = generate_token_b64(32)
-
-    with get_connection() as db:
-        set_config_value(db, "bearer_token",  new_bearer)
-        set_config_value(db, "signing_key",   new_signing_key)
-        log_event(db, "tokens_regenerated", {"via": "admin_ui"})
-    # ← commit tutaj — nowe tokeny są w DB
-
-    # Invalidacja DUPĂ commicie: żaden heartbeat nie wpadnie w okno między
-    # invalidate a commit i nie wypełni cache starymi tokenami.
-    invalidate_auth_cache()
-
-    snippet = (
-        f'[server]\n'
-        f'  bearer_token = "{new_bearer}"\n'
-        f'  signing_key  = "{new_signing_key}"\n'
-    )
-
-    return {
-        "ok": True,
-        "bearer_token": new_bearer,
-        "signing_key": new_signing_key,
-        "config_snippet": snippet,
-    }
+    set_config_value(db, "signing_key", new_signing_key)
+    log_event(db, "tokens_regenerated", {"via": "admin_ui"})
+    return {"ok": True, "signing_key": new_signing_key}
 
 
 # === GET /admin/api/events ===

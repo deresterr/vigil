@@ -15,7 +15,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 
 ## Verify before saying "done"
 - Server: `cd server && pip install -r requirements-dev.txt && ruff check . && pytest -q`
-- Client: cannot build on Linux; CI (`.github/workflows/ci.yml`, windows-latest) compiles it.
+- Client: cannot build on Linux; CI (`.github/workflows/ci.yml`, windows-latest) compiles it
+  (path-filtered on PRs; every push to main builds everything and is never cancelled).
   Push the branch and read the CI result instead of guessing. CI uploads `dist/` as an artifact —
   that package is what Mateusz runs on the Windows VM for runtime tests.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.

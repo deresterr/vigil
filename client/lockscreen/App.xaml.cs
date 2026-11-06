@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -239,27 +239,8 @@ public partial class App : Application
         }
 
         // 3. Co 500 ms reasserts topmost — defense in depth gdyby coś próbowało nas przykryć.
-        //    (Można czasowo zatrzymać przez PauseTopmostEnforcer — patrz EmergencyWindow flow.)
         _topmostEnforcer.Start();
     }
-
-    /// <summary>
-    /// Pauzuje cykliczne re-asserts topmost+foreground. Używane przez LockWindow przed
-    /// otwarciem EmergencyWindow — bez pauzy enforcer co 500 ms wywoływałby SetForegroundWindow
-    /// na LockWindow, kradnąc focus z modalnego dialogu i uniemożliwiając wpisanie hasła.
-    ///
-    /// KeyboardBlocker pozostaje aktywny w trakcie pauzy — Win/Alt+Tab/Alt+F4/Esc dalej są
-    /// blokowane systemowo, więc dziecko nie wyjdzie z ekranu pomimo wstrzymanego enforcer-a.
-    /// Pauza jest krótka (czas potrzebny rodzicowi na wpisanie hasła), więc okno na ataki
-    /// typu „obcy popup zasłonił lockscreen" jest pomijalne.
-    /// </summary>
-    public void PauseTopmostEnforcer() => _topmostEnforcer.Stop();
-
-    /// <summary>
-    /// Wznowienie enforcer-a po zamknięciu dialogu (anulacja / błędne hasło).
-    /// Wywołane idempotentnie — wielokrotne Resume bez Pause jest no-op po stronie DispatcherTimer.
-    /// </summary>
-    public void ResumeTopmostEnforcer() => _topmostEnforcer.Start();
 
     /// <summary>
     /// Standalone test mode — local UI debug bez watchdoga. W deployment zawsze IPC.
@@ -283,8 +264,10 @@ public partial class App : Application
             }
         }
 
+        // Initial state only (from command-line args); the watchdog sends the real one over IPC,
+        // including whether the TOTP field makes sense offline (#9).
         var showRetry = reason == LockReason.ServerUnreachable;
-        var showTotp = reason != LockReason.ServerUnreachable;
+        var showTotp = true;
 
         ViewModel.State = new UiState
         {

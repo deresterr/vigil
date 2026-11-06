@@ -27,7 +27,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - **Time is server-side**: delta between heartbeats, clamped to `heartbeat_delta_max`, zero after a gap.
   No time accrues while a lock is active (pre-lock check happens before adding the delta).
 - Lock priority: `manual > night > limit > pause`. `manual_lock` carries over midnight.
-- **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Emergency-v1`, `Vigil-Bypass-v1`) and file
+- **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
   names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs.
 - **Threat model**: the child MAY have an administrator account. Against an admin nothing on the PC is
   tamper-proof, so every mechanism is one of: protection (holds even against admin, e.g. server-side state),

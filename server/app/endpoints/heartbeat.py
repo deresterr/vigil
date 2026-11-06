@@ -29,6 +29,7 @@ from ..lock_logic import (
     parse_iso_utc,
     utc_iso,
 )
+from ..offline import sync_offline_totp
 from ..tamper import GOODBYE_REASONS, process_goodbye, process_telemetry
 
 router = APIRouter()
@@ -129,6 +130,19 @@ def _validate_request_body(body: Any) -> dict:
             v = body[k]
             if isinstance(v, bool) or not isinstance(v, int) or v < 0:
                 raise HTTPException(status_code=422, detail=f"invalid_type: {k}")
+
+    # Offline TOTP (#9). totp_fp: which secret the watchdog holds; offline_grants: unlocks it did
+    # on its own while the server was unreachable, reported on reconnect.
+    if "totp_fp" in body and (not isinstance(body["totp_fp"], str) or len(body["totp_fp"]) > 64):
+        raise HTTPException(status_code=422, detail="invalid_type: totp_fp")
+    grants = body.get("offline_grants", [])
+    if not isinstance(grants, list) or len(grants) > 50:
+        raise HTTPException(status_code=422, detail="invalid_type: offline_grants")
+    for g in grants:
+        ok = (isinstance(g, dict) and isinstance(g.get("at_utc"), str)
+              and all(isinstance(g.get(k), int) and not isinstance(g.get(k), bool) for k in ("minutes", "step")))
+        if not ok:
+            raise HTTPException(status_code=422, detail="invalid_type: offline_grants")
 
     return body
 
@@ -250,7 +264,10 @@ async def heartbeat(
         process_telemetry(db, body["instance_id"], body["awake_ms"], body["awake_ms_at_start"],
                           body["failed_attempts"])
 
-    # === 7. Cleanup events (co 100 hb) ===
+    # === 7. Offline TOTP (#9) ===
+    offline_secret = sync_offline_totp(db, body.get("totp_fp"), body.get("offline_grants", []))
+
+    # === 8. Cleanup events (co 100 hb) ===
     _maybe_cleanup_events(db, cfg)
 
     return {
@@ -261,6 +278,8 @@ async def heartbeat(
         "next_check_seconds": 5 if body["session_active"] else 30,
         "server_time_utc": utc_iso(now_utc),
         "ui_state": ui_state,
+        # Only when the watchdog holds a different (or no) TOTP secret; the response is HMAC-signed.
+        **({"totp_secret": offline_secret} if offline_secret else {}),
     }
 
 

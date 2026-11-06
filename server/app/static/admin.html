@@ -501,6 +501,8 @@ const JOURNAL = {
                                ? 'Rodzic przedłużył ciszę nocną do ' + String(d.until_local || '').slice(11)
                                : `Rodzic dodał ${d.minutes} min`}),
   extensions_cleared: () => ({cat: 'parent', icon: 'lock', title: 'Rodzic cofnął dodatkowy czas', sub: 'Z panelu'}),
+  offline_unlock:     d => ({cat: 'parent', icon: 'unlock', title: `Odblokowano bez połączenia z serwerem na ${d.minutes} min`,
+                             sub: 'Kod z telefonu sprawdzony na komputerze dziecka'}),
   tamper_watchdog_restarted: d => ({title: 'Vigil został zatrzymany i uruchomiony ponownie',
                              sub: 'Komputer nie był wyłączany · przerwa ok. ' + fmtMin(Math.max(1, Math.round(d.down_awake_seconds / 60)))}),
   tamper_service_stopped:    () => ({title: 'Usługa Vigil została zatrzymana', sub: 'Również przy deinstalacji lub update-config'}),

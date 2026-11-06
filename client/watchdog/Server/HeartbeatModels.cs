@@ -31,6 +31,25 @@ public sealed class HeartbeatRequest
 
     [JsonPropertyName("failed_attempts")]
     public required int FailedAttempts { get; init; }
+
+    // Offline TOTP (#9, server/app/offline.py)
+    [JsonPropertyName("totp_fp")]
+    public required string TotpFp { get; init; }
+
+    [JsonPropertyName("offline_grants")]
+    public List<OfflineGrantDto>? OfflineGrants { get; init; }
+}
+
+public sealed record OfflineGrantDto
+{
+    [JsonPropertyName("at_utc")]
+    public required string AtUtc { get; init; }
+
+    [JsonPropertyName("minutes")]
+    public required int Minutes { get; init; }
+
+    [JsonPropertyName("step")]
+    public required long Step { get; init; }
 }
 
 /// <summary>POST /v1/goodbye — sent when the service stops.</summary>
@@ -72,6 +91,10 @@ public sealed class HeartbeatResponse
 
     [JsonPropertyName("ui_state")]
     public UiState? UiState { get; init; }
+
+    /// <summary>Present only when our totp_fp differs from the server's secret.</summary>
+    [JsonPropertyName("totp_secret")]
+    public string? TotpSecret { get; init; }
 }
 
 public sealed class UiState

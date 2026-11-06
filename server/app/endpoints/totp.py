@@ -15,16 +15,17 @@ import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..auth import authenticate_request
+from ..crypto import match_totp_step
 from ..db import (
     ensure_daily_state,
     get_config_value,
     get_db,
     log_event,
+    set_config_value,
     update_daily_state,
 )
 from ..lock_logic import (
@@ -36,14 +37,12 @@ from ..lock_logic import (
 
 router = APIRouter()
 
-# Lockout schedule (sekcja 5.4): (cumulative_attempts, lockout_seconds)
-_LOCKOUT_SCHEDULE: list[tuple[int, int]] = [
-    (3, 60),       # 3 błędy → 60s
-    (6, 300),      # 6 → 5 min
-    (9, 1800),     # 9 → 30 min
-    (12, 86400),   # 12 → 24h
-]
-_RESET_AFTER_SECONDS = 86400  # 24h bez prób → reset licznika (sekcja 5.4)
+# Every 3rd consecutive failure starts a lockout. Capped at 15 min on purpose: a long lockout lets
+# the child lock the parent out of unlocking. 3 tries per 15 min keeps guessing a 6-digit code
+# (3 valid codes per window) at an expected ~2.5 years.
+_FAILURES_PER_LOCKOUT = 3
+_LOCKOUT_STEPS_SECONDS = (60, 300, 900)
+_RESET_AFTER_SECONDS = 86400  # failure counter resets 24 h after the first failure
 
 
 # === Lockout management ===
@@ -86,10 +85,9 @@ def _record_failure(conn: sqlite3.Connection, now_utc: datetime) -> tuple[int, i
             new_first = first_attempt
 
     new_lockout_until: datetime | None = None
-    for threshold, seconds in _LOCKOUT_SCHEDULE:
-        if new_count == threshold:
-            new_lockout_until = now_utc + timedelta(seconds=seconds)
-            break
+    if new_count % _FAILURES_PER_LOCKOUT == 0:
+        idx = min(new_count // _FAILURES_PER_LOCKOUT, len(_LOCKOUT_STEPS_SECONDS)) - 1
+        new_lockout_until = now_utc + timedelta(seconds=_LOCKOUT_STEPS_SECONDS[idx])
 
     conn.execute(
         """INSERT INTO totp_lockout(id, attempts_count, first_attempt_utc, lockout_until_utc)
@@ -220,12 +218,14 @@ async def totp_attempt(
             },
         )
 
-    # === 2. TOTP verify (window=1 → akceptuje T-1, T, T+1, czyli ±30s; spec 5.4) ===
-    # totp_secret już pobrany w sekcji 0
-    totp = pyotp.TOTP(totp_secret)
-    if not totp.verify(code, valid_window=1):
+    # === 2. TOTP verify: ±1 step, and the step must be newer than the last accepted one (no replay) ===
+    step = match_totp_step(totp_secret, code, now_utc)
+    last_step = int(get_config_value(db, "totp_last_step") or 0)
+    if step is None or step <= last_step:
         new_count, seconds_remaining = _record_failure(db, now_utc)
-        log_event(db, "totp_failed", {"attempts_count": new_count})
+        log_event(db, "totp_failed", {"attempts_count": new_count, "replay": step is not None})
+        if seconds_remaining:
+            log_event(db, "totp_lockout", {"attempts_count": new_count, "seconds": seconds_remaining})
         return JSONResponse(
             status_code=401,
             content={
@@ -235,7 +235,8 @@ async def totp_attempt(
             },
         )
 
-    # === 3. TOTP OK — reset lockout ===
+    # === 3. TOTP OK — remember the step, reset lockout ===
+    set_config_value(db, "totp_last_step", step)
     _reset_lockout(db)
     log_event(db, "totp_success", None)
 

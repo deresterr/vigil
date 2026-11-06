@@ -11,19 +11,23 @@ permissions:
   contents: read
   pull-requests: read
 
+# PRs: a new push supersedes the old run. main: never cancel — every merge must produce its own
+# dist/ artifact (two quick merges once cancelled the first build and skipped the client in the second).
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
     runs-on: ubuntu-latest
+    # Path filtering only for PRs; a push to main always builds everything.
     outputs:
-      server: ${{ steps.f.outputs.server }}
-      client: ${{ steps.f.outputs.client }}
+      server: ${{ github.event_name == 'push' || steps.f.outputs.server == 'true' }}
+      client: ${{ github.event_name == 'push' || steps.f.outputs.client == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - id: f
+        if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@v3
         with:
           filters: |

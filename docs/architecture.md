@@ -46,7 +46,7 @@ signature like "server unreachable".
 
 State is one row per local date in `daily_state`: `seconds_used, limit_override_minutes,
 night_extension_until_utc, manual_lock, pause_active, last_heartbeat_utc, last_session_active_utc`.
-A new day's row inherits `manual_lock` only. Weekend limit applies Fri–Sun (`is_weekend`).
+A new day's row inherits `manual_lock` and a still-active `night_extension_until_utc` from the previous row. Weekend limit applies Fri–Sun (`is_weekend`).
 `user_active` is currently just `session_active` (no idle detection).
 
 Other tables: `config` (key/value incl. secrets: `bearer_token`, `signing_key`, `totp_secret`,

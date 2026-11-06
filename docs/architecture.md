@@ -34,7 +34,7 @@ signature like "server unreachable".
 | `POST /v1/heartbeat` | `session_active, user_active, current_time_utc, uptime_seconds` | → `lock_required, lock_reason, minutes_used, minutes_remaining, next_check_seconds, server_time_utc, ui_state` |
 | `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`. every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` | refused while a higher-priority lock is active |
-| `GET /v1/claim_credentials` | — | **unauthenticated**, only while `init_open=1`; returns signing key and server URL to the installer |
+| `POST /v1/pair` | `code` | **unauthenticated**; one-time 8-digit code from the panel (10 min, 5 attempts) → new `signing_key` + `server_url`. Every pairing rotates the key |
 
 `ui_state` (only when locked): `main_message` (Polish, from server), `show_totp_field`, `show_resume_button`,
 `show_retry_button`, `show_shutdown_button`, `current_time_display`.
@@ -60,8 +60,10 @@ Other tables: `config` (key/value incl. secrets: `signing_key`, `totp_secret`,
 
 First start: `bootstrap.py` generates secrets; `setup_complete=0` ⇒ `setup_guard` middleware redirects
 everything to `/setup` (unauthenticated wizard: device name, parent password, TOTP, limits, server URL).
-Finishing setup sets `init_open=1`; the installer calls `/v1/claim_credentials`; the first heartbeat closes
-`init_open`. Admin can reopen it from the panel (same keys are handed out again).
+After setup the parent generates a pairing code in the panel (`/admin/api/pairing_code`, only its hash is
+stored: `pairing_code_hash`, `pairing_expires_utc`, `pairing_attempts`); `Install.cmd` sends it to `/v1/pair`
+and stores the returned key in `signing.dat`. Pairing again (reinstall, new PC) rotates the key, so the
+previously paired PC fails closed.
 
 Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cookie `vigil_session`
 (24 h, HttpOnly, SameSite=Strict, path `/admin`). Password: argon2id.

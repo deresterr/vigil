@@ -725,8 +725,7 @@ function Step-ApplyUserPolicies {
     } else {
         $tempKey = "HKLM\PC_DefaultUser"
         try {
-            & reg.exe load $tempKey $defaultProfile | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "reg load failed (exit $LASTEXITCODE)" }
+            if ((Invoke-RegExe load $tempKey $defaultProfile) -ne 0) { throw "reg load failed" }
 
             Set-PoliciesForRegistryHive `
                 -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_DefaultUser" `
@@ -737,7 +736,7 @@ function Step-ApplyUserPolicies {
             [gc]::Collect()
             [gc]::WaitForPendingFinalizers()
             Start-Sleep -Milliseconds 500
-            & reg.exe unload $tempKey 2>&1 | Out-Null
+            [void](Invoke-RegExe unload $tempKey)
         }
     }
 
@@ -765,8 +764,7 @@ function Step-ApplyUserPolicies {
                 } else {
                     $tempChildKey = "HKLM\PC_ChildUser"
                     try {
-                        & reg.exe load $tempChildKey $childProfile | Out-Null
-                        if ($LASTEXITCODE -ne 0) { throw "reg load failed (exit $LASTEXITCODE)" }
+                        if ((Invoke-RegExe load $tempChildKey $childProfile) -ne 0) { throw "reg load failed" }
                         Set-PoliciesForRegistryHive `
                             -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_ChildUser" `
                             -Label "User '$ChildUsername' (offline NTUSER.DAT)"
@@ -776,7 +774,7 @@ function Step-ApplyUserPolicies {
                         [gc]::Collect()
                         [gc]::WaitForPendingFinalizers()
                         Start-Sleep -Milliseconds 500
-                        & reg.exe unload $tempChildKey 2>&1 | Out-Null
+                        [void](Invoke-RegExe unload $tempChildKey)
                     }
                 }
             }
@@ -1078,18 +1076,23 @@ function Clear-PoliciesFromRegistryHive {
     }
 }
 
-function Invoke-SystemRegDelete {
-    # Uruchamia reg.exe delete jako SYSTEM (przez schtasks) — pomija DisableRegistryTools
-    # na user-level. Używane przy uninstall gdy polityka mogła zablokować PS-native operacje.
-    param([string]$KeyPath, [string]$ValueName)
-    $taskName = "_pc_regdel_$(Get-Random)"
-    $cmd = "reg.exe delete `"$KeyPath`" /v `"$ValueName`" /f"
-    try {
-        & schtasks.exe /Create /TN $taskName /SC ONCE /ST 23:59 /RU SYSTEM /TR $cmd /F 2>&1 | Out-Null
-        & schtasks.exe /Run /TN $taskName 2>&1 | Out-Null
-        Start-Sleep -Milliseconds 800
-        & schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
-    } catch { }
+function Invoke-RegExe {
+    # reg.exe reports errors on stderr. Under $ErrorActionPreference='Stop', PS 5.1 turns redirected
+    # native stderr into a terminating error — fatal inside 'finally'. Returns the exit code instead.
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]] $RegArgs)
+    $ErrorActionPreference = 'Continue'
+    $out = & reg.exe @RegArgs 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "reg.exe $($RegArgs[0]) $($RegArgs[1]) failed (exit $LASTEXITCODE): $(($out | Out-String).Trim())"
+    }
+    return $LASTEXITCODE
+}
+
+function Get-LoadedUserHives {
+    # HKEY_USERS has a subkey per loaded hive; real users are S-1-5-21-*, '_Classes' are not profiles.
+    Get-ChildItem -Path 'Registry::HKEY_USERS\' -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$' } |
+        ForEach-Object { $_.PSChildName }
 }
 
 function Step-ReverseUserPolicies {
@@ -1099,78 +1102,42 @@ function Step-ReverseUserPolicies {
     }
     Write-Step "Cofam user policies"
 
-    # --- Pre-step: wyczyść DisableRegistryTools przez SYSTEM task zanim zmontujemy hive'y.
-    # DisableRegistryTools=1 w załadowanym hive'ie Default profile (HKLM\PC_DefaultUser) może
-    # być interpretowany jako aktywna polityka HKLM i blokować operacje rejestru w tej sesji PS.
-    # Uruchamiamy reg.exe jako SYSTEM — nieblokowane przez user-level policies.
+    # 1. Loaded hives first, through the PowerShell registry provider (not subject to
+    #    DisableRegistryTools). With one account (D12) the user running this script is the child,
+    #    so this also lifts DisableRegistryTools for ourselves — reg.exe below needs that.
+    foreach ($sid in @(Get-LoadedUserHives)) {
+        Clear-PoliciesFromRegistryHive -BasePath "Registry::HKEY_USERS\$sid"
+        Write-OK "Live HKU ${sid}: policies removed"
+    }
+
+    # 2. Default profile (affects accounts created later).
     $defaultProfile = "$env:SystemDrive\Users\Default\NTUSER.DAT"
-    $tempKeyName = "PC_DefaultUserClean"
-    if (Test-Path $defaultProfile) {
-        try {
-            & reg.exe load "HKLM\$tempKeyName" $defaultProfile 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-                Invoke-SystemRegDelete `
-                    -KeyPath "HKLM\$tempKeyName\Software\Microsoft\Windows\CurrentVersion\Policies\System" `
-                    -ValueName "DisableRegistryTools"
-                [gc]::Collect(); [gc]::WaitForPendingFinalizers(); Start-Sleep -Milliseconds 500
-                & reg.exe unload "HKLM\$tempKeyName" 2>&1 | Out-Null
-            }
-        } catch { }
-    }
-    if ($ChildUsername) {
-        $sid = Get-UserSid $ChildUsername
-        if ($sid) {
-            # Jeśli zalogowany — wyczyść live HKU przez SYSTEM task
-            $hkuPath = "Registry::HKEY_USERS\$sid"
-            if (Test-Path $hkuPath) {
-                Invoke-SystemRegDelete `
-                    -KeyPath "HKU\$sid\Software\Microsoft\Windows\CurrentVersion\Policies\System" `
-                    -ValueName "DisableRegistryTools"
-            }
-        }
-    }
-
-    # --- Właściwe cofanie policies ---
-
     if (Test-Path $defaultProfile) {
         $tempKey = "HKLM\PC_DefaultUser"
-        try {
-            & reg.exe load $tempKey $defaultProfile | Out-Null
-            if ($LASTEXITCODE -eq 0) {
+        if ((Invoke-RegExe load $tempKey $defaultProfile) -eq 0) {
+            try {
                 Clear-PoliciesFromRegistryHive -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_DefaultUser"
                 Write-OK "Default profile: policies removed"
+            } finally {
+                [gc]::Collect(); [gc]::WaitForPendingFinalizers(); Start-Sleep -Milliseconds 500
+                [void](Invoke-RegExe unload $tempKey)
             }
-        } finally {
-            [gc]::Collect()
-            [gc]::WaitForPendingFinalizers()
-            Start-Sleep -Milliseconds 500
-            & reg.exe unload $tempKey 2>&1 | Out-Null
         }
     }
 
+    # 3. Named child account that is not logged in (offline NTUSER.DAT).
     if ($ChildUsername) {
         $sid = Get-UserSid $ChildUsername
-        if ($sid) {
-            $hkuPath = "Registry::HKEY_USERS\$sid"
-            if (Test-Path $hkuPath) {
-                Clear-PoliciesFromRegistryHive -BasePath $hkuPath
-                Write-OK "User '$ChildUsername' (live HKU): policies removed"
-            } else {
-                $childProfile = "$env:SystemDrive\Users\$ChildUsername\NTUSER.DAT"
-                if (Test-Path $childProfile) {
-                    $tempChildKey = "HKLM\PC_ChildUser"
-                    try {
-                        & reg.exe load $tempChildKey $childProfile | Out-Null
-                        if ($LASTEXITCODE -eq 0) {
-                            Clear-PoliciesFromRegistryHive -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_ChildUser"
-                            Write-OK "User '$ChildUsername' (offline): policies removed"
-                        }
-                    } finally {
-                        [gc]::Collect()
-                        [gc]::WaitForPendingFinalizers()
-                        Start-Sleep -Milliseconds 500
-                        & reg.exe unload $tempChildKey 2>&1 | Out-Null
-                    }
+        $childProfile = "$env:SystemDrive\Users\$ChildUsername\NTUSER.DAT"
+        if ($sid -and -not (Test-Path "Registry::HKEY_USERS\$sid") -and (Test-Path $childProfile)) {
+            $tempChildKey = "HKLM\PC_ChildUser"
+            if ((Invoke-RegExe load $tempChildKey $childProfile) -eq 0) {
+                try {
+                    Clear-PoliciesFromRegistryHive -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_ChildUser"
+                    Write-OK "User '$ChildUsername' (offline): policies removed"
+                } finally {
+                    [gc]::Collect(); [gc]::WaitForPendingFinalizers(); Start-Sleep -Milliseconds 500
+                    [void](Invoke-RegExe unload $tempChildKey)
                 }
             }
         }

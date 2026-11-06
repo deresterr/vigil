@@ -61,6 +61,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Parse PowerShell scripts (Windows PowerShell 5.1, the version the installer runs on)
+        shell: powershell
+        run: |
+          $bad = 0
+          Get-ChildItem -Recurse -Include *.ps1 -Path installer, build-package.ps1 | ForEach-Object {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
+            foreach ($e in $errs) { $bad++; "::error file=$($_.Name),line=$($e.Extent.StartLineNumber)::$($e.Message)" }
+          }
+          exit $bad
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"

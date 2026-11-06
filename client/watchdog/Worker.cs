@@ -125,6 +125,13 @@ public sealed class Worker : BackgroundService
             {
                 // Nigdy nie pozwalamy crash z tick zabić cały service. Log + continue.
                 _logger.LogError(ex, "Tick failed");
+                // Fail-closed must not depend on the tick finishing: whatever broke it, still lock
+                // once the server has been silent for longer than the grace period.
+                try { await FailClosedIfOverdueAsync(stoppingToken).ConfigureAwait(false); }
+                catch (Exception lockEx) when (!stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogError(lockEx, "Fail-closed lock after a failed tick failed");
+                }
             }
 
             try
@@ -213,16 +220,15 @@ public sealed class Worker : BackgroundService
             _lastSuccessfulHeartbeat = DateTime.UtcNow;
             _failedAttempts = 0;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // Filter on our own stop token, not on the exception type: an HttpClient timeout is a
+        // TaskCanceledException too, and letting it escape skipped the fail-closed check (#31).
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _failedAttempts++;
             _logger.LogWarning(ex,
                 "Heartbeat failed (last success: {Ago:F0}s temu)",
                 (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds);
         }
-
-        var graceSeconds = (DateTime.UtcNow - _startTime).TotalSeconds < 90 ? 90 : 30;
-        var timeSinceLastSuccess = (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds;
 
         if (serverOk && response is not null)
         {
@@ -234,7 +240,22 @@ public sealed class Worker : BackgroundService
 
             await ApplyResponseAsync(response, ct).ConfigureAwait(false);
         }
-        else if (timeSinceLastSuccess > graceSeconds)
+        else
+        {
+            await FailClosedIfOverdueAsync(ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Fail-closed (invariant): lock once the server has been silent longer than the grace period
+    /// (90 s after service start, 30 s otherwise). Called after a failed heartbeat and after any
+    /// tick that threw, so no exception path can skip it.
+    /// </summary>
+    private async Task FailClosedIfOverdueAsync(CancellationToken ct)
+    {
+        var graceSeconds = (DateTime.UtcNow - _startTime).TotalSeconds < 90 ? 90 : 30;
+        var timeSinceLastSuccess = (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds;
+        if (timeSinceLastSuccess > graceSeconds)
         {
             // Fail-closed: server unreachable + grace minął
             await _lockscreen.EnsureLockedAsync(new LockState(

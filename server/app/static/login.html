@@ -81,8 +81,15 @@
     <button type="submit">Zaloguj</button>
   </form>
   <script>
-    if (new URLSearchParams(location.search).get("error") === "1") {
-      document.getElementById("error").hidden = false;
+    const q = new URLSearchParams(location.search);
+    const err = document.getElementById("error");
+    if (q.get("error") === "1") {
+      err.hidden = false;
+    } else if (q.get("error") === "locked") {
+      const wait = parseInt(q.get("wait") || "0", 10);
+      err.textContent = "Zbyt wiele nieudanych prób. Spróbuj ponownie za " +
+        (wait >= 60 ? Math.ceil(wait / 60) + " min." : wait + " s.");
+      err.hidden = false;
     }
   </script>
 

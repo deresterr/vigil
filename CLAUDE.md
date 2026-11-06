@@ -32,6 +32,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   tamper-proof, so every mechanism is one of: protection (holds even against admin, e.g. server-side state),
   friction (stops a non-elevated process / casual attempt), or detection (reports tampering to the parent panel).
   Say explicitly which one a change is. Secrets on the PC are SYSTEM-only, knowing an admin can still read them.
+- **Target**: Windows 10/11 x64, **Home and Pro**. No Pro-only features (gpedit, AppLocker, secpol, BitLocker
+  as a requirement); policies only as registry values, which Home honours.
+- **One account**: the child's account is the only interactive account on the PC and is an administrator.
+  The parent maintains the PC through that same account, so per-user policies (HKCU) hit the parent too.
 - Service DACL (`sc sdset`) denies Admin stop/delete: use `sc.exe stop` + poll, or a SYSTEM scheduled task.
   `Stop-Service` always fails with ACCESS_DENIED.
 

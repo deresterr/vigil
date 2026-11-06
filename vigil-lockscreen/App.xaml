@@ -1,0 +1,38 @@
+<Application x:Class="Vigil.Lockscreen.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!-- ShutdownMode=OnExplicitShutdown: aplikacja zamyka się dopiero przy jawnym Shutdown(),
+         nie przy zamknięciu pierwszego okna. Potrzebne bo zarządzamy multi-monitor i
+         okna mogą być rekreowane przy DisplaySettingsChanged. -->
+    <Application.Resources>
+        <!-- Kolory — paleta "night mode": czarne tło + stłumione napisy.
+             Cel: monitor w nocy nie ma oświetlać pokoju gdy dziecko zaśnie z włączoną blokadą.
+             Wszystkie napisy mają wystarczający kontrast do czytelności ale nie emitują dużo światła. -->
+        <SolidColorBrush x:Key="BackgroundDarkBrush" Color="#000000"/>
+        <SolidColorBrush x:Key="ForegroundLightBrush" Color="#9a9a9a"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#707070"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#4a6888"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#8a4040"/>
+
+        <!-- Style globalne -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#222222"/>
+            <Setter Property="Foreground" Value="#9a9a9a"/>
+            <Setter Property="BorderBrush" Value="#3a3a3a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#0f0f0f"/>
+            <Setter Property="Foreground" Value="#b8b8b8"/>
+            <Setter Property="BorderBrush" Value="#3a3a3a"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="FontSize" Value="28"/>
+            <Setter Property="CaretBrush" Value="#b8b8b8"/>
+        </Style>
+    </Application.Resources>
+</Application>

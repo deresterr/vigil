@@ -1,0 +1,199 @@
+<Window x:Class="Vigil.Lockscreen.LockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Vigil.Lockscreen.ViewModels"
+        WindowStyle="None"
+        WindowState="Normal"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="{StaticResource BackgroundDarkBrush}"
+        Foreground="{StaticResource ForegroundLightBrush}"
+        FontFamily="Segoe UI"
+        Cursor="Arrow">
+
+    <Window.Resources>
+        <!-- BoolToVisibility converter (built-in nie ma w app resources, tworzymy lokalnie) -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Phase visibility helpers (przez DataTrigger) -->
+        <Style x:Key="PhasePanel" TargetType="StackPanel">
+            <Setter Property="Visibility" Value="Collapsed"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <!-- Zegar w prawym górnym rogu, font 72pt — czytelne z drugiego końca pokoju -->
+        <TextBlock Text="{Binding CurrentTime}"
+                   FontSize="72"
+                   FontWeight="Light"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Top"
+                   Margin="0,40,60,0"
+                   Foreground="{StaticResource MutedBrush}"/>
+
+        <!-- Centralny panel — zawartość zależy od Phase -->
+        <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="900">
+
+            <!-- === PHASE: Locked === -->
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Phase}" Value="{x:Static vm:LockUiPhase.Locked}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+
+                <!-- Główny komunikat — odrobinę jaśniejszy niż default Foreground bo to duży napis (48pt)
+                     i potrzebuje kontrastu do czytelności, ale wciąż stłumiony żeby nie świecić nocą -->
+                <TextBlock Text="{Binding MainMessage}"
+                           FontSize="48"
+                           FontWeight="Light"
+                           Foreground="#a8a8a8"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Margin="40,20,40,40"/>
+
+                <!-- TOTP field (warunkowo) -->
+                <StackPanel Orientation="Vertical"
+                            HorizontalAlignment="Center"
+                            Visibility="{Binding ShowTotpField, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Wpisz kod od rodzica:"
+                               FontSize="22"
+                               Foreground="{StaticResource MutedBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,12"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBox x:Name="TotpInput"
+                                 Text="{Binding TotpCode, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="220"
+                                 FontSize="36"
+                                 TextAlignment="Center"
+                                 MaxLength="6"
+                                 KeyDown="TotpInput_KeyDown"/>
+                        <Button Content="Sprawdź"
+                                Margin="16,0,0,0"
+                                Padding="30,10"
+                                Click="CheckTotp_Click"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Retry button (warunkowo) -->
+                <Button Content="Spróbuj ponownie"
+                        Margin="0,30,0,0"
+                        Padding="40,16"
+                        FontSize="22"
+                        HorizontalAlignment="Center"
+                        Visibility="{Binding ShowRetryButton, Converter={StaticResource BoolToVis}}"
+                        Click="Retry_Click"/>
+
+                <!-- Czas pozostały — widoczny tylko w trybie pauzy i tylko gdy > 0 -->
+                <TextBlock Text="{Binding MinutesRemainingText}"
+                           FontSize="32"
+                           FontWeight="Light"
+                           Foreground="#22c55e"
+                           HorizontalAlignment="Center"
+                           Margin="0,30,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowResumeButton}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <!-- Odblokuj (pauza) -->
+                <Button Content="▶  Odblokuj"
+                        Margin="0,20,0,0"
+                        Padding="50,18"
+                        FontSize="26"
+                        FontWeight="Medium"
+                        HorizontalAlignment="Center"
+                        Background="#16a34a"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Visibility="{Binding ShowResumeButton, Converter={StaticResource BoolToVis}}"
+                        Click="ResumeFromPause_Click"/>
+
+                <!-- Status komunikat (np. zły TOTP / lockout) — stłumiony czerwony,
+                     wyróżnia błąd ale nie emituje światła w trybie nocnym -->
+                <TextBlock Text="{Binding StatusMessage}"
+                           Foreground="#a05858"
+                           FontSize="20"
+                           Margin="0,20,0,0"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="600"/>
+            </StackPanel>
+
+            <!-- === PHASE: GrantPending === -->
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Phase}" Value="{x:Static vm:LockUiPhase.GrantPending}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Text="Wysyłanie..."
+                           FontSize="36"
+                           FontWeight="Light"
+                           Foreground="#a8a8a8"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- === PHASE: GrantApplied === -->
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Phase}" Value="{x:Static vm:LockUiPhase.GrantApplied}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Text="{Binding StatusMessage}"
+                           FontSize="36"
+                           FontWeight="Light"
+                           Foreground="#a8a8a8"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Margin="40"/>
+                <TextBlock Text="Komputer odblokuje się za chwilę."
+                           FontSize="22"
+                           Foreground="{StaticResource MutedBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,20,0,0"/>
+            </StackPanel>
+
+        </Grid>
+
+        <!-- Wyłącz komputer — prawy dolny róg, dyskretnie -->
+        <Button Content="Wyłącz komputer"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,40,40"
+                Padding="20,10"
+                FontSize="16"
+                Background="Transparent"
+                BorderThickness="1"
+                Foreground="{StaticResource MutedBrush}"
+                Visibility="{Binding State.ShowShutdownButton, Converter={StaticResource BoolToVis}}"
+                Click="Shutdown_Click"/>
+    </Grid>
+</Window>

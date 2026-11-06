@@ -1,0 +1,132 @@
+using System.Runtime.InteropServices;
+
+namespace Vigil.Lockscreen.Native;
+
+public static class TaskbarHider
+{
+    private const int SW_HIDE = 0;
+    private const int SW_SHOW = 5;
+
+    // SetWindowPos flags
+    private const uint SWP_NOMOVE      = 0x0002;
+    private const uint SWP_NOSIZE      = 0x0001;
+    private const uint SWP_NOZORDER    = 0x0004;
+    private const uint SWP_SHOWWINDOW  = 0x0040;
+    private const uint SWP_FRAMECHANGED= 0x0020;   // wymusza WM_NCCALCSIZE → DWM refresh
+
+    // WM_SETTINGCHANGE (26) — Explorer/taskbar odczytuje nowy stan powłoki i się przerysowuje.
+    // Wymagane na Windows 11 gdzie taskbar jest hostowany przez WinUI XAML Islands.
+    private const uint WM_SETTINGCHANGE = 0x001A;
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr FindWindowEx(
+        IntPtr hwndParent,
+        IntPtr hwndChildAfter,
+        string? lpszClass,
+        string? lpszWindow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd, IntPtr hWndInsertAfter,
+        int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(
+        IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    public static IntPtr[] Hide()
+    {
+        var hidden = new List<IntPtr>();
+
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        if (taskbar != IntPtr.Zero)
+        {
+            ShowWindow(taskbar, SW_HIDE);
+            hidden.Add(taskbar);
+        }
+
+        var startBtn = FindWindow("Start", null);
+        if (startBtn != IntPtr.Zero)
+        {
+            ShowWindow(startBtn, SW_HIDE);
+            hidden.Add(startBtn);
+        }
+
+        var secondary = IntPtr.Zero;
+        while ((secondary = FindWindowEx(
+            IntPtr.Zero,
+            secondary,
+            "Shell_SecondaryTrayWnd",
+            null)) != IntPtr.Zero)
+        {
+            ShowWindow(secondary, SW_HIDE);
+            hidden.Add(secondary);
+        }
+
+        return hidden.ToArray();
+    }
+
+    public static void Restore(IntPtr[] hiddenHandles)
+    {
+        foreach (var h in hiddenHandles)
+        {
+            RestoreWindow(h);
+        }
+
+        // WM_SETTINGCHANGE — wymusza refresh stanu powłoki po przywróceniu okien
+        try
+        {
+            var tray = FindWindow("Shell_TrayWnd", null);
+            if (tray != IntPtr.Zero)
+                PostMessage(tray, WM_SETTINGCHANGE, IntPtr.Zero, IntPtr.Zero);
+        }
+        catch { /* ignoruj */ }
+    }
+
+    /// <summary>
+    /// Przywraca wszystkie okna paska zadań przez fresh FindWindow — nie wymaga
+    /// wcześniej zapisanych uchwytów. Używane przez tryb --restore-taskbar-only
+    /// spawnowany przez watchdog po Kill() lockscreena.
+    /// </summary>
+    public static void RestoreAll()
+    {
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        if (taskbar != IntPtr.Zero) RestoreWindow(taskbar);
+
+        var startBtn = FindWindow("Start", null);
+        if (startBtn != IntPtr.Zero) RestoreWindow(startBtn);
+
+        var secondary = IntPtr.Zero;
+        while ((secondary = FindWindowEx(IntPtr.Zero, secondary, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
+            RestoreWindow(secondary);
+
+        try
+        {
+            var tray = FindWindow("Shell_TrayWnd", null);
+            if (tray != IntPtr.Zero)
+                PostMessage(tray, WM_SETTINGCHANGE, IntPtr.Zero, IntPtr.Zero);
+        }
+        catch { /* ignoruj */ }
+    }
+
+    private static void RestoreWindow(IntPtr h)
+    {
+        try
+        {
+            ShowWindow(h, SW_SHOW);
+            SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+        }
+        catch { /* ignoruj */ }
+    }
+}
+

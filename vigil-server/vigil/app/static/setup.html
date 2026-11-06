@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Konfiguracja — Vigil</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1a1a1a;
+      color: #e8e8e8;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+    .card {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 32px;
+      width: 460px;
+      max-width: 100%;
+    }
+    h1 { margin: 0 0 4px; font-size: 1.3rem; font-weight: 500; }
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 28px; }
+    .steps { display: flex; gap: 6px; margin-bottom: 28px; }
+    .step-dot {
+      flex: 1; height: 3px; border-radius: 2px;
+      background: #444; transition: background .2s;
+    }
+    .step-dot.done { background: #4a8fd4; }
+    .step-dot.active { background: #6db4f5; }
+    label {
+      display: block; margin-bottom: 6px;
+      font-size: 0.85rem; color: #aaa;
+    }
+    input[type=text], input[type=password], input[type=number], input[type=time],
+    select {
+      width: 100%; padding: 10px 12px;
+      background: #1a1a1a; border: 1px solid #555;
+      color: #e8e8e8; border-radius: 4px; font-size: 0.95rem;
+      margin-bottom: 16px;
+    }
+    input:focus, select:focus { outline: none; border-color: #6db4f5; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    .btn {
+      padding: 10px 20px; border: none; border-radius: 4px;
+      font-size: 0.95rem; cursor: pointer; transition: background .15s;
+    }
+    .btn-primary { background: #4a8fd4; color: #fff; }
+    .btn-primary:hover { background: #5ba0e5; }
+    .btn-secondary {
+      background: transparent; color: #aaa;
+      border: 1px solid #555;
+    }
+    .btn-secondary:hover { border-color: #888; color: #e8e8e8; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+    .error {
+      margin-bottom: 12px; padding: 10px 12px;
+      background: #4a1f1f; border: 1px solid #8a3a3a;
+      border-radius: 4px; color: #ffb0b0; font-size: 0.85rem;
+    }
+    .error[hidden] { display: none; }
+    .info {
+      margin-bottom: 16px; padding: 10px 12px;
+      background: #1f2e3f; border: 1px solid #2c5282;
+      border-radius: 4px; color: #90cdf4; font-size: 0.85rem;
+    }
+    .qr-wrap { text-align: center; margin: 12px 0 16px; }
+    .qr-wrap img { max-width: 200px; border-radius: 4px; }
+    .qr-wrap .loading { color: #888; font-size: 0.85rem; padding: 20px 0; }
+    .summary-row {
+      display: flex; justify-content: space-between;
+      padding: 6px 0; border-bottom: 1px solid #333; font-size: 0.9rem;
+    }
+    .summary-row .key { color: #aaa; }
+    .summary-row .val { color: #e8e8e8; text-align: right; max-width: 60%; word-break: break-all; }
+    .totp-skip { font-size: 0.8rem; color: #888; margin-top: -8px; margin-bottom: 16px; }
+    .step { display: none; }
+    .step.active { display: block; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Konfiguracja Vigil</h1>
+  <p class="subtitle">Pierwsze uruchomienie — wypełnij poniższe kroki</p>
+  <div class="steps" id="steps"></div>
+
+  <div id="err" class="error" hidden></div>
+
+  <!-- Krok 1: Nazwa urządzenia -->
+  <div class="step active" id="s1">
+    <label for="deviceName">Nazwa urządzenia</label>
+    <input type="text" id="deviceName" placeholder="np. Komputer Jasia" maxlength="64" autofocus>
+    <div class="info">Nazwa wyświetlana w nagłówku panelu — pomaga rozróżnić kilka instancji.</div>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="goTo(2)">Dalej →</button>
+    </div>
+  </div>
+
+  <!-- Krok 2: Hasło -->
+  <div class="step" id="s2">
+    <label for="pass1">Hasło admina (min. 8 znaków)</label>
+    <input type="password" id="pass1" placeholder="Hasło">
+    <label for="pass2">Powtórz hasło</label>
+    <input type="password" id="pass2" placeholder="Powtórz hasło">
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="goTo(1)">← Wróć</button>
+      <button class="btn btn-primary" onclick="goTo(3)">Dalej →</button>
+    </div>
+  </div>
+
+  <!-- Krok 3: TOTP -->
+  <div class="step" id="s3">
+    <div class="info">
+      Zeskanuj kod QR aplikacją TOTP (np. Aegis, Google Authenticator) i wpisz kod weryfikacyjny.
+      Możesz pominąć ten krok — TOTP skonfiguruj później w panelu.
+    </div>
+    <div class="qr-wrap" id="qrWrap"><div class="loading">Ładowanie kodu QR…</div></div>
+    <label for="totpCode">Kod weryfikacyjny (6 cyfr)</label>
+    <input type="text" id="totpCode" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*">
+    <p class="totp-skip">Zostaw puste i kliknij „Pomiń" jeśli nie chcesz teraz konfigurować TOTP.</p>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="goTo(2)">← Wróć</button>
+      <button class="btn btn-secondary" onclick="skipTotp()">Pomiń</button>
+      <button class="btn btn-primary" onclick="verifyTotp()">Weryfikuj →</button>
+    </div>
+  </div>
+
+  <!-- Krok 4: Ustawienia -->
+  <div class="step" id="s4">
+    <label for="tz">Strefa czasowa</label>
+    <input type="text" id="tz" value="Europe/Warsaw" list="tzList">
+    <datalist id="tzList">
+      <option value="Europe/Warsaw">
+      <option value="Europe/London">
+      <option value="Europe/Berlin">
+      <option value="Europe/Prague">
+      <option value="Europe/Kyiv">
+      <option value="America/New_York">
+      <option value="America/Chicago">
+      <option value="America/Los_Angeles">
+      <option value="UTC">
+    </datalist>
+    <div class="row">
+      <div>
+        <label for="limWd">Limit (pon–czw) [min]</label>
+        <input type="number" id="limWd" value="120" min="1" max="1440">
+      </div>
+      <div>
+        <label for="limWe">Limit (pią–nd) [min]</label>
+        <input type="number" id="limWe" value="240" min="1" max="1440">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="nightS">Blokada nocna od</label>
+        <input type="time" id="nightS" value="21:30">
+      </div>
+      <div>
+        <label for="nightE">Blokada nocna do</label>
+        <input type="time" id="nightE" value="06:30">
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="goTo(3)">← Wróć</button>
+      <button class="btn btn-primary" onclick="goTo(5)">Dalej →</button>
+    </div>
+  </div>
+
+  <!-- Krok 5: Podsumowanie + adres serwera -->
+  <div class="step" id="s5">
+    <label for="srvUrl">Adres serwera Vigil</label>
+    <input type="text" id="srvUrl" placeholder="http://192.168.1.5:8088">
+    <div class="info">
+      Adres który wpisujesz do <code>Install.cmd</code>. Musi być osiągalny z PC dziecka.
+      Jeśli używasz DNS rewritingu w przeglądarce (np. <em>kontrola.test</em>), wpisz tu
+      bezpośredni adres IP serwera.
+    </div>
+    <div id="summary"></div>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="goTo(4)">← Wróć</button>
+      <button class="btn btn-primary" id="btnFinish" onclick="finish()">Zakończ konfigurację</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOTAL = 5;
+let currentStep = 1;
+let totpVerified = false;
+
+// Render step indicators
+const stepsEl = document.getElementById('steps');
+for (let i = 1; i <= TOTAL; i++) {
+  const d = document.createElement('div');
+  d.className = 'step-dot';
+  d.id = 'dot' + i;
+  stepsEl.appendChild(d);
+}
+
+function updateDots(step) {
+  for (let i = 1; i <= TOTAL; i++) {
+    const d = document.getElementById('dot' + i);
+    d.className = 'step-dot' + (i < step ? ' done' : i === step ? ' active' : '');
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.hidden = !msg;
+}
+
+function goTo(step) {
+  showError('');
+  if (step === 2) {
+    const name = document.getElementById('deviceName').value.trim();
+    if (!name) { showError('Podaj nazwę urządzenia.'); return; }
+  }
+  if (step === 3) {
+    const p1 = document.getElementById('pass1').value;
+    const p2 = document.getElementById('pass2').value;
+    if (p1.length < 8) { showError('Hasło musi mieć co najmniej 8 znaków.'); return; }
+    if (p1 !== p2) { showError('Hasła nie są zgodne.'); return; }
+  }
+  if (step === 5) {
+    // Prefill server URL from window.location
+    const urlEl = document.getElementById('srvUrl');
+    if (!urlEl.value) {
+      const port = window.location.port || '8088';
+      urlEl.value = window.location.protocol + '//' + window.location.hostname + ':' + port;
+    }
+    buildSummary();
+  }
+  document.getElementById('s' + currentStep).classList.remove('active');
+  currentStep = step;
+  document.getElementById('s' + currentStep).classList.add('active');
+  updateDots(currentStep);
+  if (step === 3) loadQr();
+}
+
+function loadQr() {
+  if (document.querySelector('.qr-wrap img')) return;
+  fetch('/setup/totp_qr')
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('qrWrap').innerHTML =
+        '<img src="data:image/png;base64,' + d.qr_png_base64 + '" alt="QR TOTP">';
+    })
+    .catch(() => {
+      document.getElementById('qrWrap').innerHTML =
+        '<div class="loading">Nie udało się załadować QR. Możesz pominąć TOTP.</div>';
+    });
+}
+
+function skipTotp() {
+  totpVerified = false;
+  document.getElementById('totpCode').value = '';
+  goTo(4);
+}
+
+function verifyTotp() {
+  const code = document.getElementById('totpCode').value.trim();
+  if (!code) { skipTotp(); return; }
+  if (!/^\d{6}$/.test(code)) { showError('Kod TOTP musi mieć 6 cyfr.'); return; }
+  // Weryfikacja nastąpi po stronie serwera przy finalizacji
+  totpVerified = true;
+  goTo(4);
+}
+
+function buildSummary() {
+  const rows = [
+    ['Nazwa urządzenia', document.getElementById('deviceName').value.trim()],
+    ['TOTP', totpVerified ? '✓ skonfigurowany' : '— pominięty (skonfiguruj później)'],
+    ['Strefa czasowa', document.getElementById('tz').value],
+    ['Limit pon–czw', document.getElementById('limWd').value + ' min'],
+    ['Limit pią–nd', document.getElementById('limWe').value + ' min'],
+    ['Blokada nocna', document.getElementById('nightS').value + ' – ' + document.getElementById('nightE').value],
+  ];
+  document.getElementById('summary').innerHTML = rows.map(([k, v]) =>
+    '<div class="summary-row"><span class="key">' + k + '</span><span class="val">' + v + '</span></div>'
+  ).join('') + '<div style="margin-top:16px"></div>';
+}
+
+function finish() {
+  showError('');
+  const srvUrl = document.getElementById('srvUrl').value.trim();
+  if (!srvUrl.startsWith('http')) { showError('Podaj adres serwera (http://...).'); return; }
+
+  const totpCode = totpVerified ? document.getElementById('totpCode').value.trim() : '';
+
+  const payload = {
+    device_name:          document.getElementById('deviceName').value.trim(),
+    password:             document.getElementById('pass1').value,
+    totp_code:            totpCode,
+    timezone:             document.getElementById('tz').value.trim(),
+    daily_limit_weekday:  parseInt(document.getElementById('limWd').value, 10),
+    daily_limit_weekend:  parseInt(document.getElementById('limWe').value, 10),
+    night_lock_start:     document.getElementById('nightS').value,
+    night_lock_end:       document.getElementById('nightE').value,
+    watchdog_server_url:  srvUrl,
+  };
+
+  const btn = document.getElementById('btnFinish');
+  btn.disabled = true;
+  btn.textContent = 'Zapisywanie…';
+
+  fetch('/setup/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+  .then(({ ok, data }) => {
+    if (ok) {
+      window.location.href = '/admin';
+    } else {
+      const detail = data.detail;
+      const msg = typeof detail === 'object'
+        ? Object.entries(detail).map(([k, v]) => k + ': ' + v).join(', ')
+        : String(detail);
+      showError('Błąd: ' + msg);
+      btn.disabled = false;
+      btn.textContent = 'Zakończ konfigurację';
+    }
+  })
+  .catch(() => {
+    showError('Błąd połączenia z serwerem.');
+    btn.disabled = false;
+    btn.textContent = 'Zakończ konfigurację';
+  });
+}
+
+updateDots(1);
+</script>
+</body>
+</html>

@@ -1,0 +1,300 @@
+using System.Globalization;
+using System.Runtime.Versioning;
+using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Vigil.Watchdog.Configuration;
+using Vigil.Watchdog.Detection;
+using Vigil.Watchdog.Lockscreen;
+using Vigil.Watchdog.Server;
+
+namespace Vigil.Watchdog;
+
+/// <summary>
+/// Główna pętla watchdoga. Co 5s:
+/// 1. Zbierz session/idle/foreground state
+/// 2. Wyślij heartbeat
+/// 3. Aplikuj response (lock/unlock, aktualizuj tray)
+/// 4. Fail-closed jeśli brak heartbeatu > grace_seconds
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class Worker : BackgroundService
+{
+    private readonly VigilConfig _config;
+    private readonly HeartbeatClient _client;
+    private readonly SessionDetector _sessions;
+    private readonly ILockscreenManager _lockscreen;
+    private readonly ILogger<Worker> _logger;
+
+    private readonly DateTime _startTime = DateTime.UtcNow;
+    private DateTime _lastSuccessfulHeartbeat = DateTime.MinValue;
+
+    // Tray IPC — watchdog nasłuchuje na żądania pauzy z vigil_tray.exe
+    private TrayIpcServer? _trayIpc;
+
+    // Tick interval:
+    //  - normalny (sesja aktywna lub nie zalogowany) — 5s. Server odbiera heartbeat, akumuluje czas.
+    //  - gdy lockscreen JEST AKTYWNY — 1s. Krótszy bo:
+    //     * po unlock chcemy szybko zauważyć (dziecko nie powinno czekać 5s)
+    //     * jeśli dziecko zabije vigil_lockscreen.exe (Task Manager itp.), respawn nastąpi pod sekundę
+    //       zamiast 5s nieosłoniętego desktopu
+    private static readonly TimeSpan _tickIntervalNormal = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan _tickIntervalLocked = TimeSpan.FromSeconds(1);
+    // Adaptive interval sugerowany przez serwer (next_check_seconds).
+    // Gdy sesja nieaktywna serwer odpowiada 30s — redukuje load gdy dziecko niezalogowane.
+    private TimeSpan _tickIntervalAdaptive = TimeSpan.FromSeconds(5);
+
+    public Worker(
+        VigilConfig config,
+        HeartbeatClient client,
+        SessionDetector sessions,
+        ILockscreenManager lockscreen,
+        ILogger<Worker> logger)
+    {
+        _config = config;
+        _client = client;
+        _sessions = sessions;
+        _lockscreen = lockscreen;
+        _logger = logger;
+
+        // Podpinamy event handler dla TOTP — lockscreen UI → server.
+        // DI gwarantuje że _lockscreen jest non-null (rzucił by przy resolve gdyby brakowało).
+        _lockscreen.OnTotpAttempt += HandleTotpFromLockscreenAsync;
+        _lockscreen.OnRetryRequest += HandleRetryRequestAsync;
+        _lockscreen.OnResumeFromPause += HandleResumeFromPauseAsync;
+    }
+
+    private readonly SemaphoreSlim _retrySignal = new(0, 1);
+
+    private Task HandleRetryRequestAsync(CancellationToken ct)
+    {
+        try { _retrySignal.Release(); } catch (SemaphoreFullException) { }
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleResumeFromPauseAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _client.SendPauseToggleAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Nie udało się wysłać pause_toggle (resume from lockscreen)");
+        }
+    }
+
+    private async Task HandlePauseToggleAsync()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        try
+        {
+            await _client.SendPauseToggleAsync(cts.Token).ConfigureAwait(false);
+            try { _retrySignal.Release(); } catch (SemaphoreFullException) { }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Nie udało się wysłać pause_toggle (z tray)");
+        }
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Vigil uruchomiony. Server: {Server}", _config.ServerUrl);
+
+        _trayIpc = new TrayIpcServer(_logger, HandlePauseToggleAsync);
+        _ = Task.Run(() => _trayIpc.RunAsync(stoppingToken), stoppingToken);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await TickAsync(stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                // Nigdy nie pozwalamy crash z tick zabić cały service. Log + continue.
+                _logger.LogError(ex, "Tick failed");
+            }
+
+            try
+            {
+                // Czekaj N sekund ALBO do sygnału retry z lockscreen — co przyjdzie pierwsze.
+                // Po wyjściu z WaitAsync semafor jest "zerowany" (skonsumowany), kolejny
+                // retry musi wywołać Release ponownie.
+                // Krótszy interval gdy lockscreen jest aktywny — szybszy unlock + szybszy respawn
+                // jeśli dziecko zabije process.
+                var interval = _lockscreen.IsLocked ? _tickIntervalLocked : _tickIntervalAdaptive;
+                await _retrySignal.WaitAsync(interval, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { break; }
+        }
+
+        _logger.LogInformation("Vigil zatrzymany.");
+    }
+
+    private async Task TickAsync(CancellationToken ct)
+    {
+        // Awaryjny bypass: jeśli ktoś wpisał emergency password w lockscreen i flag plik
+        // jest aktywny (max 24h), pomijamy całą logikę locka. Heartbeat wciąż wysyłamy
+        // żeby server akumulował czas używania, ale lockscreen NIE jest spawnowany.
+        if (BypassFlagChecker.IsActive(_logger))
+        {
+            // Zdejmij obecny lockscreen jeśli był aktywny
+            if (_lockscreen.IsLocked)
+            {
+                await _lockscreen.DismissAsync(ct).ConfigureAwait(false);
+            }
+            // Wyślij heartbeat (best effort — bo bez tego brak akumulacji czasu)
+            try
+            {
+                var bypassReq = new HeartbeatRequest
+                {
+                    SessionActive = true,
+                    UserActive = true,
+                    CurrentTimeUtc = DateTime.UtcNow.ToString(
+                        "yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
+                    UptimeSeconds = (int)(DateTime.UtcNow - _startTime).TotalSeconds,
+                };
+                await _client.SendHeartbeatAsync(bypassReq, ct).ConfigureAwait(false);
+                _lastSuccessfulHeartbeat = DateTime.UtcNow;
+            }
+            catch { /* podczas bypassu olewamy server errors */ }
+            return;
+        }
+
+        var (sessionActive, _) = _sessions.DetectActiveSession();
+
+        // Brak idle/foreground tracking — server akumuluje czas gdy sesja aktywna i heartbeat dochodzi.
+        var userActive = sessionActive;
+
+        var req = new HeartbeatRequest
+        {
+            SessionActive = sessionActive,
+            UserActive = userActive,
+            CurrentTimeUtc = DateTime.UtcNow.ToString(
+                "yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
+            UptimeSeconds = (int)(DateTime.UtcNow - _startTime).TotalSeconds,
+        };
+
+        HeartbeatResponse? response = null;
+        bool serverOk = false;
+        try
+        {
+            response = await _client.SendHeartbeatAsync(req, ct).ConfigureAwait(false);
+            serverOk = true;
+            _lastSuccessfulHeartbeat = DateTime.UtcNow;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Heartbeat failed (last success: {Ago:F0}s temu)",
+                (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds);
+        }
+
+        var graceSeconds = (DateTime.UtcNow - _startTime).TotalSeconds < 90 ? 90 : 30;
+        var timeSinceLastSuccess = (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds;
+
+        if (serverOk && response is not null)
+        {
+            // Adaptuj interwał do sugestii serwera gdy nie locked.
+            // Serwer wysyła 30s gdy sesja nieaktywna — redukuje load gdy dziecko niezalogowane.
+            if (!_lockscreen.IsLocked && response.NextCheckSeconds > 0)
+                _tickIntervalAdaptive = TimeSpan.FromSeconds(
+                    Math.Clamp(response.NextCheckSeconds, 5, 60));
+
+            await ApplyResponseAsync(response, ct).ConfigureAwait(false);
+        }
+        else if (timeSinceLastSuccess > graceSeconds)
+        {
+            // Fail-closed: server unreachable + grace minął
+            await _lockscreen.EnsureLockedAsync(new LockState(
+                Reason: "server_unreachable",
+                MainMessage: "Brak połączenia z serwerem rodzica. Komputer odblokuje się po przywróceniu połączenia.",
+                ShowTotpField: false,
+                ShowResumeButton: false,
+                ShowRetryButton: true,
+                ShowShutdownButton: true,
+                MinutesRemaining: 0,
+                CurrentTimeDisplay: DateTime.Now.ToString("HH:mm")),
+                ct).ConfigureAwait(false);
+        }
+        // Inaczej: w grace period, nic nie rób, czekaj na recovery
+    }
+
+    private async Task ApplyResponseAsync(HeartbeatResponse response, CancellationToken ct)
+    {
+        if (response.LockRequired)
+        {
+            var ui = response.UiState;
+            var isPause = response.LockReason == "pause";
+            await _lockscreen.EnsureLockedAsync(new LockState(
+                Reason: response.LockReason ?? "unknown",
+                MainMessage: ui?.MainMessage,
+                ShowTotpField: ui?.ShowTotpField ?? false,
+                ShowResumeButton: ui?.ShowResumeButton ?? false,
+                ShowRetryButton: ui?.ShowRetryButton ?? false,
+                ShowShutdownButton: ui?.ShowShutdownButton ?? true,
+                MinutesRemaining: response.MinutesRemaining,
+                CurrentTimeDisplay: ui?.CurrentTimeDisplay),
+                ct).ConfigureAwait(false);
+
+            // Tray: pauza aktywna → "paused" icon; inne blokady → "locked" icon
+            await UpdateTrayStateAsync(
+                paused: isPause,
+                canPause: false,
+                minutesRemaining: response.MinutesRemaining).ConfigureAwait(false);
+            return;
+        }
+
+        if (_lockscreen.IsLocked)
+        {
+            await _lockscreen.DismissAsync(ct).ConfigureAwait(false);
+        }
+
+        // Tray: normalny tryb → "playing" icon z pozostałymi minutami
+        await UpdateTrayStateAsync(
+            paused: false,
+            canPause: true,
+            minutesRemaining: response.MinutesRemaining).ConfigureAwait(false);
+
+    }
+
+    private async Task UpdateTrayStateAsync(bool paused, bool canPause, int minutesRemaining)
+    {
+        if (_trayIpc is null) return;
+        try
+        {
+            await _trayIpc.SendStateUpdateAsync(paused, canPause, minutesRemaining)
+                .ConfigureAwait(false);
+        }
+        catch { /* tray niedostępny */ }
+    }
+
+    /// <summary>
+    /// Forward TOTP attempt z lockscreen UI do servera, zwróć rezultat z powrotem do UI.
+    /// </summary>
+    private async Task<TotpResult> HandleTotpFromLockscreenAsync(
+        TotpFromLockscreen attempt, CancellationToken ct)
+    {
+        try
+        {
+            var resp = await _client.SendTotpAttemptAsync(new TotpAttemptRequest
+            {
+                Code = attempt.Code,
+                MinutesToGrant = attempt.MinutesToGrant,
+            }, ct).ConfigureAwait(false);
+
+            return new TotpResult(resp.Ok, resp.Mode, resp.Applied, resp.Reason, resp.LockoutSecondsRemaining);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TOTP attempt failed");
+            return new TotpResult(false, null, null, "network_error");
+        }
+    }
+}

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- WPF + minimalny WinForms dla System.Windows.Forms.Screen.AllScreens (multi-monitor enumeration).
+         Alternatywa to P/Invoke EnumDisplayMonitors — Screen jest prostszy. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Vigil.Lockscreen</RootNamespace>
+    <AssemblyName>vigil_lockscreen</AssemblyName>
+
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UseWindowsForms=true dodaje "using System.Windows.Forms" jako implicit global,
+         co konfliktuje z WPF (Application, KeyEventArgs istnieją w obu). Używamy aliasu
+         WinFormsScreen w plikach które potrzebują Screen.AllScreens — implicit nie potrzebny. -->
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- DPAPI wrapper — ProtectedData.Protect/Unprotect w EmergencyAuth.cs.
+         W .NET Framework był built-in, w .NET 8+ jest osobny package. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

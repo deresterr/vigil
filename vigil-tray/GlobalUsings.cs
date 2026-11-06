@@ -1,0 +1,10 @@
+global using System;
+global using System.Drawing;
+global using System.Drawing.Drawing2D;
+global using System.IO;
+global using System.IO.Pipes;
+global using System.Text;
+global using System.Text.Json;
+global using System.Threading;
+global using System.Threading.Tasks;
+global using System.Windows.Forms;

@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a1a">
+  <title>Vigil</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #1a1a1a;
+      color: #e8e8e8;
+      line-height: 1.5;
+      -webkit-text-size-adjust: 100%;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+    header {
+      background: #232323;
+      border-bottom: 1px solid #333;
+      padding: 14px 16px;
+      padding-top: max(14px, env(safe-area-inset-top));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+    .watchdog-status { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #e8e8e8; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+    .dot.online { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+    .dot.offline { background: #f87171; }
+    nav.tabs {
+      background: #1f1f1f;
+      border-bottom: 1px solid #333;
+      display: flex;
+      position: sticky;
+      top: 50px;
+      z-index: 9;
+    }
+    nav.tabs button {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #aaa;
+      font-size: 0.95rem;
+      padding: 14px 12px;
+      cursor: pointer;
+      font-family: inherit;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    nav.tabs button.active { color: #fff; border-bottom-color: #4ade80; }
+    nav.tabs button:active { background: #2a2a2a; }
+    main {
+      padding: 16px;
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #232323;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #ccc;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .card .muted-block { margin-top: 0; margin-bottom: 14px; }
+    .status-card { text-align: center; padding: 28px 16px; }
+    .status-card .lock-state { font-size: 1.4rem; font-weight: 600; margin: 0 0 6px; }
+    .status-card .lock-state.unlocked { color: #4ade80; }
+    .status-card .lock-state.locked-limit { color: #fb923c; }
+    .status-card .lock-state.locked-night { color: #818cf8; }
+    .status-card .lock-state.locked-manual { color: #f87171; }
+    .status-card .lock-state.locked-pause { color: #94a3b8; }
+    .status-card .substate { color: #aaa; font-size: 0.95rem; margin: 0; }
+    .time-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 4px; }
+    .time-grid .stat { background: #1a1a1a; border-radius: 8px; padding: 14px 12px; text-align: center; }
+    .time-grid .stat .label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 4px; }
+    .time-grid .stat .value { font-size: 1.6rem; font-weight: 600; color: #e8e8e8; margin: 0; font-variant-numeric: tabular-nums; }
+    .time-grid .stat .value.warn { color: #fb923c; }
+    .time-grid .stat .value.danger { color: #f87171; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.05s, opacity 0.15s, background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover:not(:disabled) { background: #15803d; }
+    .btn-warn { background: #ea580c; color: white; }
+    .btn-warn:hover:not(:disabled) { background: #c2410c; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+    .btn-secondary { background: #374151; color: #e8e8e8; }
+    .btn-secondary:hover:not(:disabled) { background: #4b5563; }
+    .btn-ghost { background: transparent; color: #aaa; border: 1px solid #444; }
+    .btn-ghost:hover:not(:disabled) { background: #2a2a2a; }
+    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .action-grid .btn { padding: 12px; }
+    .action-row { display: flex; gap: 8px; margin-top: 8px; }
+    .action-row .btn { flex: 1; }
+    .action-stack > .btn + .btn { margin-top: 8px; }
+    label { display: block; font-size: 0.85rem; color: #aaa; margin: 0 0 6px; }
+    input[type="text"], input[type="password"], input[type="number"], input[type="time"], select {
+      width: 100%; padding: 12px 14px;
+      background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
+      color: #e8e8e8; font-size: 1rem; font-family: inherit;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus { outline: none; border-color: #2563eb; }
+    .form-row + .form-row { margin-top: 12px; }
+    #notice {
+      position: fixed; left: 50%; bottom: 24px;
+      transform: translateX(-50%) translateY(120%);
+      background: #2a2a2a; border: 1px solid #444; color: #e8e8e8;
+      padding: 12px 18px; border-radius: 8px; font-size: 0.9rem;
+      z-index: 100;
+      max-width: calc(100vw - 32px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      /* visibility + opacity zapobiegają wystawaniu pustego diva nad dolną krawędź ekranu
+         (transform translateY(120%) chowa tylko ~5px wysokości, reszta widoczna). */
+      opacity: 0;
+      visibility: hidden;
+      transition: transform 0.25s ease, opacity 0.25s ease, visibility 0s linear 0.25s;
+    }
+    #notice.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+      visibility: visible;
+      transition: transform 0.25s ease, opacity 0.25s ease, visibility 0s linear 0s;
+    }
+    #notice.error { border-color: #dc2626; }
+    #notice.success { border-color: #16a34a; }
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); z-index: 50;
+      align-items: flex-start; justify-content: center; padding: 20px;
+      overflow-y: auto;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: #232323; border: 1px solid #444; border-radius: 12px;
+      padding: 20px; max-width: 460px; width: 100%;
+      margin: auto;
+    }
+    .modal h3 { margin: 0 0 12px; font-size: 1.1rem; }
+    .modal pre {
+      background: #1a1a1a; padding: 12px; border-radius: 6px;
+      overflow-x: auto; font-size: 0.8rem; color: #e8e8e8;
+      word-break: break-all; white-space: pre-wrap;
+      margin: 0;
+    }
+    .qr-box { background: white; padding: 16px; border-radius: 8px; display: flex; justify-content: center; margin: 16px 0; }
+    .qr-box img { max-width: 100%; height: auto; }
+    .secret-row {
+      display: flex; gap: 6px; align-items: stretch;
+      margin: 6px 0 14px;
+    }
+    .secret-row pre { flex: 1; }
+    .secret-row .copy-btn {
+      flex: 0 0 auto;
+      padding: 8px 14px;
+      background: #2563eb; color: white;
+      border: none; border-radius: 6px;
+      cursor: pointer; font-size: 0.85rem;
+      font-family: inherit;
+    }
+    .secret-row .copy-btn:active { transform: scale(0.95); }
+    .secret-row .copy-btn.copied { background: #16a34a; }
+    .secret-label { font-size: 0.85rem; color: #aaa; margin: 12px 0 0; font-weight: 600; }
+    .secret-label:first-child { margin-top: 0; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .muted { color: #888; font-size: 0.85rem; }
+    .danger-zone { border-color: #7f1d1d; background: #2a1a1a; }
+    @media (min-width: 720px) {
+      header h1 { font-size: 1.2rem; }
+      .status-card .lock-state { font-size: 1.6rem; }
+      .time-grid .stat .value { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1 id="pageTitle">Vigil</h1>
+  <div class="watchdog-status">
+    <span class="dot" id="watchdogDot"></span>
+    <span id="watchdogText">...</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="active" data-tab="status">Status</button>
+  <button data-tab="settings">Ustawienia</button>
+</nav>
+
+<main>
+
+<div id="tab-status" class="tab-content active">
+  <div class="card status-card">
+    <p class="lock-state" id="lockStateText">...</p>
+    <p class="substate" id="lockSubstate"></p>
+  </div>
+
+  <div class="card">
+    <h2>Dziś</h2>
+    <div class="time-grid">
+      <div class="stat">
+        <p class="label">Wykorzystane</p>
+        <p class="value" id="minutesUsed">--</p>
+      </div>
+      <div class="stat">
+        <p class="label">Pozostałe</p>
+        <p class="value" id="minutesRemaining">--</p>
+      </div>
+    </div>
+    <p class="muted" id="limitInfo" style="text-align:center; margin-top:10px"></p>
+  </div>
+
+  <div class="card">
+    <h2>Akcje</h2>
+    <div class="action-grid">
+      <button class="btn btn-primary" onclick="grantTime(15)">+15 min</button>
+      <button class="btn btn-primary" onclick="grantTime(30)">+30 min</button>
+      <button class="btn btn-primary" onclick="grantTime(60)">+60 min</button>
+      <button class="btn btn-primary" onclick="grantTime(120)">+120 min</button>
+    </div>
+    <div class="action-row" style="margin-top: 14px;">
+      <button class="btn btn-success" onclick="grantNight(60)">Cisza nocna +60 min</button>
+    </div>
+    <div class="action-row" style="margin-top: 14px;">
+      <button class="btn btn-danger" id="manualLockBtn" onclick="toggleManualLock()">...</button>
+    </div>
+    <div class="action-row" style="margin-top: 8px;">
+      <button class="btn btn-ghost" onclick="clearExtension()" title="Resetuje bonusy czasu i przedłużenia ciszy nocnej">
+        Wyczyść bonusy i przedłużenia
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<div id="tab-settings" class="tab-content">
+
+  <div class="card">
+    <h2>Dzienny limit</h2>
+    <p class="muted muted-block">Ile minut dziennie dziecko może korzystać z komputera. Po wyczerpaniu limitu ekran się blokuje. Piątkowe popołudnie i weekend mają osobny limit — bo wtedy zwykle dziecko może grać dłużej.</p>
+    <div class="form-row">
+      <label for="cfgLimitWeekday">Pon-Czw (minuty)</label>
+      <input type="number" id="cfgLimitWeekday" min="0" max="1440" step="1" required>
+    </div>
+    <div class="form-row">
+      <label for="cfgLimitWeekend">Pt-Nd (minuty)</label>
+      <input type="number" id="cfgLimitWeekend" min="0" max="1440" step="1" required>
+    </div>
+    <button class="btn btn-primary" onclick="saveLimits()" style="margin-top: 14px;">Zapisz limity</button>
+  </div>
+
+  <div class="card">
+    <h2>Cisza nocna</h2>
+    <p class="muted muted-block">Godziny, w których komputer jest zablokowany niezależnie od limitu czasu. Typowo: wieczór i noc, żeby dziecko nie grało po cichu po pójściu spać.</p>
+    <div class="form-row">
+      <label for="cfgNightStart">Początek</label>
+      <input type="time" id="cfgNightStart" required>
+    </div>
+    <div class="form-row">
+      <label for="cfgNightEnd">Koniec</label>
+      <input type="time" id="cfgNightEnd" required>
+    </div>
+    <button class="btn btn-primary" onclick="saveNight()" style="margin-top: 14px;">Zapisz ciszę nocną</button>
+  </div>
+
+  <div class="card">
+    <h2>Hasło rodzica</h2>
+    <div class="form-row">
+      <label for="oldPassword">Stare hasło</label>
+      <input type="password" id="oldPassword" autocomplete="current-password">
+    </div>
+    <div class="form-row">
+      <label for="newPassword">Nowe hasło (min. 8 znaków)</label>
+      <input type="password" id="newPassword" autocomplete="new-password">
+    </div>
+    <button class="btn btn-primary" onclick="changePassword()" style="margin-top: 14px;">Zmień hasło</button>
+  </div>
+
+  <div class="card">
+    <h2>Kod TOTP (aplikacja w telefonie)</h2>
+    <p class="muted muted-block">Kod z aplikacji <b>Aegis</b> (lub Google Authenticator) na Twoim telefonie — wpisz go na ekranie blokady dziecka żeby odblokować komputer. „Wygeneruj nowy" jeśli zgubiłeś dostęp do telefonu.</p>
+    <div class="action-stack">
+      <button class="btn btn-primary" onclick="showTotp()">Pokaż obecny kod TOTP</button>
+      <button class="btn btn-warn" onclick="regenTotp()">Wygeneruj nowy kod TOTP</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Tryb inicjalizacji</h2>
+    <p class="muted muted-block">Aktywuj tryb inicjalizacji gdy chcesz zainstalować watchdoga na nowym PC lub przeinstalować na istniejącym. Tryb zamyka się automatycznie po pierwszym udanym heartbeat.</p>
+    <button class="btn btn-warn" onclick="enableInitMode()" id="btnEnableInit">Aktywuj tryb inicjalizacji</button>
+
+    <h2 style="margin-top: 24px;">Tokeny</h2>
+    <p class="muted muted-block">Klucze identyfikujące komputer dziecka dla serwera — generowane raz przy instalacji. „Wygeneruj nowe" jeśli podejrzewasz że ktoś przejął te dane; po zmianie uruchom ponownie <code>Install.cmd</code> na PC dziecka.</p>
+    <div class="action-stack">
+      <button class="btn btn-primary" onclick="showTokens()">Pokaż obecne tokeny</button>
+      <button class="btn btn-danger" onclick="regenTokens()">Wygeneruj nowe tokeny</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sesja</h2>
+    <button class="btn btn-secondary" onclick="logout()">Wyloguj</button>
+  </div>
+
+</div>
+
+</main>
+
+<div id="notice"></div>
+
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <h3 id="modalTitle">...</h3>
+    <div id="modalBody"></div>
+    <button class="btn btn-secondary" onclick="closeModal()" style="margin-top: 16px;">Zamknij</button>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('nav.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'settings' && !configLoaded) loadConfig();
+  });
+});
+
+async function api(path, opts = {}) {
+  opts.credentials = 'include';
+  opts.headers = Object.assign({'Content-Type': 'application/json'}, opts.headers || {});
+  if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
+  const r = await fetch(path, opts);
+  if (r.status === 401) { window.location.href = '/admin/login'; throw new Error('not_authenticated'); }
+  const txt = await r.text();
+  let data;
+  try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
+  if (!r.ok) throw new Error(typeof data === 'string' ? data : (data?.detail || ('http_' + r.status)));
+  return data;
+}
+
+/* Anti-double-click wrapper. Disables all action buttons + tee'uje cursor=wait podczas
+   trwania akcji. Bez tego szybkie klikanie powoduje race condition (kilka równoległych
+   transakcji DB → 'database is locked' albo nadpisywanie state'u). */
+let _actionInProgress = false;
+async function guarded(fn) {
+  if (_actionInProgress) return;
+  _actionInProgress = true;
+  const buttons = document.querySelectorAll('.btn');
+  buttons.forEach(b => b.disabled = true);
+  document.body.style.cursor = 'wait';
+  try {
+    return await fn();
+  } finally {
+    _actionInProgress = false;
+    buttons.forEach(b => b.disabled = false);
+    document.body.style.cursor = '';
+  }
+}
+
+function notice(msg, type = '') {
+  const el = document.getElementById('notice');
+  el.textContent = msg;
+  el.className = type;
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+let pollTimer = null;
+
+async function loadStatus() {
+  try {
+    const s = await api('/admin/api/status');
+    renderStatus(s);
+  } catch (e) {
+    document.getElementById('watchdogText').textContent = 'Błąd';
+    document.getElementById('watchdogDot').className = 'dot offline';
+  }
+}
+
+function fmtMinutes(m) {
+  if (m === null || m === undefined) return '--';
+  if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? h + ' h' : h + ' h ' + rem + ' min';
+}
+
+function renderStatus(s) {
+  const dot = document.getElementById('watchdogDot');
+  const text = document.getElementById('watchdogText');
+    // Aktualizuj tytuł i nagłówek
+  if (s.device_name) {
+    document.title = s.device_name;
+    document.getElementById('pageTitle').textContent = s.device_name;
+  }
+
+
+if (s.init_open && !s.watchdog_online) {
+    // Tryb inicjalizacji: pomarańczowy dot, biały tekst (podmienia Online/Offline)
+    dot.className = 'dot';
+    dot.style.background = '#f59e0b';
+    text.textContent = 'Tryb inicjalizacji aktywny';
+  } else if (s.watchdog_online) {
+    dot.className = 'dot online';
+    dot.style.background = '';
+    text.textContent = 'Online';
+  } else {
+    dot.className = 'dot offline';
+    dot.style.background = '';
+    text.textContent = 'Offline';
+    if (s.last_heartbeat_ago_seconds !== null) {
+      const min = Math.floor(s.last_heartbeat_ago_seconds / 60);
+      text.textContent = 'Offline (' + min + ' min)';
+    }
+  }
+
+  const lockStateEl = document.getElementById('lockStateText');
+  const sub = document.getElementById('lockSubstate');
+  if (s.lock_required) {
+    lockStateEl.textContent = '🔒 Zablokowany';
+    if (s.lock_reason === 'limit') {
+      lockStateEl.className = 'lock-state locked-limit';
+      sub.textContent = 'Skończył się dzienny czas';
+    } else if (s.lock_reason === 'night') {
+      lockStateEl.className = 'lock-state locked-night';
+      sub.textContent = 'Cisza nocna';
+    } else if (s.lock_reason === 'manual') {
+      lockStateEl.className = 'lock-state locked-manual';
+      sub.textContent = 'Zablokowany ręcznie';
+    } else if (s.lock_reason === 'pause') {
+      lockStateEl.className = 'lock-state locked-pause';
+      sub.textContent = 'Pauza';
+    } else {
+      lockStateEl.className = 'lock-state locked-manual';
+      sub.textContent = s.lock_reason;
+    }
+  } else {
+    lockStateEl.textContent = '✓ Odblokowany';
+    lockStateEl.className = 'lock-state unlocked';
+    sub.textContent = 'Komputer dostępny';
+  }
+
+  document.getElementById('minutesUsed').textContent = fmtMinutes(s.minutes_used);
+  const remEl = document.getElementById('minutesRemaining');
+  remEl.textContent = fmtMinutes(s.minutes_remaining);
+  remEl.className = 'value';
+  if (s.minutes_remaining <= 5) remEl.classList.add('danger');
+  else if (s.minutes_remaining <= 15) remEl.classList.add('warn');
+
+  let limitInfo = 'Limit: ' + fmtMinutes(s.daily_limit);
+  if (s.is_weekend) limitInfo += ' (weekend)';
+  if (s.limit_override_minutes && s.limit_override_minutes !== 0) {
+    limitInfo += ' + ' + fmtMinutes(s.limit_override_minutes) + ' bonus';
+  }
+  if (s.night_extension_until_local) {
+    limitInfo += ' • Cisza nocna do ' + s.night_extension_until_local;
+  }
+  document.getElementById('limitInfo').textContent = limitInfo;
+
+  const lockBtn = document.getElementById('manualLockBtn');
+  if (s.manual_lock) {
+    lockBtn.textContent = '🔓 Wyłącz manualną blokadę';
+    lockBtn.className = 'btn btn-success';
+  } else {
+    lockBtn.textContent = '🔒 Włącz manualną blokadę';
+    lockBtn.className = 'btn btn-danger';
+  }
+}
+
+async function grantTime(minutes) {
+  await guarded(async () => {
+    try {
+      await api('/admin/api/grant', {method: 'POST', body: {minutes, mode: 'limit'}});
+      notice('Dodano +' + minutes + ' min', 'success');
+      loadStatus();
+    } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+  });
+}
+
+async function grantNight(minutes) {
+  await guarded(async () => {
+    try {
+      await api('/admin/api/grant', {method: 'POST', body: {minutes, mode: 'night'}});
+      notice('Cisza nocna +' + minutes + ' min', 'success');
+      loadStatus();
+    } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+  });
+}
+
+async function toggleManualLock() {
+  await guarded(async () => {
+    try {
+      const s = await api('/admin/api/status');
+      const newVal = !s.manual_lock;
+      await api('/admin/api/manual_lock', {method: 'POST', body: {locked: newVal}});
+      notice(newVal ? 'Komputer zablokowany' : 'Komputer odblokowany', 'success');
+      loadStatus();
+    } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+  });
+}
+
+async function clearExtension() {
+  if (!confirm('Wyczyścić bonusy czasu i przedłużenia ciszy nocnej?')) return;
+  await guarded(async () => {
+    try {
+      await api('/admin/api/clear_extension', {method: 'POST'});
+      notice('Wyczyszczono bonusy i przedłużenia', 'success');
+      loadStatus();
+    } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+  });
+}
+
+let configLoaded = false;
+
+async function loadConfig() {
+  try {
+    const cfg = await api('/admin/api/config');
+    // BACKEND zwraca: daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end
+    document.getElementById('cfgLimitWeekday').value = cfg.daily_limit_weekday ?? '';
+    document.getElementById('cfgLimitWeekend').value = cfg.daily_limit_weekend ?? '';
+    document.getElementById('cfgNightStart').value = cfg.night_lock_start || '21:30';
+    document.getElementById('cfgNightEnd').value = cfg.night_lock_end || '06:30';
+    configLoaded = true;
+  } catch (e) { notice('Błąd ładowania ustawień: ' + e.message, 'error'); }
+}
+
+async function saveLimits() {
+  const wkdRaw = document.getElementById('cfgLimitWeekday').value;
+  const wkeRaw = document.getElementById('cfgLimitWeekend').value;
+  // Pusty input → wczesne odrzucenie z czytelnym komunikatem (parseInt('') = NaN)
+  if (wkdRaw === '' || wkeRaw === '') {
+    notice('Wpisz oba limity (Pon-Czw i Pt-Nd)', 'error');
+    return;
+  }
+  // Number() zamiast parseInt: parseInt('15.5') = 15 (cicho ucina ułamek), Number('15.5') = 15.5
+  // — chcemy odrzucić ułamki, więc używamy Number + Number.isInteger.
+  const wkd = Number(wkdRaw);
+  const wke = Number(wkeRaw);
+  if (!Number.isInteger(wkd) || wkd < 0 || wkd > 1440) {
+    notice('Limit Pon-Czw: liczba całkowita 0–1440 minut (1440 = całą dobę)', 'error');
+    return;
+  }
+  if (!Number.isInteger(wke) || wke < 0 || wke > 1440) {
+    notice('Limit Pt-Nd: liczba całkowita 0–1440 minut (1440 = całą dobę)', 'error');
+    return;
+  }
+  try {
+    await api('/admin/api/config', {method: 'POST', body: {
+      daily_limit_weekday: wkd,
+      daily_limit_weekend: wke,
+    }});
+    notice('Limity zapisane', 'success');
+    loadStatus();
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+async function saveNight() {
+  const start = document.getElementById('cfgNightStart').value;
+  const end = document.getElementById('cfgNightEnd').value;
+  // Strict HH:MM 24h — identyczny regex jak server-side (_HHMM_RE w admin_api.py).
+  // <input type="time"> zwraca w tym formacie, ale walidujemy dla pewności na wypadek
+  // ręcznej edycji DOM albo starszego browsera bez wsparcia type=time.
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (!hhmm.test(start)) {
+    notice('Początek ciszy: niepoprawna godzina (oczekiwane HH:MM, np. 21:30)', 'error');
+    return;
+  }
+  if (!hhmm.test(end)) {
+    notice('Koniec ciszy: niepoprawna godzina (oczekiwane HH:MM, np. 06:30)', 'error');
+    return;
+  }
+  if (start === end) {
+    notice('Początek i koniec ciszy nocnej nie mogą być takie same', 'error');
+    return;
+  }
+  try {
+    await api('/admin/api/config', {method: 'POST', body: {
+      night_lock_start: start,
+      night_lock_end: end,
+    }});
+    notice('Cisza nocna zapisana', 'success');
+    loadStatus();
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+async function changePassword() {
+  const oldP = document.getElementById('oldPassword').value;
+  const newP = document.getElementById('newPassword').value;
+  if (!oldP || !newP) { notice('Wpisz oba hasła', 'error'); return; }
+  if (newP.length < 8) { notice('Nowe hasło: min. 8 znaków', 'error'); return; }
+  try {
+    await api('/admin/api/change_password', {method: 'POST', body: {current: oldP, new: newP}});
+    document.getElementById('oldPassword').value = '';
+    document.getElementById('newPassword').value = '';
+    notice('Hasło zmienione', 'success');
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+// === Helpers do modali z secret-display ===
+
+function copyText(text, btn) {
+  // Clipboard API z fallback na execCommand (działa też na HTTP w LAN bez secure context)
+  const ok = (msg) => {
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Skopiowane';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    }
+  };
+  const fail = () => notice('Nie udało się skopiować — zaznacz ręcznie', 'error');
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(ok).catch(() => fallbackCopy(text, ok, fail));
+  } else {
+    fallbackCopy(text, ok, fail);
+  }
+}
+
+function fallbackCopy(text, ok, fail) {
+  // execCommand działa na HTTP. Tworzymy ukryty textarea, select, copy.
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    const successful = document.execCommand('copy');
+    if (successful) ok(); else fail();
+  } catch { fail(); }
+  document.body.removeChild(ta);
+}
+
+function secretRow(label, value) {
+  // Buduję bezpiecznie — escape value przez textContent
+  const escId = 'sec_' + Math.random().toString(36).slice(2, 9);
+  return '<p class="secret-label">' + label + '</p>' +
+         '<div class="secret-row">' +
+         '<pre id="' + escId + '"></pre>' +
+         '<button class="copy-btn" onclick="copyFromPre(\'' + escId + '\', this)">Kopiuj</button>' +
+         '</div>' +
+         '<script>document.getElementById("' + escId + '").textContent=' + JSON.stringify(value) + ';<\/script>';
+}
+
+function copyFromPre(id, btn) {
+  const text = document.getElementById(id).textContent;
+  copyText(text, btn);
+}
+
+// === TOTP show / regen ===
+
+async function showTotp() {
+  try {
+    const r = await api('/admin/api/totp');
+    showModal('Kod TOTP',
+      '<p class="muted">Zeskanuj QR aplikacją Aegis (lub innym TOTP klientem).</p>' +
+      '<div class="qr-box"><img src="data:image/png;base64,' + r.qr_png_base64 + '" alt="QR"></div>'
+    );
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+async function regenTotp() {
+  if (!confirm('Wygenerować NOWY kod TOTP? Stary natychmiast przestanie działać — będziesz musieć zeskanować QR ponownie.')) return;
+  try {
+    const r = await api('/admin/api/regen_totp', {method: 'POST'});
+    showModal('Nowy kod TOTP',
+      '<p class="muted">Zeskanuj QR w aplikacji Aegis. <strong>Stary kod już nie działa.</strong></p>' +
+      '<div class="qr-box"><img src="data:image/png;base64,' + r.qr_png_base64 + '" alt="QR"></div>' +
+      secretRow('Secret', r.secret)
+    );
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+// === Tokens show / regen ===
+
+async function showTokens() {
+  try {
+    const r = await api('/admin/api/tokens');
+    showModal('Aktualne tokeny Vigil',
+      '<p class="muted">Te same wartości, które watchdog ma zapisane na PC dziecka. Skopiuj, jeśli musisz przeinstalować watchdoga.</p>' +
+      secretRow('Bearer Token (identyfikator)', r.bearer_token) +
+      secretRow('Signing Key (klucz podpisujący)', r.signing_key)
+    );
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+async function enableInitMode() {
+  if (!confirm('Aktywować tryb inicjalizacji? Ważny do pierwszego heartbeat.')) return;
+  try {
+    await api('/admin/api/enable_init_mode', {method: 'POST'});
+    showModal('Tryb inicjalizacji', '<p>Tryb inicjalizacji aktywny.</p><p class="muted">Uruchom Install.cmd na PC dziecka — tryb zamknie się po pierwszym połączeniu watchdoga.</p>');
+    loadStatus();
+  } catch(e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+async function regenTokens() {
+  if (!confirm('Wygenerować NOWE tokeny (bearer + signing key)?\n\nUWAGA: stare natychmiast przestaną działać. Po regeneracji MUSISZ uruchomić update-config na PC dziecka, inaczej watchdog się rozłączy.')) return;
+  try {
+    const r = await api('/admin/api/regen_tokens', {method: 'POST', body: {}});
+    showModal('Nowe tokeny Vigil',
+      '<p class="muted">Stare tokeny już nie działają. Skopiuj wartości i uruchom update-config na PC dziecka:</p>' +
+      secretRow('Bearer Token (identyfikator)', r.bearer_token) +
+      secretRow('Signing Key (klucz podpisujący)', r.signing_key) +
+      '<p class="secret-label">Komenda update-config (PowerShell jako Administrator):</p>' +
+      '<div class="secret-row">' +
+      '<pre>.\\vigil_install.ps1 -Mode update-config `\n  -BearerToken \'' + r.bearer_token + '\' `\n  -SigningKey \'' + r.signing_key + '\'</pre>' +
+      '</div>'
+    );
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+function showModal(title, body) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = body;
+  document.getElementById('modal').classList.add('show');
+  // Wykonaj <script> tagi w innerHTML (innerHTML ich nie wykonuje automatycznie)
+  document.getElementById('modalBody').querySelectorAll('script').forEach(oldScript => {
+    const newScript = document.createElement('script');
+    newScript.textContent = oldScript.textContent;
+    oldScript.parentNode.replaceChild(newScript, oldScript);
+  });
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target.id === 'modal') closeModal();
+});
+
+async function logout() {
+  try { await api('/admin/logout', {method: 'POST'}); } catch {}
+  window.location.href = '/admin/login';
+}
+
+loadStatus();
+pollTimer = setInterval(loadStatus, 5000);
+window.addEventListener('beforeunload', () => clearInterval(pollTimer));
+</script>
+
+</body>
+</html>

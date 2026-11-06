@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title id="pageTitle">Vigil</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1a1a1a;
+      color: #e8e8e8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 32px;
+      width: 360px;
+      max-width: 90vw;
+    }
+    h1 {
+      margin: 0 0 24px;
+      font-size: 1.4rem;
+      font-weight: 500;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+    input[type=password] {
+      width: 100%;
+      padding: 10px 12px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e8e8e8;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    input[type=password]:focus {
+      outline: none;
+      border-color: #6db4f5;
+    }
+    button {
+      width: 100%;
+      margin-top: 16px;
+      padding: 10px;
+      background: #4a8fd4;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:hover { background: #5ba0e5; }
+    .error {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #4a1f1f;
+      border: 1px solid #8a3a3a;
+      border-radius: 4px;
+      color: #ffb0b0;
+      font-size: 0.9rem;
+    }
+    .error[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <form class="card" method="post" action="/admin/login">
+    <h1 id="pageH1">Vigil</h1>
+    <label for="password">Hasło rodzica</label>
+    <input type="password" id="password" name="password" autofocus required>
+    <div id="error" class="error" hidden>Nieprawidłowe hasło.</div>
+    <button type="submit">Zaloguj</button>
+  </form>
+  <script>
+    if (new URLSearchParams(location.search).get("error") === "1") {
+      document.getElementById("error").hidden = false;
+    }
+  </script>
+
+<script>
+  // Ustaw tytuł i nagłówek z device_name — endpoint /health jest publiczny
+  fetch('/health').then(r=>r.json()).then(d=>{
+    if (d.name) {
+      document.title = d.name;
+      document.getElementById('pageTitle').textContent = d.name;
+      document.getElementById('pageH1').textContent = d.name;
+    }
+  }).catch(()=>{});
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ import logging
 import sqlite3
 from collections.abc import AsyncGenerator, Generator
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 
 from .config import DATABASE_PATH
 
@@ -166,7 +166,6 @@ def log_event(
     ts_utc zapisujemy explicite Python isoformat (z 'T' i timezone) — SQLite
     CURRENT_TIMESTAMP używa formatu ze spacją, nieporównywalnego lexicographically z naszymi cutoff.
     """
-    from datetime import datetime, timezone
     payload = json.dumps(details, separators=(",", ":"), default=str) if details else None
     conn.execute(
         "INSERT INTO events(event_type, details_json, ts_utc) VALUES (?, ?, ?)",
@@ -184,8 +183,10 @@ def ensure_daily_state(conn: sqlite3.Connection, date_local: date) -> sqlite3.Ro
     pomimo busy_timeout=30s.
 
     Slow path: rekord nie istnieje (pierwszy request dnia po północy) → INSERT i znów SELECT.
-    Przy pierwszym request nowego dnia przenosimy manual_lock z poprzedniego dnia —
-    blokada manualna jest trwała do ręcznego zdjęcia, nie resetuje się o północy.
+    State that is not tied to a calendar day is carried over from the most recent previous row:
+    - manual_lock: stays until the parent removes it,
+    - night_extension_until_utc: a night window spans midnight, so a grant made before midnight
+      must still apply after it (only carried while it is still in the future).
     """
     row = conn.execute(
         "SELECT * FROM daily_state WHERE date_local = ?",
@@ -199,17 +200,19 @@ def ensure_daily_state(conn: sqlite3.Connection, date_local: date) -> sqlite3.Ro
         "ON CONFLICT(date_local) DO NOTHING",
         (date_local.isoformat(),),
     )
-    # Przenieś manual_lock z poprzedniego dnia — blokada manualna jest trwała
     prev = conn.execute(
-        "SELECT manual_lock FROM daily_state WHERE date_local < ? "
+        "SELECT manual_lock, night_extension_until_utc FROM daily_state WHERE date_local < ? "
         "ORDER BY date_local DESC LIMIT 1",
         (date_local.isoformat(),),
     ).fetchone()
-    if prev and prev["manual_lock"]:
-        conn.execute(
-            "UPDATE daily_state SET manual_lock = 1 WHERE date_local = ?",
-            (date_local.isoformat(),),
-        )
+    if prev:
+        carried: dict = {}
+        if prev["manual_lock"]:
+            carried["manual_lock"] = 1
+        ext = prev["night_extension_until_utc"]
+        if ext and datetime.fromisoformat(ext.replace("Z", "+00:00")) > datetime.now(timezone.utc):
+            carried["night_extension_until_utc"] = ext
+        update_daily_state(conn, date_local, **carried)
     return conn.execute(
         "SELECT * FROM daily_state WHERE date_local = ?",
         (date_local.isoformat(),),

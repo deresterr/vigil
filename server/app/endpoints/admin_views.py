@@ -14,6 +14,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from ..admin_auth import (
     clear_session_cookie,
     issue_session_cookie,
+    login_lockout_remaining,
+    record_login_failure,
+    reset_login_failures,
     set_session_cookie,
     verify_admin_password,
 )
@@ -50,11 +53,21 @@ async def admin_login_submit(
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     """Walidacja hasła. Sukces → set cookie + redirect na /admin. Błąd → redirect z error param."""
+    ip = request.client.host if request.client else "unknown"
+    wait = login_lockout_remaining(ip)
+    if wait:
+        # Not even verified: no information leak and no argon2 CPU spent while locked.
+        return RedirectResponse(url=f"/admin/login?error=locked&wait={wait}", status_code=303)
+
     if not verify_admin_password(db, password):
-        log_event(db, "admin_login_failed")
-        # Redirect z query param error=1 — login.html pokaże błąd
+        lockout = record_login_failure(ip)
+        log_event(db, "admin_login_failed", {"ip": ip})
+        if lockout:
+            log_event(db, "admin_login_locked", {"ip": ip, "seconds": lockout})
+            return RedirectResponse(url=f"/admin/login?error=locked&wait={lockout}", status_code=303)
         return RedirectResponse(url="/admin/login?error=1", status_code=303)
 
+    reset_login_failures(ip)
     log_event(db, "admin_login_success")
     cookie_value = issue_session_cookie(db)
     response = RedirectResponse(url="/admin", status_code=303)

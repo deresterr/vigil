@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+import app.admin_auth
 import app.auth
 import app.db
 import app.endpoints.heartbeat
@@ -26,6 +27,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(app.db, "DATABASE_PATH", tmp_path / "vigil.db")
     app.auth._auth_cfg = None
     app.endpoints.heartbeat._hb_cfg = None
+    app.admin_auth._login_failures.clear()
     from app.main import app as fastapi_app
 
     with TestClient(fastapi_app) as c:

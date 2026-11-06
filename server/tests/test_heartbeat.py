@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pyotp
-import pytest
 import time_machine
 
 from app.crypto import hash_password
@@ -11,6 +10,8 @@ from tests.conftest import Watchdog, config, state_for
 
 TZ = ZoneInfo("Europe/Warsaw")
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)  # Wednesday, outside night window
+HB_IDLE = {"session_active": False, "user_active": False, "current_time_utc": "2026-11-04T11:00:00Z",
+           "uptime_seconds": 1}
 
 
 def test_time_accumulates_while_active(watchdog):
@@ -75,16 +76,16 @@ def test_night_extension_survives_midnight(watchdog):
         assert watchdog.heartbeat()["lock_required"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="SECURITY: requests are not signed and the bearer token is readable "
-                                       "by the child (vigil.toml ACL) -> extra heartbeats stall the counter")
 def test_injected_heartbeats_cannot_stall_counter(client):
-    real, attacker = Watchdog(client), Watchdog(client)
+    # Attacker without the signing key (e.g. another LAN device or a non-elevated process).
+    real, attacker = Watchdog(client), Watchdog(client, key=b"x" * 32)
     with time_machine.travel(NOON, tick=False) as t:
         real.heartbeat()
         for _ in range(12):  # one minute of play
             for _ in range(10):
                 t.shift(0.5)
-                attacker.heartbeat(active=False)
+                r = attacker.post("/v1/heartbeat", HB_IDLE, verify=False)
+                assert r.status_code == 401
             real.heartbeat()
     assert state_for("2026-11-04")["seconds_used"] >= 55
 

@@ -6,7 +6,7 @@
     Tryby:
         -Mode install        — fresh install (wymaga binarek; bez parametrów wchodzi w tryb interaktywny)
         -Mode uninstall      — remove all (service, task, folder, policies)
-        -Mode update-config  — zmiana vigil.toml (server_url / bearer / signing_key)
+        -Mode update-config  — zmiana server_url (vigil.toml) / signing_key (signing.dat)
         -Mode reinstall      — uninstall + install
 
     Wymaga uruchomienia jako Administrator. Zaprojektowany jako idempotentny:
@@ -21,11 +21,10 @@
 .PARAMETER ServerUrl
     Adres servera np. http://192.168.0.2:8088. Wymagane dla install/update-config.
 
-.PARAMETER BearerToken
-    Bearer token z bootstrap logów servera. Wymagane dla install/update-config.
 
 .PARAMETER SigningKey
-    Signing key (base64 urlsafe bez paddingu) z bootstrap logów. Wymagane dla install.
+    Signing key (base64 urlsafe bez paddingu) z panelu rodzica. Bez niego install pobiera go z serwera
+    (tryb inicjalizacji).
 
 .PARAMETER DisableWinRE
     Switch — opcjonalne wyłączenie Windows Recovery Environment (`reagentc /disable`).
@@ -44,7 +43,6 @@
     .\vigil_install.ps1 -Mode install `
         -SourceDir 'D:\pc-build' `
         -ServerUrl 'http://192.168.0.2:8088' `
-        -BearerToken 'AbCd...' `
         -SigningKey 'XyZ123...' `
         -ChildUsername 'jasiek'
 
@@ -54,7 +52,7 @@
 .EXAMPLE
     .\vigil_install.ps1 -Mode update-config `
         -ServerUrl 'http://192.168.0.5:8088' `
-        -BearerToken 'newToken...'
+        -SigningKey 'newKey...'
 #>
 
 [CmdletBinding()]
@@ -68,7 +66,6 @@ param(
     [string] $TaskName = "Vigil Guardian",
 
     [string] $ServerUrl,
-    [string] $BearerToken,
     [string] $SigningKey,
     [string] $ChildUsername,
     [string] $EmergencyPassword,
@@ -204,7 +201,6 @@ function Get-CredentialsFromServer {
         $resp = Invoke-RestMethod -Uri "$serverUrl/v1/claim_credentials" `
             -Method Get -TimeoutSec 10 -ErrorAction Stop
         $script:ServerUrl  = $serverUrl
-        $script:BearerToken = $resp.bearer_token
         $script:SigningKey   = $resp.signing_key
         # Jeśli serwer zwrócił inny server_url (np. wewnętrzny adres) — zachowaj to co wpisał user
         Write-OK "Credentials pobrane z serwera"
@@ -245,7 +241,7 @@ function Select-ChildUsername {
 
 function Step-ValidateInstallParams {
     # Jeśli wszystkie parametry podane z linii poleceń — klasyczna walidacja bez pytań
-    if ($ServerUrl -and $BearerToken -and $SigningKey) {
+    if ($ServerUrl -and $SigningKey) {
         $script:ServerUrl = Normalize-ServerUrl $ServerUrl
         # Walidacja signing key
         try {
@@ -283,11 +279,10 @@ function Step-ValidateInstallParams {
     Write-Host " OK" -ForegroundColor Green
 
     # Pobierz credentials z serwera (jeśli nie podane parametrami)
-    if (-not $BearerToken -or -not $SigningKey) {
+    if (-not $SigningKey) {
         Get-CredentialsFromServer -serverUrl $script:ServerUrl
     } else {
-        $script:BearerToken = $BearerToken
-        $script:SigningKey   = $SigningKey
+        $script:SigningKey = $SigningKey
     }
 
     # ChildUsername — interaktywnie jeśli nie podane
@@ -403,11 +398,9 @@ function Step-WriteGuardianHash {
 function Step-WriteVigilToml {
     Write-Step "Tworzę vigil.toml"
     $content = @"
-# Vigil config
-# UWAGA: signing_key NIE jest tu — siedzi w signing.dat (DPAPI LocalMachine).
+# Vigil config. Brak sekretów: klucz podpisu jest w signing.dat (DPAPI, tylko SYSTEM).
 
-server_url   = "$ServerUrl"
-bearer_token = "$BearerToken"
+server_url = "$ServerUrl"
 "@
     Set-Content -Path $vigilToml -Value $content -Encoding UTF8 -Force
     Write-OK "vigil.toml zapisany"
@@ -1222,8 +1215,8 @@ function Invoke-UpdateConfig {
     if (-not (Test-Path $InstallDir)) {
         throw "$InstallDir nie istnieje — najpierw -Mode install"
     }
-    if (-not $ServerUrl -and -not $BearerToken -and -not $SigningKey -and -not $EmergencyPassword) {
-        throw "Podaj co najmniej jeden z: -ServerUrl, -BearerToken, -SigningKey, -EmergencyPassword"
+    if (-not $ServerUrl -and -not $SigningKey -and -not $EmergencyPassword) {
+        throw "Podaj co najmniej jeden z: -ServerUrl, -SigningKey, -EmergencyPassword"
     }
 
     # Załaduj istniejące values z vigil.toml gdy parametry nie podane
@@ -1232,20 +1225,17 @@ function Invoke-UpdateConfig {
         if ($existingToml -match 'server_url\s*=\s*"([^"]*)"') { $script:ServerUrl = $matches[1] }
         elseif (-not $EmergencyPassword) { throw "ServerUrl nie podany i nie znaleziony w vigil.toml" }
     } else { $script:ServerUrl = $ServerUrl }
-    if (-not $BearerToken) {
-        if ($existingToml -match 'bearer_token\s*=\s*"([^"]*)"') { $script:BearerToken = $matches[1] }
-        elseif (-not $EmergencyPassword) { throw "BearerToken nie podany i nie znaleziony w vigil.toml" }
-    } else { $script:BearerToken = $BearerToken }
 
     # Stop przez multi-strategy (jeśli tylko emergency password zmieniamy, watchdog może żyć dalej)
-    $needRestart = $ServerUrl -or $BearerToken -or $SigningKey
+    $needRestart = $ServerUrl -or $SigningKey
     if ($needRestart) { $null = Stop-VigilService }
 
     # Tymczasowo otwórz ACL żeby kolejne kroki mogły pisać
     Step-UnlockPermissions
 
     try {
-        if ($ServerUrl -or $BearerToken) { Step-WriteVigilToml }
+        # Zawsze przepisz vigil.toml: usuwa bearer_token ze starych instalacji (protokół v1).
+        if ($needRestart) { Step-WriteVigilToml }
         if ($SigningKey) {
             $keyBytes = ConvertFrom-Base64UrlSafe $SigningKey
             if ($keyBytes.Length -lt 16) {

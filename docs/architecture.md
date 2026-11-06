@@ -18,9 +18,12 @@ Describes the system as it is. Planned changes live in `review-2026-11.md`.
 
 ## Server ↔ watchdog protocol (`/v1/*`)
 
-Request headers: `Authorization: Bearer <bearer_token>`, `X-Nonce` (16 random bytes, base64url),
-`X-Timestamp` (unix ms). Server rejects: wrong bearer, age > `max_request_age_seconds` (60), > 5 s in the future,
-reused nonce (`used_nonces`, pruned after `nonce_cache_seconds`). **The request body is not signed.**
+Protocol v2. Request headers: `X-Timestamp` (unix ms), `X-Nonce` (16 random bytes, base64url),
+`X-Signature = base64(HMAC-SHA256(signing_key, METHOD\nPATH\nTIMESTAMP\nNONCE\nhex(sha256(body))))`,
+where PATH is the API route (`/v1/heartbeat`) without any reverse-proxy prefix. Server rejects (401, unsigned):
+bad signature, age > `max_request_age_seconds` (60), > 5 s in the future, reused nonce (`used_nonces`,
+pruned after `nonce_cache_seconds`). A rejected request never stores its nonce. No bearer token (removed in v2).
+Against an admin child this is friction: the key is in `signing.dat`, readable by an elevated process.
 
 Response header `X-Signature = base64(HMAC-SHA256(signing_key, nonce_ascii + body))`, added by
 `HmacSigningMiddleware` only after `authenticate_request` succeeded. The watchdog treats a missing/invalid
@@ -31,7 +34,7 @@ signature like "server unreachable".
 | `POST /v1/heartbeat` | `session_active, user_active, current_time_utc, uptime_seconds` | → `lock_required, lock_reason, minutes_used, minutes_remaining, next_check_seconds, server_time_utc, ui_state` |
 | `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`. every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` | refused while a higher-priority lock is active |
-| `GET /v1/claim_credentials` | — | **unauthenticated**, only while `init_open=1`; returns bearer, signing key, server URL to the installer |
+| `GET /v1/claim_credentials` | — | **unauthenticated**, only while `init_open=1`; returns signing key and server URL to the installer |
 
 `ui_state` (only when locked): `main_message` (Polish, from server), `show_totp_field`, `show_resume_button`,
 `show_retry_button`, `show_shutdown_button`, `current_time_display`.
@@ -49,7 +52,7 @@ night_extension_until_utc, manual_lock, pause_active, last_heartbeat_utc, last_s
 A new day's row inherits `manual_lock` and a still-active `night_extension_until_utc` from the previous row. Weekend limit applies Fri–Sun (`is_weekend`).
 `user_active` is currently just `session_active` (no idle detection).
 
-Other tables: `config` (key/value incl. secrets: `bearer_token`, `signing_key`, `totp_secret`,
+Other tables: `config` (key/value incl. secrets: `signing_key`, `totp_secret`,
 `admin_session_key`, `parent_password_hash`), `events` (audit log, pruned after `events_retention_days`),
 `totp_lockout` (single row), `used_nonces`.
 
@@ -99,7 +102,7 @@ Hotkey Ctrl+Shift+Alt+E in the lockscreen → password compared with `emergency.
 
 ```
 C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_lockscreen.exe, vigil_tray.exe, vigil_guardian.ps1,
-                        vigil.toml (server_url, bearer_token), signing.dat, emergency.dat, guardian.dat,
+                        vigil.toml (server_url only), signing.dat, emergency.dat, guardian.dat,
                         backup\vigil_watchdog.exe
                         ACL: SYSTEM full, Administrators modify, Authenticated Users read+execute (inherited)
 C:\Users\Public\Vigil\  bypass.flag

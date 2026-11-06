@@ -33,6 +33,22 @@ public sealed class HeartbeatRequest
     public required int FailedAttempts { get; init; }
 }
 
+/// <summary>POST /v1/tamper_event — tampering the watchdog itself observed (#10).</summary>
+public sealed class TamperEventRequest
+{
+    [JsonPropertyName("type")]
+    public required string Type { get; init; }  // lockscreen_killed
+
+    [JsonPropertyName("kills")]
+    public int Kills { get; init; }
+
+    [JsonPropertyName("window_seconds")]
+    public int WindowSeconds { get; init; }
+
+    [JsonPropertyName("logged_off")]
+    public bool LoggedOff { get; init; }
+}
+
 /// <summary>POST /v1/goodbye — sent when the service stops.</summary>
 public sealed class GoodbyeRequest
 {

@@ -70,6 +70,7 @@ Compared with the previous heartbeat (`wd_*` config keys, reset on pairing):
 | same instance, awake gap > 90 s, 0 failed attempts | `tamper_watchdog_silent` (suspended/frozen) |
 | same instance, awake gap > 90 s, retries | `watchdog_offline` (info) |
 | new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
+| lockscreen we spawned exits on its own 3× within 60 s (kill loop) | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
 
 `tamper_*` = alerts for the parent. Not detected: a watchdog that is stopped and never comes back
 (the panel only shows "offline"), and anything an admin forges with the signing key.

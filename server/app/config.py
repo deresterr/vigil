@@ -35,6 +35,8 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "nonce_cache_seconds":        "120",
     "max_request_age_seconds":    "60",
     "events_retention_days":      "90",
+    # Last accepted TOTP time step (replay protection). Not editable.
+    "totp_last_step":             "0",
 }
 
 # === Stałe nieprzechowywane w DB ===

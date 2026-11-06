@@ -1,6 +1,6 @@
 """POST /v1/pause_toggle — przełącza pauzę inicjowaną przez dziecko.
 
-Wywoływany przez watchdoga (ma bearer + HMAC) gdy dziecko kliknie ikonę w tray
+Wywoływany przez watchdoga (podpisany request) gdy dziecko kliknie ikonę w tray
 lub przycisk "Jestem z powrotem" na ekranie blokady.
 Pauza: lock_reason = "pause", czas nie leci, ekran zablokowany.
 """

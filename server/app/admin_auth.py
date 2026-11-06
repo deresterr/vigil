@@ -1,6 +1,6 @@
 """Auth dla admin UI: hasło → cookie session (itsdangerous, 24h, HttpOnly, SameSite=Strict).
 
-Zamiennie do bearer/HMAC z watchdoga — admin UI używa standardowych cookie. SameSite=Strict
+Zamiennie do podpisów HMAC z watchdoga — admin UI używa standardowych cookie. SameSite=Strict
 chroni przed CSRF, HttpOnly blokuje dostęp z JS (XSS mitigation), itsdangerous podpisuje
 cookie tak że nikt nie sforge'uje (klucz `admin_session_key` z DB).
 

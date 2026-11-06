@@ -12,7 +12,6 @@ namespace Vigil.Watchdog.Configuration;
 public sealed class VigilConfig
 {
     public required string ServerUrl { get; init; }
-    public required string BearerToken { get; init; }
 
     /// <summary>
     /// Wczytuje TOML z podanej ścieżki. Rzuca jeśli plik nie istnieje lub brakuje wymaganych pól —
@@ -35,8 +34,8 @@ public sealed class VigilConfig
                 $"vigil.toml nie parsuje się jako TOML: {diagnostics}");
         }
 
+        // Extra keys (e.g. bearer_token from protocol v1 installs) are ignored.
         var serverUrl = RequireString(table, "server_url");
-        var bearerToken = RequireString(table, "bearer_token");
 
         // Walidacja: nie wpuszczamy obviously-broken wartości
         if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out _))
@@ -44,16 +43,10 @@ public sealed class VigilConfig
             throw new InvalidDataException(
                 $"server_url '{serverUrl}' nie jest prawidłowym URI.");
         }
-        if (string.IsNullOrWhiteSpace(bearerToken) || bearerToken.Length < 16)
-        {
-            throw new InvalidDataException(
-                "bearer_token wygląda na brakujący lub zbyt krótki.");
-        }
 
         return new VigilConfig
         {
             ServerUrl = serverUrl.TrimEnd('/'),
-            BearerToken = bearerToken,
         };
     }
 

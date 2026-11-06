@@ -6,7 +6,7 @@
     Wykonuje 'dotnet publish' dla kazdego projektu (single-file, self-contained, win-x64),
     kopiuje wszystkie .exe + vigil_guardian.ps1 + vigil_install.ps1 do jednego katalogu output.
 
-    Uruchom z root projektu (gdzie sa podkatalogi vigil-watchdog, vigil-lockscreen, etc.):
+    Uruchom z root projektu (repo root):
         .\build-package.ps1
 
     Output: .\dist\ z 8 plikami:
@@ -44,16 +44,16 @@ $ErrorActionPreference = 'Stop'
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'dist' }
 
 $projects = @(
-    @{ Dir = 'vigil-watchdog';    Exe = 'vigil_watchdog.exe' }
-    @{ Dir = 'vigil-lockscreen';  Exe = 'vigil_lockscreen.exe' }
-    @{ Dir = 'vigil-tray';        Exe = 'vigil_tray.exe' }
+    @{ Dir = 'client\watchdog';   Exe = 'vigil_watchdog.exe' }
+    @{ Dir = 'client\lockscreen'; Exe = 'vigil_lockscreen.exe' }
+    @{ Dir = 'client\tray';       Exe = 'vigil_tray.exe' }
 )
 
 # === Validation ===
 $missing = $projects | Where-Object { -not (Test-Path (Join-Path $PSScriptRoot $_.Dir)) }
 if ($missing) {
     $names = ($missing | ForEach-Object { $_.Dir }) -join ', '
-    throw "Brak katalogow projektow: $names. Uruchom z root pc-system."
+    throw "Brak katalogow projektow: $names. Uruchom z katalogu glownego repo."
 }
 
 # Sprawdz .NET SDK
@@ -113,11 +113,12 @@ foreach ($p in $projects) {
 
 # === Skopiuj non-build artifacts ===
 $extras = @(
-    @{ From = 'vigil-guardian\vigil_guardian.ps1';     To = 'vigil_guardian.ps1' }
-    @{ From = 'vigil-installer\vigil_install.ps1';  To = 'vigil_install.ps1' }
-    @{ From = 'vigil-installer\Install.cmd';         To = 'Install.cmd' }
-    @{ From = 'vigil-installer\vigil-cleanup.ps1';  To = 'vigil-cleanup.ps1' }
-    @{ From = 'vigil-installer\Cleanup.cmd';         To = 'Cleanup.cmd' }
+    @{ From = 'installer\vigil_guardian.ps1';   To = 'vigil_guardian.ps1' }
+    @{ From = 'installer\vigil_install.ps1';    To = 'vigil_install.ps1' }
+    @{ From = 'installer\Install.cmd';          To = 'Install.cmd' }
+    @{ From = 'installer\vigil-cleanup.ps1';    To = 'vigil-cleanup.ps1' }
+    @{ From = 'installer\Cleanup.cmd';          To = 'Cleanup.cmd' }
+    @{ From = 'installer\vigil-cleanup-offline.cmd'; To = 'vigil-cleanup-offline.cmd' }
 )
 foreach ($e in $extras) {
     $src = Join-Path $PSScriptRoot $e.From

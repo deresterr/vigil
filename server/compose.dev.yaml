@@ -1,0 +1,6 @@
+# Dev override: live-mount the code so edits only need a container restart.
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d
+services:
+  vigil:
+    volumes:
+      - ./app:/app/app

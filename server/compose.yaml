@@ -1,29 +1,22 @@
+# Vigil server. One instance per child PC (see docs/architecture.md).
+# Quick start:  cp .env.example .env && docker compose up -d
+# Then open http://<server-ip>:<VIGIL_PORT>/setup
 services:
   vigil:
-    build: ./vigil
-    image: vigil:local
-    pull_policy: never
+    build: .
+    image: vigil-server:local
     container_name: ${VIGIL_CHILD:-vigil}
     restart: unless-stopped
     ports:
       - "${VIGIL_PORT:-8088}:${VIGIL_PORT:-8088}"
     volumes:
-      # Kod aplikacji jako bind mount — edytuj .py, restart kontenera, gotowe.
-      # Bez rebuildu chyba że zmieniasz requirements.txt lub Dockerfile.
-      - ./vigil/app:/app/app
-      # Każde dziecko ma osobny katalog danych (osobna baza SQLite).
+      # Each child gets its own data dir (separate SQLite DB).
       - ./data/${VIGIL_CHILD:-vigil}:/data
     environment:
       - LISTEN_PORT=${VIGIL_PORT:-8088}
-    networks:
-      - docker
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:${VIGIL_PORT:-8088}/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-networks:
-  docker:
-    external: true

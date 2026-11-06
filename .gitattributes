@@ -1,0 +1,18 @@
+* text=auto
+
+# Windows scripts: cmd.exe and PowerShell 5.1 expect CRLF
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+*.sln   text eol=crlf
+*.csproj text eol=crlf
+*.cs    text eol=crlf
+*.xaml  text eol=crlf
+
+# Linux side
+*.py    text eol=lf
+*.sh    text eol=lf
+Dockerfile text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf

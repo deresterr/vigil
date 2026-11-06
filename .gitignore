@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Server runtime data (SQLite, secrets live in the DB)
+server/.env
+server/data/
+*.db
+*.db-wal
+*.db-shm
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Build output
+dist/
+
+# Editors / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

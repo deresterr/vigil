@@ -131,7 +131,7 @@ app.add_middleware(HmacSigningMiddleware)
 # Kreator pierwszego uruchomienia — /setup, /setup/totp_qr, /setup/complete
 app.include_router(setup_router)
 
-# Vigil watchdog endpointy (/v1/heartbeat, /v1/totp_attempt) — bearer + HMAC + nonce + timestamp
+# Watchdog endpoints (/v1/*) — signed requests (auth.py) + signed responses (signing.py)
 app.include_router(heartbeat_router)
 app.include_router(totp_router)
 app.include_router(pause_router)

@@ -4,7 +4,7 @@
 Single-worker uvicorn + WAL mode — ale asyncio nadal obsługuje kilka requestów współbieżnie
 (między await-ami). Dlatego get_db() używa asyncio.Lock: jeden request naraz ma dostęp do DB.
 
-Single-tenant: jeden PC dziecka = jeden kontener. Sekrety (bearer_token, signing_key,
+Single-tenant: jeden PC dziecka = jeden kontener. Sekrety (signing_key,
 totp_secret, parent_password_hash) trzymane w `config` table jako pojedyncze klucze.
 """
 

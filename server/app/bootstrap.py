@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 def _is_first_run(conn) -> bool:
-    """First run = brak bearer_token w config (sekrety jeszcze nie wygenerowane)."""
+    """First run = no signing_key in config (secrets not generated yet)."""
     return conn.execute(
-        "SELECT 1 FROM config WHERE key = 'bearer_token'"
+        "SELECT 1 FROM config WHERE key = 'signing_key'"
     ).fetchone() is None
 
 
@@ -37,6 +37,8 @@ def run_bootstrap() -> None:
     """Wołane przy starcie aplikacji (lifespan). Idempotent."""
     with get_connection() as conn:
         _insert_config_defaults(conn)
+        # Protocol v2 dropped the bearer token; remove it from databases created before.
+        conn.execute("DELETE FROM config WHERE key = 'bearer_token'")
 
         if not _is_first_run(conn):
             logger.info("Database OK.")
@@ -45,7 +47,6 @@ def run_bootstrap() -> None:
         # First run — generuj sekrety kryptograficzne
         secrets = [
             ("totp_secret",       pyotp.random_base32()),
-            ("bearer_token",      generate_token_b64(32)),
             ("signing_key",       generate_token_b64(32)),
             ("admin_session_key", generate_token_b64(32)),
         ]

@@ -10,10 +10,10 @@ using Vigil.Watchdog.Configuration;
 namespace Vigil.Watchdog.Server;
 
 /// <summary>
-/// Klient HTTP do servera. Każdy request ma:
-/// - Authorization: Bearer
-/// - X-Nonce: 16B losowych, base64 (urlsafe bez paddingu)
+/// HTTP client for the server (protocol v2, see server/app/auth.py). Every request carries:
 /// - X-Timestamp: unix ms (UTC)
+/// - X-Nonce: 16 random bytes, base64url without padding
+/// - X-Signature: base64(HMAC-SHA256(signing_key, "POST\n/v1/...\n" + ts + "\n" + nonce + "\n" + hex(sha256(body))))
 ///
 /// Response weryfikuje X-Signature = HMAC-SHA256(signing_key, nonce + body).
 /// Jeśli weryfikacja nie przejdzie → rzuca SignatureMismatchException, watchdog traktuje to jak unreachable.
@@ -42,8 +42,6 @@ public sealed class HeartbeatClient : IDisposable
             // Krótszy timeout niż domyślne 100s — heartbeat ma być szybki, dłużej nie ma sensu
             Timeout = TimeSpan.FromSeconds(10),
         };
-        _http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", config.BearerToken);
     }
 
     public async Task<HeartbeatResponse> SendHeartbeatAsync(
@@ -82,8 +80,10 @@ public sealed class HeartbeatClient : IDisposable
 
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
 
-        var bodyJson = JsonSerializer.Serialize(body, body.GetType(), _json);
-        var content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+        // Sign the exact bytes that go on the wire.
+        var bodyBytes = JsonSerializer.SerializeToUtf8Bytes(body, body.GetType(), _json);
+        var content = new ByteArrayContent(bodyBytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
         {
@@ -91,6 +91,7 @@ public sealed class HeartbeatClient : IDisposable
         };
         request.Headers.Add("X-Nonce", nonce);
         request.Headers.Add("X-Timestamp", ts);
+        request.Headers.Add("X-Signature", SignRequest("POST", "/" + path, ts, nonce, bodyBytes));
 
         using var resp = await _http.SendAsync(request, ct).ConfigureAwait(false);
         var responseBytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
@@ -113,7 +114,7 @@ public sealed class HeartbeatClient : IDisposable
 
         if (signatureHeader is null)
         {
-            // Brak podpisu = pre-auth rejection (zły bearer, zły timestamp, duplicate nonce).
+            // Brak podpisu = pre-auth rejection (zły podpis, zły timestamp, duplicate nonce).
             // To NIE jest odpowiedź której powinniśmy ufać.
             var bodyStr = Encoding.UTF8.GetString(responseBytes);
             throw new HttpRequestException(
@@ -131,6 +132,14 @@ public sealed class HeartbeatClient : IDisposable
             ?? throw new InvalidDataException($"{path}: deserializacja JSON dała null.");
 
         return (deserialized, nonce);
+    }
+
+    /// <summary>Request signature; must match canonical_request() in server/app/auth.py.</summary>
+    private string SignRequest(string method, string path, string ts, string nonce, byte[] body)
+    {
+        var bodyHash = Convert.ToHexString(SHA256.HashData(body)).ToLowerInvariant();
+        var canonical = Encoding.UTF8.GetBytes($"{method}\n{path}\n{ts}\n{nonce}\n{bodyHash}");
+        return Convert.ToBase64String(HMACSHA256.HashData(_signingKey, canonical));
     }
 
     private bool VerifySignature(string nonce, byte[] responseBody, string expectedB64)

@@ -1,6 +1,6 @@
 """Shared fixtures: fresh SQLite DB per test + a signed "watchdog" client.
 
-Module-level caches in the app (auth/heartbeat config) are reset per test, otherwise
+Module-level state in the app (heartbeat config cache, login throttle) is reset per test, otherwise
 values from a previous test's DB leak into the next one.
 """
 
@@ -17,7 +17,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.admin_auth
-import app.auth
 import app.db
 import app.endpoints.heartbeat
 
@@ -25,7 +24,6 @@ import app.endpoints.heartbeat
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(app.db, "DATABASE_PATH", tmp_path / "vigil.db")
-    app.auth._auth_cfg = None
     app.endpoints.heartbeat._hb_cfg = None
     app.admin_auth._login_failures.clear()
     from app.main import app as fastapi_app
@@ -50,27 +48,26 @@ def state_for(date_iso: str) -> dict:
 class Watchdog:
     """Speaks the /v1 protocol the way vigil_watchdog does (HeartbeatClient.cs)."""
 
-    def __init__(self, client: TestClient):
+    def __init__(self, client: TestClient, key: bytes | None = None):
         self.c = client
-        self.bearer = config("bearer_token")
-        key_b64 = config("signing_key")
-        self.key = base64.urlsafe_b64decode(key_b64 + "=" * (-len(key_b64) % 4))
+        if key is None:
+            key_b64 = config("signing_key")
+            key = base64.urlsafe_b64decode(key_b64 + "=" * (-len(key_b64) % 4))
+        self.key = key
 
-    def post(self, path: str, body: dict, verify: bool = True):
-        nonce = base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode()
-        ts = str(int(datetime.now(UTC).timestamp() * 1000))
-        r = self.c.post(
-            path,
-            content=json.dumps(body),
-            headers={
-                "Authorization": f"Bearer {self.bearer}",
-                "X-Nonce": nonce,
-                "X-Timestamp": ts,
-                "Content-Type": "application/json",
-            },
-        )
+    def headers(self, path: str, body: bytes, nonce: str | None = None, ts: str | None = None) -> dict:
+        nonce = nonce or base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode()
+        ts = ts or str(int(datetime.now(UTC).timestamp() * 1000))
+        canonical = "\n".join(("POST", path, ts, nonce, hashlib.sha256(body).hexdigest())).encode()
+        sig = base64.b64encode(hmac.new(self.key, canonical, hashlib.sha256).digest()).decode()
+        return {"X-Nonce": nonce, "X-Timestamp": ts, "X-Signature": sig, "Content-Type": "application/json"}
+
+    def post(self, path: str, body: dict, verify: bool = True, **header_overrides):
+        raw = json.dumps(body).encode()
+        headers = self.headers(path, raw, **header_overrides)
+        r = self.c.post(path, content=raw, headers=headers)
         if verify:
-            expected = hmac.new(self.key, nonce.encode() + r.content, hashlib.sha256).digest()
+            expected = hmac.new(self.key, headers["X-Nonce"].encode() + r.content, hashlib.sha256).digest()
             assert base64.b64decode(r.headers["X-Signature"]) == expected, "bad response signature"
         return r
 

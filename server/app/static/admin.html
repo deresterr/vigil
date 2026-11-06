@@ -323,11 +323,11 @@
     <p class="muted muted-block">Aktywuj tryb inicjalizacji gdy chcesz zainstalować watchdoga na nowym PC lub przeinstalować na istniejącym. Tryb zamyka się automatycznie po pierwszym udanym heartbeat.</p>
     <button class="btn btn-warn" onclick="enableInitMode()" id="btnEnableInit">Aktywuj tryb inicjalizacji</button>
 
-    <h2 style="margin-top: 24px;">Tokeny</h2>
-    <p class="muted muted-block">Klucze identyfikujące komputer dziecka dla serwera — generowane raz przy instalacji. „Wygeneruj nowe" jeśli podejrzewasz że ktoś przejął te dane; po zmianie uruchom ponownie <code>Install.cmd</code> na PC dziecka.</p>
+    <h2 style="margin-top: 24px;">Klucz podpisujący</h2>
+    <p class="muted muted-block">Klucz, którym komputer dziecka podpisuje połączenia z serwerem — generowany raz przy instalacji. „Wygeneruj nowy”, jeśli podejrzewasz, że ktoś go przejął; po zmianie uruchom update-config na PC dziecka.</p>
     <div class="action-stack">
-      <button class="btn btn-primary" onclick="showTokens()">Pokaż obecne tokeny</button>
-      <button class="btn btn-danger" onclick="regenTokens()">Wygeneruj nowe tokeny</button>
+      <button class="btn btn-primary" onclick="showTokens()">Pokaż obecny klucz</button>
+      <button class="btn btn-danger" onclick="regenTokens()">Wygeneruj nowy klucz</button>
     </div>
   </div>
 
@@ -713,9 +713,8 @@ async function regenTotp() {
 async function showTokens() {
   try {
     const r = await api('/admin/api/tokens');
-    showModal('Aktualne tokeny Vigil',
-      '<p class="muted">Te same wartości, które watchdog ma zapisane na PC dziecka. Skopiuj, jeśli musisz przeinstalować watchdoga.</p>' +
-      secretRow('Bearer Token (identyfikator)', r.bearer_token) +
+    showModal('Klucz podpisujący Vigil',
+      '<p class="muted">Ten sam klucz, który watchdog ma zapisany na PC dziecka. Skopiuj, jeśli musisz przeinstalować watchdoga.</p>' +
       secretRow('Signing Key (klucz podpisujący)', r.signing_key)
     );
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }
@@ -731,16 +730,15 @@ async function enableInitMode() {
 }
 
 async function regenTokens() {
-  if (!confirm('Wygenerować NOWE tokeny (bearer + signing key)?\n\nUWAGA: stare natychmiast przestaną działać. Po regeneracji MUSISZ uruchomić update-config na PC dziecka, inaczej watchdog się rozłączy.')) return;
+  if (!confirm('Wygenerować NOWY klucz podpisujący?\n\nUWAGA: stare natychmiast przestaną działać. Po regeneracji MUSISZ uruchomić update-config na PC dziecka, inaczej watchdog się rozłączy.')) return;
   try {
     const r = await api('/admin/api/regen_tokens', {method: 'POST', body: {}});
-    showModal('Nowe tokeny Vigil',
-      '<p class="muted">Stare tokeny już nie działają. Skopiuj wartości i uruchom update-config na PC dziecka:</p>' +
-      secretRow('Bearer Token (identyfikator)', r.bearer_token) +
+    showModal('Nowy klucz podpisujący Vigil',
+      '<p class="muted">Stary klucz już nie działa. Skopiuj go i uruchom update-config na PC dziecka:</p>' +
       secretRow('Signing Key (klucz podpisujący)', r.signing_key) +
       '<p class="secret-label">Komenda update-config (PowerShell jako Administrator):</p>' +
       '<div class="secret-row">' +
-      '<pre>.\\vigil_install.ps1 -Mode update-config `\n  -BearerToken \'' + r.bearer_token + '\' `\n  -SigningKey \'' + r.signing_key + '\'</pre>' +
+      '<pre>.\\vigil_install.ps1 -Mode update-config -SigningKey \'' + r.signing_key + '\'</pre>' +
       '</div>'
     );
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }

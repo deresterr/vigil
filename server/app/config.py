@@ -34,6 +34,8 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "nonce_cache_seconds":        "120",
     "max_request_age_seconds":    "60",
     "events_retention_days":      "90",
+    # Last lock reason seen by the heartbeat; lock_started events are logged on change. Not editable.
+    "last_lock_reason":           "",
     # One-time pairing code (endpoints/pairing.py). Only the hash is stored.
     "pairing_code_hash":          "",
     "pairing_expires_utc":        "",

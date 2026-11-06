@@ -15,6 +15,7 @@ from .db import get_connection, get_db, init_database
 from .endpoints.admin_api import router as admin_api_router
 from .endpoints.admin_views import router as admin_views_router
 from .endpoints.heartbeat import router as heartbeat_router
+from .endpoints.journal import router as journal_router
 from .endpoints.pairing import router as pairing_router
 from .endpoints.pause import router as pause_router
 from .endpoints.setup import router as setup_router
@@ -141,6 +142,7 @@ app.include_router(pairing_router)
 app.include_router(admin_views_router)
 # Admin JSON API (/admin/api/*) — cookie session required (dependency w routerze)
 app.include_router(admin_api_router)
+app.include_router(journal_router)
 
 
 @app.get("/health")

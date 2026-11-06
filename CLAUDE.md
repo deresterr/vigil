@@ -10,7 +10,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   `tray` (WinForms, user session).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects and the roadmap. Other `docs/*.md` are older component notes; code wins.
+- `docs/review-2026-11.md` — known defects, decisions (D1–D10), roadmap and the M1 task list.
+  Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"
 - Server: `cd server && pip install -r requirements-dev.txt && ruff check . && pytest -q`
@@ -27,8 +28,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - Lock priority: `manual > night > limit > pause`. `manual_lock` carries over midnight.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Emergency-v1`, `Vigil-Bypass-v1`) and file
   names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs.
-- **Threat model**: the child uses a *standard* (non-admin) Windows account. Anything the child's account
-  can read or run is attacker-controlled. Secrets must be readable by SYSTEM only.
+- **Threat model**: the child MAY have an administrator account. Against an admin nothing on the PC is
+  tamper-proof, so every mechanism is one of: protection (holds even against admin, e.g. server-side state),
+  friction (stops a non-elevated process / casual attempt), or detection (reports tampering to the parent panel).
+  Say explicitly which one a change is. Secrets on the PC are SYSTEM-only, knowing an admin can still read them.
 - Service DACL (`sc sdset`) denies Admin stop/delete: use `sc.exe stop` + poll, or a SYSTEM scheduled task.
   `Stop-Service` always fails with ACCESS_DENIED.
 

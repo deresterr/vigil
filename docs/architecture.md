@@ -29,7 +29,7 @@ signature like "server unreachable".
 | Endpoint | Body | Notes |
 |---|---|---|
 | `POST /v1/heartbeat` | `session_active, user_active, current_time_utc, uptime_seconds` | → `lock_required, lock_reason, minutes_used, minutes_remaining, next_check_seconds, server_time_utc, ui_state` |
-| `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`. Lockout after 3/6/9/12 failures: 1 min/5 min/30 min/24 h |
+| `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`. every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` | refused while a higher-priority lock is active |
 | `GET /v1/claim_credentials` | — | **unauthenticated**, only while `init_open=1`; returns bearer, signing key, server URL to the installer |
 

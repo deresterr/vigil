@@ -409,6 +409,7 @@ async def regen_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
     """Generuje nowy TOTP secret. Trzeba ponownie zeskanować QR aplikacją Aegis."""
     new_secret = pyotp.random_base32()
     set_config_value(db, "totp_secret", new_secret)
+    set_config_value(db, "totp_last_step", 0)
     # Reset lockoutu — żeby admin nie musiał czekać po regeneracji
     db.execute("DELETE FROM totp_lockout")
     # totp_secret jest w _HB_CFG_KEYS — inwaliduj cache żeby nowy secret był widoczny od razu

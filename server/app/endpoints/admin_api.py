@@ -47,6 +47,7 @@ from ..lock_logic import (
     parse_hhmm,
     parse_iso_utc,
 )
+from .journal import ALERT_WHERE
 from .pairing import active_pairing_expiry, create_pairing_code
 from .totp import _compute_night_extension_until
 
@@ -116,6 +117,8 @@ async def status(db: sqlite3.Connection = Depends(get_db)) -> dict:
         "manual_lock": bool(state["manual_lock"]),
         "pause_active": bool(state.get("pause_active", 0)),
         "night_extension_until_local": night_extension_local if night_extended else None,
+        "alerts_unacked": db.execute(f"SELECT COUNT(*) FROM events WHERE {ALERT_WHERE} AND acked_utc IS NULL")
+        .fetchone()[0],
         "in_night_window": in_night,
         "night_lock_start": get_config_value(db, "night_lock_start"),
         "night_lock_end": get_config_value(db, "night_lock_end"),

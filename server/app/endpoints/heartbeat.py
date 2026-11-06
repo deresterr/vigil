@@ -17,8 +17,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..auth import authenticate_request
 from ..db import (
     ensure_daily_state,
+    get_config_value,
     get_db,
     log_event,
+    set_config_value,
     update_daily_state,
 )
 from ..lock_logic import (
@@ -207,6 +209,14 @@ async def heartbeat(
         )
     else:
         lock_reason = pre_lock  # identyczny stan — ten sam wynik, zero duplikatów SELECT
+
+    # Journal (#8): the moment a limit/night lock starts. Manual lock and pause are logged by their
+    # own endpoints; unlocks by the grant that caused them.
+    last_reason = get_config_value(db, "last_lock_reason") or ""
+    if (lock_reason or "") != last_reason:
+        if lock_reason in ("limit", "night"):
+            log_event(db, "lock_started", {"reason": lock_reason, "minutes_used": new_seconds_used // 60})
+        set_config_value(db, "last_lock_reason", lock_reason or "")
 
     minutes_used = new_seconds_used // 60
     daily_limit  = cfg["daily_limit_weekend"] if is_weekend(today_local) else cfg["daily_limit_weekday"]

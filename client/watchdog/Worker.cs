@@ -94,7 +94,8 @@ public sealed class Worker : BackgroundService
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         try
         {
-            await _client.SendPauseToggleAsync(cts.Token).ConfigureAwait(false);
+            var result = await _client.SendPauseToggleAsync(cts.Token).ConfigureAwait(false);
+            _logger.LogInformation("Pause toggle from tray: paused={Paused}", result.Paused);
             try { _retrySignal.Release(); } catch (SemaphoreFullException) { }
         }
         catch (Exception ex)

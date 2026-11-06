@@ -51,7 +51,7 @@ public sealed class TrayIpcServer : IDisposable
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
             {
-                _log.LogDebug(ex, "TrayIpc: połączenie zerwane, restartuję pipe");
+                _log.LogWarning(ex, "TrayIpc: pipe error, recreating");
                 DisposeCurrentPipe();
                 await Task.Delay(500, ct).ConfigureAwait(false);
             }
@@ -74,28 +74,39 @@ public sealed class TrayIpcServer : IDisposable
             outBufferSize: 4096,
             pipeSecurity: security);
 
-        _log.LogDebug("TrayIpc: czekam na połączenie od vigil_tray.exe");
         await _pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
-        _log.LogDebug("TrayIpc: vigil_tray.exe połączony");
+        _log.LogInformation("TrayIpc: tray connected");
 
-        _reader = new StreamReader(_pipe, Encoding.UTF8, leaveOpen: true);
-        _writer = new StreamWriter(_pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+        var utf8 = new UTF8Encoding(false);
+        _reader = new StreamReader(_pipe, utf8, true, 4096, leaveOpen: true);
+        _writer = new StreamWriter(_pipe, utf8, 1024, leaveOpen: true) { AutoFlush = true };
 
-        while (!ct.IsCancellationRequested && _pipe.IsConnected)
+        try
         {
-            var line = await _reader.ReadLineAsync(ct).ConfigureAwait(false);
-            if (line is null) break;
-
-            try
+            while (!ct.IsCancellationRequested && _pipe.IsConnected)
             {
-                using var doc = JsonDocument.Parse(line);
-                if (doc.RootElement.TryGetProperty("type", out var t)
-                    && t.GetString() == "pause_toggle")
+                var line = await _reader.ReadLineAsync(ct).ConfigureAwait(false);
+                if (line is null) break;
+
+                try
                 {
-                    await _onPauseToggle().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(line);
+                    if (doc.RootElement.TryGetProperty("type", out var t)
+                        && t.GetString() == "pause_toggle")
+                    {
+                        _log.LogInformation("TrayIpc: pause toggle requested by the tray");
+                        await _onPauseToggle().ConfigureAwait(false);
+                    }
                 }
+                catch (JsonException) { }
             }
-            catch (JsonException) { }
+            _log.LogInformation("TrayIpc: tray disconnected");
+        }
+        finally
+        {
+            // The single pipe instance must be closed before the next accept, otherwise creating it
+            // again fails with "all pipe instances are busy".
+            DisposeCurrentPipe();
         }
     }
 

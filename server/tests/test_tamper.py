@@ -121,3 +121,15 @@ def test_heartbeat_without_telemetry_still_works(watchdog):
 def test_bad_goodbye_reason_is_rejected(watchdog):
     r = watchdog.post("/v1/goodbye", {"instance_id": "x", "reason": "whatever"}, verify=False)
     assert r.status_code == 422
+
+
+def test_lockscreen_kill_loop_is_an_alert(client, watchdog):
+    r = watchdog.post("/v1/tamper_event", {"type": "lockscreen_killed", "kills": 3, "window_seconds": 60,
+                                           "logged_off": True})
+    assert r.json() == {"ok": True}
+    assert _events("tamper_lockscreen") == [
+        ("tamper_lockscreen_killed", {"kills": 3, "window_seconds": 60, "logged_off": True})]
+
+
+def test_unknown_tamper_event_is_rejected(watchdog):
+    assert watchdog.post("/v1/tamper_event", {"type": "anything"}, verify=False).status_code == 422

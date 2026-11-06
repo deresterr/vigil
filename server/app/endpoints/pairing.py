@@ -96,5 +96,8 @@ async def pair(request: Request, db: sqlite3.Connection = Depends(get_db)):
     signing_key = generate_token_b64(32)
     set_config_value(db, "signing_key", signing_key)
     clear_pairing_code(db)
+    # A (possibly different) PC starts fresh: no tamper comparison against the previous one.
+    for key, empty in (("wd_instance_id", ""), ("wd_awake_ms", -1), ("wd_goodbye", "")):
+        set_config_value(db, key, empty)
     log_event(db, "device_paired", {"remote": remote})
     return {"signing_key": signing_key, "server_url": _server_url(db, request)}

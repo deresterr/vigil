@@ -27,6 +27,11 @@ public sealed class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
 
     private readonly DateTime _startTime = DateTime.UtcNow;
+
+    // Tamper telemetry: identity of this process + awake clock at its start (server/app/tamper.py).
+    private readonly string _instanceId = Guid.NewGuid().ToString("N");
+    private readonly long _awakeMsAtStart = AwakeClock.NowMs;
+    private int _failedAttempts;
     private DateTime _lastSuccessfulHeartbeat = DateTime.MinValue;
 
     // Tray IPC — watchdog nasłuchuje na żądania pauzy z vigil_tray.exe
@@ -137,6 +142,37 @@ public sealed class Worker : BackgroundService
         _logger.LogInformation("Vigil zatrzymany.");
     }
 
+    private HeartbeatRequest BuildRequest(bool sessionActive, bool userActive) => new()
+    {
+        SessionActive = sessionActive,
+        UserActive = userActive,
+        CurrentTimeUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
+        UptimeSeconds = (int)(DateTime.UtcNow - _startTime).TotalSeconds,
+        InstanceId = _instanceId,
+        AwakeMs = AwakeClock.NowMs,
+        AwakeMsAtStart = _awakeMsAtStart,
+        FailedAttempts = _failedAttempts,
+    };
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Tell the server why we are going away; detection, best effort (network may already be down).
+        var reason = VigilServiceLifetime.IsSystemShutdown ? "shutdown" : "service_stop";
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(3));
+            await _client.SendGoodbyeAsync(new GoodbyeRequest { InstanceId = _instanceId, Reason = reason }, cts.Token)
+                .ConfigureAwait(false);
+            _logger.LogInformation("Goodbye sent ({Reason})", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Goodbye not delivered ({Reason})", reason);
+        }
+        await base.StopAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task TickAsync(CancellationToken ct)
     {
         // Awaryjny bypass: jeśli ktoś wpisał emergency password w lockscreen i flag plik
@@ -152,18 +188,11 @@ public sealed class Worker : BackgroundService
             // Wyślij heartbeat (best effort — bo bez tego brak akumulacji czasu)
             try
             {
-                var bypassReq = new HeartbeatRequest
-                {
-                    SessionActive = true,
-                    UserActive = true,
-                    CurrentTimeUtc = DateTime.UtcNow.ToString(
-                        "yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
-                    UptimeSeconds = (int)(DateTime.UtcNow - _startTime).TotalSeconds,
-                };
-                await _client.SendHeartbeatAsync(bypassReq, ct).ConfigureAwait(false);
+                await _client.SendHeartbeatAsync(BuildRequest(true, true), ct).ConfigureAwait(false);
                 _lastSuccessfulHeartbeat = DateTime.UtcNow;
+                _failedAttempts = 0;
             }
-            catch { /* podczas bypassu olewamy server errors */ }
+            catch { _failedAttempts++; /* podczas bypassu olewamy server errors */ }
             return;
         }
 
@@ -172,14 +201,7 @@ public sealed class Worker : BackgroundService
         // Brak idle/foreground tracking — server akumuluje czas gdy sesja aktywna i heartbeat dochodzi.
         var userActive = sessionActive;
 
-        var req = new HeartbeatRequest
-        {
-            SessionActive = sessionActive,
-            UserActive = userActive,
-            CurrentTimeUtc = DateTime.UtcNow.ToString(
-                "yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
-            UptimeSeconds = (int)(DateTime.UtcNow - _startTime).TotalSeconds,
-        };
+        var req = BuildRequest(sessionActive, userActive);
 
         HeartbeatResponse? response = null;
         bool serverOk = false;
@@ -188,9 +210,11 @@ public sealed class Worker : BackgroundService
             response = await _client.SendHeartbeatAsync(req, ct).ConfigureAwait(false);
             serverOk = true;
             _lastSuccessfulHeartbeat = DateTime.UtcNow;
+            _failedAttempts = 0;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            _failedAttempts++;
             _logger.LogWarning(ex,
                 "Heartbeat failed (last success: {Ago:F0}s temu)",
                 (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds);

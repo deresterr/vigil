@@ -60,6 +60,11 @@ public sealed class HeartbeatClient : IDisposable
         return response;
     }
 
+    public async Task SendGoodbyeAsync(GoodbyeRequest req, CancellationToken ct)
+    {
+        await PostSignedAsync<GoodbyeResponse>("v1/goodbye", req, ct).ConfigureAwait(false);
+    }
+
     public async Task<PauseToggleResponse> SendPauseToggleAsync(CancellationToken ct)
     {
         var (response, _) = await PostSignedAsync<PauseToggleResponse>(

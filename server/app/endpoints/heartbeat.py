@@ -27,6 +27,7 @@ from ..lock_logic import (
     parse_iso_utc,
     utc_iso,
 )
+from ..tamper import GOODBYE_REASONS, process_goodbye, process_telemetry
 
 router = APIRouter()
 
@@ -113,6 +114,19 @@ def _validate_request_body(body: Any) -> dict:
             raise HTTPException(status_code=422, detail=f"invalid_type: {key}")
         if expected_type is str and not isinstance(body[key], str):
             raise HTTPException(status_code=422, detail=f"invalid_type: {key}")
+
+    # Tamper telemetry (#7). Optional so a watchdog without it still works; all or nothing.
+    telemetry = ("instance_id", "awake_ms", "awake_ms_at_start", "failed_attempts")
+    present = [k for k in telemetry if k in body]
+    if present and len(present) != len(telemetry):
+        raise HTTPException(status_code=422, detail="incomplete_telemetry")
+    if present:
+        if not isinstance(body["instance_id"], str) or not 0 < len(body["instance_id"]) <= 64:
+            raise HTTPException(status_code=422, detail="invalid_type: instance_id")
+        for k in telemetry[1:]:
+            v = body[k]
+            if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+                raise HTTPException(status_code=422, detail=f"invalid_type: {k}")
 
     return body
 
@@ -221,7 +235,12 @@ async def heartbeat(
     else:
         ui_state = None
 
-    # === 6. Cleanup events (co 100 hb) ===
+    # === 6. Tamper telemetry (#7) ===
+    if "instance_id" in body:
+        process_telemetry(db, body["instance_id"], body["awake_ms"], body["awake_ms_at_start"],
+                          body["failed_attempts"])
+
+    # === 7. Cleanup events (co 100 hb) ===
     _maybe_cleanup_events(db, cfg)
 
     return {
@@ -233,3 +252,22 @@ async def heartbeat(
         "server_time_utc": utc_iso(now_utc),
         "ui_state": ui_state,
     }
+
+
+@router.post("/v1/goodbye")
+async def goodbye(
+    request: Request,
+    _: None = Depends(authenticate_request),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    """Sent by the watchdog when its service stops (system shutdown or service stop)."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="body_must_be_object")
+    instance_id, reason = body.get("instance_id"), body.get("reason")
+    if not isinstance(instance_id, str) or not 0 < len(instance_id) <= 64:
+        raise HTTPException(status_code=422, detail="invalid_type: instance_id")
+    if reason not in GOODBYE_REASONS:
+        raise HTTPException(status_code=422, detail="invalid_reason")
+    process_goodbye(db, instance_id, reason)
+    return {"ok": True}

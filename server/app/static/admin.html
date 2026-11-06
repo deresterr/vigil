@@ -7,6 +7,7 @@
   <title>Vigil</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }  /* .btn etc. set display and would override it */
     html, body {
       margin: 0;
       padding: 0;
@@ -113,11 +114,35 @@
     .btn-success { background: #16a34a; color: white; }
     .btn-success:hover:not(:disabled) { background: #15803d; }
     .btn-warn { background: #ea580c; color: white; }
-    .alerts-card { border-color: #dc2626; background: #2a1515; }
-    .alerts-card h2 { color: #f87171; margin-top: 0; }
-    .alerts-card ul { margin: 8px 0 12px; padding-left: 18px; }
-    .alerts-card li { margin: 4px 0; }
-    .alerts-card .when { color: #9ca3af; font-size: 0.9em; }
+    /* Journal tab (#8) */
+    nav.tabs .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px;
+      background: #dc2626; color: #fff; font-size: .72rem; line-height: 18px; font-weight: 600; vertical-align: 1px; }
+    .chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; }
+    .chip { flex: 0 0 auto; border: 1px solid #3a3a3a; background: #232323; color: #bbb; border-radius: 16px;
+      padding: 6px 12px; font-size: .85rem; cursor: pointer; }
+    .chip.on { background: #e5e7eb; color: #111; border-color: #e5e7eb; }
+    .chip .n { color: #f87171; font-weight: 600; margin-left: 4px; }
+    .jday { margin: 18px 0 6px; }
+    .jday:first-child { margin-top: 4px; }
+    .jday h3 { margin: 0; font-size: .95rem; color: #e5e7eb; }
+    .jday .sum { margin: 2px 0 0; color: #9ca3af; font-size: .85rem; }
+    ul.log { list-style: none; margin: 0; padding: 0; background: #232323; border: 1px solid #333; border-radius: 10px; }
+    .ev { display: grid; grid-template-columns: 44px 28px 1fr; align-items: start; padding: 10px 12px 10px 10px;
+      border-top: 1px solid #2e2e2e; }
+    .ev:first-child { border-top: none; }
+    .ev .t { color: #9ca3af; font-variant-numeric: tabular-nums; font-size: .9rem; padding-top: 1px; }
+    .ev .ic { padding-top: 1px; }
+    .ev .ti { margin: 0; color: #e5e7eb; font-size: .95rem; line-height: 1.3; }
+    .ev .sub { margin: 2px 0 0; color: #9ca3af; font-size: .84rem; line-height: 1.3; }
+    .ev.pc .ic { color: #93c5fd; } .ev.lock .ic { color: #fb923c; } .ev.pause .ic { color: #c4b5fd; }
+    .ev.parent .ic { color: #4ade80; } .ev.alert .ic { color: #f87171; }
+    .ev.unacked { background: #2a1515; box-shadow: inset 3px 0 0 #dc2626; }
+    .ev.unacked .ti { color: #fecaca; font-weight: 600; }
+    .ev .ack { margin-top: 8px; background: transparent; border: 1px solid #7f1d1d; color: #fca5a5; border-radius: 6px;
+      padding: 5px 10px; font-size: .82rem; cursor: pointer; }
+    .jempty { color: #888; font-size: .9rem; margin: 4px 0 0; }
+    .jmore { display: block; width: 100%; margin: 14px 0 4px; background: transparent; border: 1px solid #333;
+      color: #aaa; border-radius: 8px; padding: 10px; font-size: .9rem; cursor: pointer; }
     .btn-warn:hover:not(:disabled) { background: #c2410c; }
     .btn-danger { background: #dc2626; color: white; }
     .btn-danger:hover:not(:disabled) { background: #b91c1c; }
@@ -222,18 +247,13 @@
 
 <nav class="tabs">
   <button class="active" data-tab="status">Status</button>
+  <button data-tab="journal">Dziennik<span class="badge" id="alertsBadge" hidden></span></button>
   <button data-tab="settings">Ustawienia</button>
 </nav>
 
 <main>
 
 <div id="tab-status" class="tab-content active">
-  <div class="card alerts-card" id="alertsCard" hidden>
-    <h2 id="alertsTitle">Wymaga uwagi</h2>
-    <ul id="alertsList"></ul>
-    <button class="btn btn-warn" onclick="ackAlerts()">Potwierdź wszystkie</button>
-  </div>
-
   <div class="card status-card">
     <p class="lock-state" id="lockStateText">...</p>
     <p class="substate" id="lockSubstate"></p>
@@ -276,6 +296,19 @@
   </div>
 </div>
 
+
+<div id="tab-journal" class="tab-content">
+  <div class="chips" id="journalChips">
+    <span class="chip on" data-f="all">Wszystko</span>
+    <span class="chip" data-f="alert">Ostrzeżenia<span class="n" id="chipAlertCount" hidden></span></span>
+    <span class="chip" data-f="pc">Komputer</span>
+    <span class="chip" data-f="lock">Blokady</span>
+    <span class="chip" data-f="parent">Rodzic</span>
+  </div>
+  <button class="btn btn-warn" id="ackAllBtn" onclick="ackAlerts()" hidden style="margin-bottom: 12px;">Potwierdź wszystkie ostrzeżenia</button>
+  <div id="journalDays"><p class="jempty">Ładowanie…</p></div>
+  <button class="jmore" id="journalMore" onclick="loadJournal(true)" hidden>Pokaż starsze</button>
+</div>
 
 <div id="tab-settings" class="tab-content">
 
@@ -369,6 +402,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'settings' && !configLoaded) loadConfig();
+    if (btn.dataset.tab === 'journal') loadJournal(false);
   });
 });
 
@@ -432,44 +466,142 @@ function fmtMinutes(m) {
   return rem === 0 ? h + ' h' : h + ' h ' + rem + ' min';
 }
 
-// === Alerts (#8) ===
-const ALERT_TEXT = {
-  tamper_watchdog_restarted: d => `Usługa Vigil została zatrzymana i uruchomiona ponownie, choć komputer nie był wyłączany (przerwa ok. ${d.down_awake_seconds ?? '?'} s).`,
-  tamper_service_stopped:    d => 'Usługa Vigil została zatrzymana (również przy deinstalacji lub update-config).',
-  tamper_watchdog_silent:    d => `Vigil nie odzywał się przez ${d.awake_gap_seconds ?? '?'} s, choć komputer działał — proces mógł zostać wstrzymany.`,
-  totp_lockout:              d => `Kilka błędnych kodów TOTP na ekranie blokady — odblokowanie zablokowane na ${d.seconds ?? '?'} s.`,
-  admin_login_locked:        d => `Wiele nieudanych logowań do panelu (z ${d.ip ?? '?'}) — logowanie zablokowane na ${d.seconds ?? '?'} s.`,
-  pairing_code_invalidated:  d => 'Kod parowania unieważniony po 5 błędnych próbach.',
+// === Journal (#8) ===
+const JICON = {
+  power:  '<path d="M10 2v7"/><path d="M5.6 5.2a6.5 6.5 0 1 0 8.8 0"/>',
+  moon:   '<path d="M15.5 12.5A6.5 6.5 0 0 1 7.5 4.5a6.5 6.5 0 1 0 8 8z"/>',
+  lock:   '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>',
+  unlock: '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 5.8-1"/>',
+  pause:  '<path d="M7.5 5v10M12.5 5v10"/>',
+  alert:  '<path d="M10 3l8 14H2z"/><path d="M10 8.5v4M10 14.8v.2"/>',
+  plus:   '<path d="M10 4v12M4 10h12"/>',
 };
-let alertsShown = -1;
+const jIcon = n => '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + JICON[n] + '</svg>';
+const fmtMin = m => m >= 60 ? Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min' : m + ' min';
+const fmtSec = s => s >= 60 ? Math.round(s / 60) + ' min' : s + ' s';
+const VIA = d => d.via === 'admin_ui' ? 'Z panelu' : 'Kod z telefonu wpisany na ekranie blokady';
+
+// type -> {cat, icon, title, sub}. Polish wording lives only here.
+const JOURNAL = {
+  watchdog_started:   d => ({cat: 'pc', icon: 'power', title: d.same_boot ? 'Vigil uruchomiony ponownie' : 'Komputer włączony'}),
+  watchdog_shutdown:  d => ({cat: 'pc', icon: 'power', title: 'Komputer wyłączony',
+                             sub: d.on_since ? `Włączony od ${d.on_since} (${fmtMin(d.minutes)})` : ''}),
+  watchdog_offline:   d => ({cat: 'pc', icon: 'power', title: 'Brak połączenia z serwerem',
+                             sub: `Ok. ${fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60)))} — ekran był zablokowany`}),
+  lock_started:       d => d.reason === 'night'
+                             ? {cat: 'lock', icon: 'moon', title: 'Cisza nocna — ekran zablokowany'}
+                             : {cat: 'lock', icon: 'lock', title: 'Limit czasu wykorzystany — ekran zablokowany'},
+  pause:              d => ({cat: 'lock', cls: 'pause', icon: 'pause', title: d.to ? 'Pauza · ' + fmtMin(d.minutes) : 'Pauza — trwa',
+                             sub: d.to ? `${d.from} – ${d.to}, czas nie był liczony` : 'Czas nie jest liczony'}),
+  manual_lock_set:    () => ({cat: 'parent', icon: 'lock', title: 'Rodzic zablokował komputer', sub: 'Z panelu'}),
+  manual_lock_cleared:() => ({cat: 'parent', icon: 'unlock', title: 'Rodzic zdjął blokadę ręczną', sub: 'Z panelu'}),
+  manual_unlock:      () => ({cat: 'parent', icon: 'unlock', title: 'Rodzic zdjął blokadę ręczną', sub: VIA({})}),
+  grant_applied:      d => ({cat: 'parent', icon: 'plus', sub: VIA(d),
+                             title: d.mode === 'extend_night'
+                               ? 'Rodzic przedłużył ciszę nocną do ' + String(d.until_local || '').slice(11)
+                               : `Rodzic dodał ${d.minutes} min`}),
+  extensions_cleared: () => ({cat: 'parent', icon: 'lock', title: 'Rodzic cofnął dodatkowy czas', sub: 'Z panelu'}),
+  tamper_watchdog_restarted: d => ({title: 'Vigil został zatrzymany i uruchomiony ponownie',
+                             sub: 'Komputer nie był wyłączany · przerwa ok. ' + fmtMin(Math.max(1, Math.round(d.down_awake_seconds / 60)))}),
+  tamper_service_stopped:    () => ({title: 'Usługa Vigil została zatrzymana', sub: 'Również przy deinstalacji lub update-config'}),
+  tamper_watchdog_silent:    d => ({title: 'Vigil nie odzywał się, choć komputer działał',
+                             sub: 'Ok. ' + fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60))) + ' — proces mógł zostać wstrzymany'}),
+  totp_lockout:              d => ({title: 'Kilka błędnych kodów na ekranie blokady', sub: 'Odblokowanie wstrzymane na ' + fmtSec(d.seconds || 0)}),
+  admin_login_locked:        d => ({title: 'Wiele nieudanych logowań do panelu', sub: `Z adresu ${d.ip} · logowanie wstrzymane na ${fmtSec(d.seconds || 0)}`}),
+  pairing_code_invalidated:  () => ({title: 'Kod parowania unieważniony', sub: 'Po 5 błędnych próbach'}),
+};
+let journalDays = [], journalHasMore = false, journalFilter = 'all', alertsUnacked = 0;
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-async function refreshAlerts(count) {
-  const card = document.getElementById('alertsCard');
-  if (!count) { card.hidden = true; alertsShown = 0; return; }
-  if (count === alertsShown) return;
-  const r = await api('/admin/api/alerts');
-  document.getElementById('alertsTitle').textContent = 'Wymaga uwagi (' + count + ')';
-  document.getElementById('alertsList').innerHTML = r.alerts.map(a => {
-    const text = (ALERT_TEXT[a.type] || (() => a.type))(a.details || {});
-    return '<li>' + esc(text) + ' <span class="when">' + esc(a.ts_local) + '</span></li>';
-  }).join('');
-  card.hidden = false;
-  alertsShown = count;
+function dayLabel(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  const parts = new Intl.DateTimeFormat('pl-PL', {weekday: 'long', day: 'numeric', month: 'long'}).formatToParts(d);
+  const get = t => (parts.find(p => p.type === t) || {}).value || '';
+  const base = `${get('weekday')} ${get('day')} ${get('month')}`;
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const diff = Math.round((today - d) / 86400000);
+  return diff === 0 ? 'Dziś, ' + base : diff === 1 ? 'Wczoraj, ' + base : base.charAt(0).toUpperCase() + base.slice(1);
 }
 
-async function ackAlerts() {
+function renderEntry(e) {
+  const view = (JOURNAL[e.type] || (() => ({title: e.type})))(e.details || {});
+  const cat = e.alert ? 'alert' : (view.cls || view.cat || 'pc');
+  const unacked = e.alert && !e.acked;
+  return `<li class="ev ${cat}${unacked ? ' unacked' : ''}"><span class="t">${esc(e.time)}</span>` +
+    `<span class="ic">${jIcon(e.alert ? 'alert' : view.icon)}</span><div class="tx">` +
+    `<p class="ti">${esc(view.title)}</p>${view.sub ? `<p class="sub">${esc(view.sub)}</p>` : ''}` +
+    (unacked ? `<button class="ack" onclick="ackAlerts([${e.id}])">Potwierdź</button>` : '') + '</div></li>';
+}
+
+function renderJournal() {
+  const keep = e => {
+    if (journalFilter === 'all') return true;
+    if (journalFilter === 'alert') return e.alert;
+    const view = (JOURNAL[e.type] || (() => ({})))(e.details || {});
+    return !e.alert && (view.cat || 'pc') === journalFilter;
+  };
+  const filtered = journalFilter !== 'all';
+  const html = journalDays.map(day => {
+    const entries = day.entries.filter(keep);
+    if (filtered && !entries.length) return '';  // filtered view: skip empty days
+    const sum = day.minutes_used || entries.length
+      ? `<p class="sum">Czas przy komputerze: ${fmtMin(day.minutes_used)} z ${fmtMin(day.limit_minutes)}</p>` : '';
+    const list = entries.length ? `<ul class="log">${entries.map(renderEntry).join('')}</ul>`
+      : '<p class="jempty">Komputer nie był używany.</p>';
+    return `<section class="jday"><h3>${esc(dayLabel(day.date))}</h3>${sum}</section>${list}`;
+  }).join('');
+  document.getElementById('journalDays').innerHTML = html ||
+    '<p class="jempty">Brak zdarzeń tego typu w wyświetlanych dniach.</p>';
+  document.getElementById('journalMore').hidden = !journalHasMore;
+  document.getElementById('ackAllBtn').hidden = !(journalFilter === 'alert' && alertsUnacked > 0);
+}
+
+async function loadJournal(older) {
   try {
-    await api('/admin/api/alerts/ack', {method: 'POST', body: {}});
-    refreshAlerts(0);
+    let url;
+    if (older && journalDays.length) {
+      url = '/admin/api/journal?days=7&before=' + journalDays[journalDays.length - 1].date;
+    } else {
+      url = '/admin/api/journal?days=' + Math.min(14, Math.max(3, journalDays.length));
+    }
+    const r = await api(url);
+    journalDays = older ? journalDays.concat(r.days) : r.days;
+    journalHasMore = r.has_more;
+    renderJournal();
+  } catch (e) { notice('Błąd dziennika: ' + e.message, 'error'); }
+}
+
+document.querySelectorAll('#journalChips .chip').forEach(chip => chip.addEventListener('click', () => {
+  document.querySelectorAll('#journalChips .chip').forEach(c => c.classList.remove('on'));
+  chip.classList.add('on');
+  journalFilter = chip.dataset.f;
+  renderJournal();
+}));
+
+function setAlertCount(n) {
+  const changed = n !== alertsUnacked;
+  alertsUnacked = n || 0;
+  for (const id of ['alertsBadge', 'chipAlertCount']) {
+    const el = document.getElementById(id);
+    el.textContent = alertsUnacked; el.hidden = !alertsUnacked;
+  }
+  // New alert while the journal is open: show it without a manual refresh.
+  if (changed && document.getElementById('tab-journal').classList.contains('active')) loadJournal(false);
+}
+
+async function ackAlerts(ids) {
+  try {
+    await api('/admin/api/alerts/ack', {method: 'POST', body: ids ? {ids} : {}});
+    await loadJournal(false);
+    loadStatus();
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }
 
 function renderStatus(s) {
-  refreshAlerts(s.alerts_unacked).catch(() => {});
+  setAlertCount(s.alerts_unacked);
   const dot = document.getElementById('watchdogDot');
   const text = document.getElementById('watchdogText');
     // Aktualizuj tytuł i nagłówek

@@ -17,7 +17,6 @@ Endpointy:
 from __future__ import annotations
 
 import io
-import json
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -48,6 +47,7 @@ from ..lock_logic import (
     parse_hhmm,
     parse_iso_utc,
 )
+from .journal import ALERT_WHERE
 from .pairing import active_pairing_expiry, create_pairing_code
 from .totp import _compute_night_extension_until
 
@@ -117,7 +117,7 @@ async def status(db: sqlite3.Connection = Depends(get_db)) -> dict:
         "manual_lock": bool(state["manual_lock"]),
         "pause_active": bool(state.get("pause_active", 0)),
         "night_extension_until_local": night_extension_local if night_extended else None,
-        "alerts_unacked": db.execute(f"SELECT COUNT(*) FROM events WHERE {_ALERT_WHERE} AND acked_utc IS NULL")
+        "alerts_unacked": db.execute(f"SELECT COUNT(*) FROM events WHERE {ALERT_WHERE} AND acked_utc IS NULL")
         .fetchone()[0],
         "in_night_window": in_night,
         "night_lock_start": get_config_value(db, "night_lock_start"),
@@ -507,55 +507,6 @@ async def change_password(request: Request, db: sqlite3.Connection = Depends(get
     set_config_value(db, "parent_password_hash", hash_password(new))
     log_event(db, "admin_password_changed")
     return {"ok": True}
-
-
-# === Alerts (#8): tamper_* events + signs of guessing, until the parent confirms them ===
-
-_ALERT_EXTRA_TYPES = ("totp_lockout", "admin_login_locked", "pairing_code_invalidated")
-_ALERT_WHERE = (
-    "(event_type LIKE 'tamper\\_%' ESCAPE '\\' OR event_type IN ("
-    + ",".join(f"'{t}'" for t in _ALERT_EXTRA_TYPES)
-    + "))"
-)
-
-
-@router.get("/alerts")
-async def get_alerts(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Unconfirmed alerts, newest first (max 50)."""
-    tz = ZoneInfo(get_config_value(db, "timezone"))
-    rows = db.execute(
-        f"SELECT id, ts_utc, event_type, details_json FROM events "
-        f"WHERE {_ALERT_WHERE} AND acked_utc IS NULL ORDER BY id DESC LIMIT 50"
-    ).fetchall()
-    alerts = [
-        {
-            "id": r["id"],
-            "ts_local": datetime.fromisoformat(r["ts_utc"]).astimezone(tz).strftime("%Y-%m-%d %H:%M"),
-            "type": r["event_type"],
-            "details": json.loads(r["details_json"]) if r["details_json"] else {},
-        }
-        for r in rows
-    ]
-    return {"alerts": alerts}
-
-
-@router.post("/alerts/ack")
-async def ack_alerts(request: Request, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Confirm alerts: body {"ids": [...]} for specific ones, {} for all."""
-    body = await request.json()
-    now = datetime.now(timezone.utc).isoformat()
-    ids = body.get("ids") if isinstance(body, dict) else None
-    if ids is None:
-        cur = db.execute(f"UPDATE events SET acked_utc = ? WHERE {_ALERT_WHERE} AND acked_utc IS NULL", (now,))
-    else:
-        if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
-            raise HTTPException(status_code=422, detail="ids_must_be_int_list")
-        marks = ",".join("?" * len(ids)) or "NULL"
-        cur = db.execute(
-            f"UPDATE events SET acked_utc = ? WHERE id IN ({marks}) AND {_ALERT_WHERE} AND acked_utc IS NULL",
-            (now, *ids),
-        )
-    return {"ok": True, "acked": cur.rowcount}
 
 
 # === POST /admin/api/pairing_code ===

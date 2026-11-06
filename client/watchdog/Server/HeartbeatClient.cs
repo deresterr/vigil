@@ -36,7 +36,10 @@ public sealed class HeartbeatClient : IDisposable
         _config = config;
         _signingKey = signingKey;
         _logger = logger;
-        _http = new HttpClient
+        // Drop idle pooled connections well before the server does (uvicorn --timeout-keep-alive 75).
+        // Otherwise a request sometimes reuses a connection the server is just closing -> 10054 reset.
+        var handler = new SocketsHttpHandler { PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30) };
+        _http = new HttpClient(handler)
         {
             BaseAddress = new Uri(config.ServerUrl + "/"),
             // Krótszy timeout niż domyślne 100s — heartbeat ma być szybki, dłużej nie ma sensu

@@ -32,6 +32,8 @@ public sealed class TrayApp : IDisposable
         // był przypisany zanim lambda go użyje (CS8602).
         _pipe = new PipeClient();
         _pipe.StateReceived += OnStateReceived;
+        // Make a dead connection visible instead of showing a stale time.
+        _pipe.Disconnected += () => _tray.Text = "Vigil: brak połączenia";
 
         // Lewy klik = toggle pauzy. Prawy klik nic nie robi (brak menu).
         _tray.MouseClick += (_, e) =>
@@ -40,6 +42,7 @@ public sealed class TrayApp : IDisposable
                 _pipe.SendPauseToggle();
         };
 
+        TrayLog.Write("tray started");
         Task.Run(() => _pipe.RunAsync(_cts.Token), _cts.Token);
     }
 

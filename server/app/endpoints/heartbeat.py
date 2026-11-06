@@ -17,10 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..auth import authenticate_request
 from ..db import (
     ensure_daily_state,
-    get_config_value,
     get_db,
     log_event,
-    set_config_value,
     update_daily_state,
 )
 from ..lock_logic import (
@@ -225,12 +223,6 @@ async def heartbeat(
 
     # === 6. Cleanup events (co 100 hb) ===
     _maybe_cleanup_events(db, cfg)
-
-    # === 7. Zamknij init_open przy pierwszym udanym heartbeat ===
-    # init_open nie jest cachowany — musi być świeży (zmienia się właśnie tutaj)
-    if get_config_value(db, "init_open") == "1":
-        set_config_value(db, "init_open", "0")
-        log_event(db, "init_closed", {"reason": "first_heartbeat"})
 
     return {
         "lock_required": lock_reason is not None,

@@ -15,10 +15,10 @@ from .db import get_connection, get_db, init_database
 from .endpoints.admin_api import router as admin_api_router
 from .endpoints.admin_views import router as admin_views_router
 from .endpoints.heartbeat import router as heartbeat_router
+from .endpoints.pairing import router as pairing_router
 from .endpoints.pause import router as pause_router
 from .endpoints.setup import router as setup_router
 from .endpoints.totp import router as totp_router
-from .endpoints.vigil_init import router as vigil_init_router
 from .signing import HmacSigningMiddleware
 
 logging.basicConfig(
@@ -104,13 +104,11 @@ async def _handle_client_disconnect(request: Request, exc: ClientDisconnect) -> 
 async def setup_guard(request: Request, call_next):
     """Przekierowuje na /setup jeśli kreator nie został jeszcze ukończony.
 
-    Przepuszcza bez sprawdzania: /setup/*, /health, /v1/claim_credentials.
+    Przepuszcza bez sprawdzania: /setup/*, /health.
     Wszystkie inne ścieżki wymagają setup_complete == "1".
     """
     path = request.url.path
-    if (path.startswith("/setup")
-            or path == "/health"
-            or path == "/v1/claim_credentials"):
+    if path.startswith("/setup") or path == "/health":
         return await call_next(request)
 
     with get_connection() as conn:
@@ -136,8 +134,8 @@ app.include_router(heartbeat_router)
 app.include_router(totp_router)
 app.include_router(pause_router)
 
-# Zaciąganie credentials przez vigil_install.ps1 (/v1/claim_credentials) — brak auth, tylko init_open
-app.include_router(vigil_init_router)
+# Pairing with a one-time code (/v1/pair) — unauthenticated by design, see pairing.py
+app.include_router(pairing_router)
 
 # Admin UI (/admin, /admin/login, /admin/logout) — HTML + cookie session
 app.include_router(admin_views_router)

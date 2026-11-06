@@ -18,7 +18,6 @@ LISTEN_PORT: int = int(os.environ.get("LISTEN_PORT", "8088"))
 CONFIG_DEFAULTS: dict[str, str] = {
     # Ustawiane przez wizard — puste domyślnie
     "setup_complete":        "0",
-    "init_open":            "0",
     "device_name":           "",
     "watchdog_server_url":  "",
     # Limity i harmonogram — wizard ustawia wartości, tu są fallbacki
@@ -35,6 +34,10 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "nonce_cache_seconds":        "120",
     "max_request_age_seconds":    "60",
     "events_retention_days":      "90",
+    # One-time pairing code (endpoints/pairing.py). Only the hash is stored.
+    "pairing_code_hash":          "",
+    "pairing_expires_utc":        "",
+    "pairing_attempts":           "0",
     # Last accepted TOTP time step (replay protection). Not editable.
     "totp_last_step":             "0",
 }

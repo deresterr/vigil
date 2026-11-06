@@ -23,8 +23,10 @@
 
 
 .PARAMETER SigningKey
-    Signing key (base64 urlsafe bez paddingu) z panelu rodzica. Bez niego install pobiera go z serwera
-    (tryb inicjalizacji).
+    Signing key (base64 urlsafe bez paddingu) z panelu rodzica. Zwykle niepotrzebny: install
+    paruje się z serwerem kodem (-PairingCode albo pytanie w trybie interaktywnym).
+.PARAMETER PairingCode
+    Jednorazowy kod parowania z panelu rodzica (ważny 10 min). Serwer w zamian wydaje nowy klucz.
 
 .PARAMETER DisableWinRE
     Switch — opcjonalne wyłączenie Windows Recovery Environment (`reagentc /disable`).
@@ -67,6 +69,7 @@ param(
 
     [string] $ServerUrl,
     [string] $SigningKey,
+    [string] $PairingCode,
     [string] $ChildUsername,
     [string] $EmergencyPassword,
 
@@ -195,21 +198,33 @@ function Test-ServerReachable {
 }
 
 function Get-CredentialsFromServer {
-    param([string]$serverUrl)
-    Write-Step "Pobieram konfigurację z serwera"
+    param([string]$serverUrl, [string]$code)
+    if (-not $code) {
+        Write-Host ""
+        Write-Host "  Kod parowania (panel rodzica -> 'Wygeneruj kod parowania'):"
+        $code = (Read-Host "  >").Trim()
+    }
+    $digits = ($code -replace '[^0-9]', '')
+    if ($digits.Length -ne 8) { throw "Kod parowania ma 8 cyfr." }
+
+    Write-Step "Paruję komputer z serwerem"
+    $body = @{ code = $digits } | ConvertTo-Json -Compress
     try {
-        $resp = Invoke-RestMethod -Uri "$serverUrl/v1/claim_credentials" `
-            -Method Get -TimeoutSec 10 -ErrorAction Stop
+        $resp = Invoke-RestMethod -Uri "$serverUrl/v1/pair" -Method Post -Body $body `
+            -ContentType 'application/json' -TimeoutSec 10 -ErrorAction Stop
+        # Zachowujemy adres wpisany przez użytkownika — serwer mógł zwrócić inny (np. za proxy).
         $script:ServerUrl  = $serverUrl
-        $script:SigningKey   = $resp.signing_key
-        # Jeśli serwer zwrócił inny server_url (np. wewnętrzny adres) — zachowaj to co wpisał user
-        Write-OK "Credentials pobrane z serwera"
+        $script:SigningKey = $resp.signing_key
+        Write-OK "Sparowano — klucz podpisujący otrzymany"
     } catch {
         $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
         if ($status -eq 404) {
-            throw "Serwer nie jest w trybie inicjalizacji.`n  Zaloguj się do panelu admina i kliknij 'Aktywuj tryb inicjalizacji'."
+            throw "Brak aktywnego kodu parowania (wygasł albo został użyty).`n  Wygeneruj nowy kod parowania w panelu rodzica."
         }
-        throw "Nie udało się pobrać credentials: $_"
+        if ($status -eq 401) {
+            throw "Nieprawidłowy kod parowania. Po 5 błędnych próbach kod przestaje działać."
+        }
+        throw "Parowanie nie powiodło się: $_"
     }
 }
 
@@ -280,7 +295,7 @@ function Step-ValidateInstallParams {
 
     # Pobierz credentials z serwera (jeśli nie podane parametrami)
     if (-not $SigningKey) {
-        Get-CredentialsFromServer -serverUrl $script:ServerUrl
+        Get-CredentialsFromServer -serverUrl $script:ServerUrl -code $PairingCode
     } else {
         $script:SigningKey = $SigningKey
     }

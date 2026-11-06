@@ -18,8 +18,7 @@ from __future__ import annotations
 import io
 import re
 import sqlite3
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pyotp
@@ -28,19 +27,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..admin_auth import require_admin_session, verify_admin_password
 from ..auth import invalidate_auth_cache
-from ..endpoints.heartbeat import invalidate_heartbeat_config_cache
 from ..config import TOTP_ISSUER
 from ..crypto import generate_token_b64, hash_password
 from ..db import (
-    get_connection,
     ensure_daily_state,
     get_config_int,
     get_config_value,
+    get_connection,
     get_db,
     log_event,
     set_config_value,
     update_daily_state,
 )
+from ..endpoints.heartbeat import invalidate_heartbeat_config_cache
 from ..lock_logic import (
     compute_lock_reason,
     is_in_night_window,
@@ -371,6 +370,7 @@ def _png_qr_base64(data: str) -> str:
     bardziej czytelny niż obecny TypeError z save(format=...).
     """
     import base64
+
     from qrcode.image.pil import PilImage
     qr = qrcode.QRCode(
         version=None,

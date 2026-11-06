@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..admin_auth import (
-    SESSION_COOKIE,
     clear_session_cookie,
     issue_session_cookie,
     set_session_cookie,

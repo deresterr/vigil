@@ -14,11 +14,11 @@ from .bootstrap import run_bootstrap
 from .db import get_connection, get_db, init_database
 from .endpoints.admin_api import router as admin_api_router
 from .endpoints.admin_views import router as admin_views_router
-from .endpoints.vigil_init import router as vigil_init_router
 from .endpoints.heartbeat import router as heartbeat_router
 from .endpoints.pause import router as pause_router
 from .endpoints.setup import router as setup_router
 from .endpoints.totp import router as totp_router
+from .endpoints.vigil_init import router as vigil_init_router
 from .signing import HmacSigningMiddleware
 
 logging.basicConfig(

@@ -28,7 +28,8 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "night_lock_end":        "06:30",
     "timezone":              "Europe/Warsaw",
     # Parametry techniczne — niewidoczne w wizard, edytowalne w admin UI
-    "heartbeat_grace_seconds":    "30",   # używany przez admin UI do statusu "watchdog online"; watchdog hardkoduje własny grace (30s)
+    # heartbeat_grace_seconds: tylko admin UI ("watchdog online"); watchdog ma własny, hardkodowany grace (30s)
+    "heartbeat_grace_seconds":    "30",
     "heartbeat_delta_max":        "15",
     "gap_detection_threshold":    "30",
     "nonce_cache_seconds":        "120",

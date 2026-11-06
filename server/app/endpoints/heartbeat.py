@@ -7,13 +7,13 @@ o `delta` (clamped 0..15s) jeśli ostatnia aktywność była niedawno (gap detec
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime, timedelta, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-import time
 from ..auth import authenticate_request
 from ..db import (
     ensure_daily_state,
@@ -26,7 +26,6 @@ from ..db import (
 from ..lock_logic import (
     compute_lock_reason,
     is_weekend,
-    load_lock_config,
     parse_iso_utc,
     utc_iso,
 )

@@ -31,6 +31,7 @@ _HHMM_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 
 def _png_qr_base64(data: str) -> str:
     import base64
+
     from qrcode.image.pil import PilImage
     qr = qrcode.QRCode(version=None, border=2, box_size=8,
                        error_correction=qrcode.constants.ERROR_CORRECT_M)

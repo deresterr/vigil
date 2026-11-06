@@ -12,7 +12,7 @@ Server sam wybiera tryb na podstawie aktualnego lock_reason:
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pyotp
@@ -137,7 +137,7 @@ def _validate_request_body(body) -> dict:
 
 def _get_current_lock_state(
     conn: sqlite3.Connection, now_utc: datetime, tz: ZoneInfo
-) -> tuple[str | None, dict, "date"]:
+) -> tuple[str | None, dict, date]:
     """Pobiera daily_state i wyznacza lock_reason. Zwraca (lock_reason, state_dict, today_local)."""
     today_local = now_utc.astimezone(tz).date()
     state = dict(ensure_daily_state(conn, today_local))

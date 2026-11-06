@@ -44,6 +44,11 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - PowerShell: `$PSScriptRoot` is empty inside `param()` defaults — compute it in the body.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.
 - PowerShell/icacls: use SIDs (`*S-1-5-32-544`), never group names — Polish Windows localizes them.
+- PowerShell 5.1 + `$ErrorActionPreference='Stop'`: `& native.exe 2>&1` turns stderr into a terminating error
+  (fatal in `finally`). Call `reg.exe` only via `Invoke-RegExe` in `vigil_install.ps1`.
+- One account (D12): policies the installer sets in HKCU (e.g. `DisableRegistryTools` → blocks `reg.exe`) also
+  hit the installer itself on uninstall/reinstall. Edit user hives via the PowerShell registry provider first.
+- `.ps1` syntax is checked in CI with Windows PowerShell 5.1; locally a Linux `pwsh` can run the same parser.
 - `client/tray` has `ImplicitUsings=disable`: add `System.IO`, `System.IO.Pipes`, `System.Text`,
   `System.Text.Json` explicitly (`System.IO.Pipes` does not bring `System.IO`).
 - XAML `x:Class` must match the code-behind namespace (`Vigil.Lockscreen.*`).

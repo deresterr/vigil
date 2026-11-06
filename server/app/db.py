@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS events (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     ts_utc       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     event_type   TEXT NOT NULL,
-    details_json TEXT
+    details_json TEXT,
+    acked_utc    TEXT              -- alerts (#8): when the parent confirmed it; NULL = not yet
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts_utc);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
@@ -94,6 +95,10 @@ def init_database() -> None:
             )
         except sqlite3.OperationalError:
             pass  # kolumna już istnieje
+        try:
+            conn.execute("ALTER TABLE events ADD COLUMN acked_utc TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         conn.commit()
 
     logger.info("Schemat DB zainicjalizowany (%s)", DATABASE_PATH)

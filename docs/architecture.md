@@ -65,6 +65,9 @@ stored: `pairing_code_hash`, `pairing_expires_utc`, `pairing_attempts`); `Instal
 and stores the returned key in `signing.dat`. Pairing again (reinstall, new PC) rotates the key, so the
 previously paired PC fails closed.
 
+Alerts: `tamper_*` events plus `totp_lockout`, `admin_login_locked`, `pairing_code_invalidated` show as a banner
+on the status tab until confirmed (`events.acked_utc`; `/admin/api/alerts`, `/admin/api/alerts/ack`).
+
 Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cookie `vigil_session`
 (24 h, HttpOnly, SameSite=Strict, path `/admin`). Password: argon2id.
 

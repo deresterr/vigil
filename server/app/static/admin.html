@@ -113,6 +113,11 @@
     .btn-success { background: #16a34a; color: white; }
     .btn-success:hover:not(:disabled) { background: #15803d; }
     .btn-warn { background: #ea580c; color: white; }
+    .alerts-card { border-color: #dc2626; background: #2a1515; }
+    .alerts-card h2 { color: #f87171; margin-top: 0; }
+    .alerts-card ul { margin: 8px 0 12px; padding-left: 18px; }
+    .alerts-card li { margin: 4px 0; }
+    .alerts-card .when { color: #9ca3af; font-size: 0.9em; }
     .btn-warn:hover:not(:disabled) { background: #c2410c; }
     .btn-danger { background: #dc2626; color: white; }
     .btn-danger:hover:not(:disabled) { background: #b91c1c; }
@@ -223,6 +228,12 @@
 <main>
 
 <div id="tab-status" class="tab-content active">
+  <div class="card alerts-card" id="alertsCard" hidden>
+    <h2 id="alertsTitle">Wymaga uwagi</h2>
+    <ul id="alertsList"></ul>
+    <button class="btn btn-warn" onclick="ackAlerts()">Potwierdź wszystkie</button>
+  </div>
+
   <div class="card status-card">
     <p class="lock-state" id="lockStateText">...</p>
     <p class="substate" id="lockSubstate"></p>
@@ -421,7 +432,44 @@ function fmtMinutes(m) {
   return rem === 0 ? h + ' h' : h + ' h ' + rem + ' min';
 }
 
+// === Alerts (#8) ===
+const ALERT_TEXT = {
+  tamper_watchdog_restarted: d => `Usługa Vigil została zatrzymana i uruchomiona ponownie, choć komputer nie był wyłączany (przerwa ok. ${d.down_awake_seconds ?? '?'} s).`,
+  tamper_service_stopped:    d => 'Usługa Vigil została zatrzymana (również przy deinstalacji lub update-config).',
+  tamper_watchdog_silent:    d => `Vigil nie odzywał się przez ${d.awake_gap_seconds ?? '?'} s, choć komputer działał — proces mógł zostać wstrzymany.`,
+  totp_lockout:              d => `Kilka błędnych kodów TOTP na ekranie blokady — odblokowanie zablokowane na ${d.seconds ?? '?'} s.`,
+  admin_login_locked:        d => `Wiele nieudanych logowań do panelu (z ${d.ip ?? '?'}) — logowanie zablokowane na ${d.seconds ?? '?'} s.`,
+  pairing_code_invalidated:  d => 'Kod parowania unieważniony po 5 błędnych próbach.',
+};
+let alertsShown = -1;
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function refreshAlerts(count) {
+  const card = document.getElementById('alertsCard');
+  if (!count) { card.hidden = true; alertsShown = 0; return; }
+  if (count === alertsShown) return;
+  const r = await api('/admin/api/alerts');
+  document.getElementById('alertsTitle').textContent = 'Wymaga uwagi (' + count + ')';
+  document.getElementById('alertsList').innerHTML = r.alerts.map(a => {
+    const text = (ALERT_TEXT[a.type] || (() => a.type))(a.details || {});
+    return '<li>' + esc(text) + ' <span class="when">' + esc(a.ts_local) + '</span></li>';
+  }).join('');
+  card.hidden = false;
+  alertsShown = count;
+}
+
+async function ackAlerts() {
+  try {
+    await api('/admin/api/alerts/ack', {method: 'POST', body: {}});
+    refreshAlerts(0);
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
 function renderStatus(s) {
+  refreshAlerts(s.alerts_unacked).catch(() => {});
   const dot = document.getElementById('watchdogDot');
   const text = document.getElementById('watchdogText');
     // Aktualizuj tytuł i nagłówek

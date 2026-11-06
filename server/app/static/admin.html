@@ -737,11 +737,11 @@ async function regenTokens() {
   try {
     const r = await api('/admin/api/regen_tokens', {method: 'POST', body: {}});
     showModal('Nowy klucz podpisujący Vigil',
-      '<p class="muted">Stary klucz już nie działa. Skopiuj go i uruchom update-config na PC dziecka:</p>' +
+      '<p class="muted">Stary klucz już nie działa. Uruchom update-config z nowym kluczem na PC dziecka:</p>' +
       secretRow('Signing Key (klucz podpisujący)', r.signing_key) +
-      '<p class="secret-label">Komenda update-config (PowerShell jako Administrator):</p>' +
+      '<p class="secret-label">Komenda update-config — w katalogu z paczką Vigil, PowerShell lub cmd jako administrator:</p>' +
       '<div class="secret-row">' +
-      '<pre>.\\vigil_install.ps1 -Mode update-config -SigningKey \'' + r.signing_key + '\'</pre>' +
+      '<pre>.\\Install.cmd -Mode update-config -SigningKey:' + r.signing_key + '</pre>' +
       '</div>'
     );
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }

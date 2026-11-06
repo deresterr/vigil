@@ -219,7 +219,7 @@ function Get-CredentialsFromServer {
     } catch {
         $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
         if ($status -eq 404) {
-            throw "Brak aktywnego kodu parowania (wygasł albo został użyty).`n  Wygeneruj nowy w panelu rodzica."
+            throw "Brak aktywnego kodu parowania (wygasł albo został użyty).`n  Wygeneruj nowy kod parowania w panelu rodzica."
         }
         if ($status -eq 401) {
             throw "Nieprawidłowy kod parowania. Po 5 błędnych próbach kod przestaje działać."

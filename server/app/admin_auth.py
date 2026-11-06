@@ -10,6 +10,7 @@ Hasło rodzica zapisane jako argon2id hash w `config.parent_password_hash`.
 from __future__ import annotations
 
 import sqlite3
+import time
 
 from fastapi import Depends, HTTPException, Request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -87,3 +88,45 @@ async def require_admin_session(
         raise HTTPException(status_code=401, detail="invalid_session") from e
 
     return payload
+
+
+# === Login throttling ===
+# Per client IP, in memory: single uvicorn worker (see CLAUDE.md) and a restart is not something the
+# child can trigger, so no persistence is needed. Per IP so a child hammering the login from their PC
+# does not lock the parent out on another device. Behind a reverse proxy all clients share one IP,
+# which degrades to a global limit — still safe, just stricter.
+_FAILURES_PER_LOCKOUT = 5
+_LOCKOUT_STEPS_SECONDS = (60, 300, 900)
+_FORGET_AFTER_SECONDS = 86400
+
+_login_failures: dict[str, tuple[int, float, float]] = {}  # ip -> (count, first_failure, locked_until)
+
+
+def login_lockout_remaining(ip: str, now: float | None = None) -> int:
+    """Seconds this IP must still wait before a login attempt is evaluated; 0 = allowed."""
+    now = time.monotonic() if now is None else now
+    entry = _login_failures.get(ip)
+    if not entry:
+        return 0
+    count, first, locked_until = entry
+    if now - first > _FORGET_AFTER_SECONDS and now >= locked_until:
+        del _login_failures[ip]
+        return 0
+    return max(0, int(locked_until - now + 0.999))
+
+
+def record_login_failure(ip: str, now: float | None = None) -> int:
+    """Count a failed login; returns the lockout length in seconds if one starts now, else 0."""
+    now = time.monotonic() if now is None else now
+    count, first, _ = _login_failures.get(ip, (0, now, 0.0))
+    count += 1
+    lockout = 0
+    if count % _FAILURES_PER_LOCKOUT == 0:
+        idx = min(count // _FAILURES_PER_LOCKOUT, len(_LOCKOUT_STEPS_SECONDS)) - 1
+        lockout = _LOCKOUT_STEPS_SECONDS[idx]
+    _login_failures[ip] = (count, first, now + lockout)
+    return lockout
+
+
+def reset_login_failures(ip: str) -> None:
+    _login_failures.pop(ip, None)

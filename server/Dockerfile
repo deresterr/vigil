@@ -24,4 +24,5 @@ EXPOSE ${LISTEN_PORT}
 
 # Single worker — wymóg architektoniczny (SQLite WAL + atomicity logiki tickowania)
 # Shell form (nie JSON array) żeby ${LISTEN_PORT} był ekspandowany w runtime
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${LISTEN_PORT} --workers 1
+# --timeout-keep-alive must stay above the watchdog's PooledConnectionIdleTimeout (30 s), see HeartbeatClient.cs
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${LISTEN_PORT} --workers 1 --timeout-keep-alive 75

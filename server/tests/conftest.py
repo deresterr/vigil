@@ -71,7 +71,7 @@ class Watchdog:
             assert base64.b64decode(r.headers["X-Signature"]) == expected, "bad response signature"
         return r
 
-    def heartbeat(self, active: bool = True) -> dict:
+    def heartbeat(self, active: bool = True, **telemetry) -> dict:
         r = self.post(
             "/v1/heartbeat",
             {
@@ -79,6 +79,7 @@ class Watchdog:
                 "user_active": active,
                 "current_time_utc": datetime.now(UTC).isoformat(),
                 "uptime_seconds": 100,
+                **telemetry,
             },
         )
         assert r.status_code == 200, r.text

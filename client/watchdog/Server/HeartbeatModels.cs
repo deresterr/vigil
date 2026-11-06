@@ -18,6 +18,35 @@ public sealed class HeartbeatRequest
 
     [JsonPropertyName("uptime_seconds")]
     public required int UptimeSeconds { get; init; }
+
+    // Tamper telemetry (server/app/tamper.py)
+    [JsonPropertyName("instance_id")]
+    public required string InstanceId { get; init; }
+
+    [JsonPropertyName("awake_ms")]
+    public required long AwakeMs { get; init; }
+
+    [JsonPropertyName("awake_ms_at_start")]
+    public required long AwakeMsAtStart { get; init; }
+
+    [JsonPropertyName("failed_attempts")]
+    public required int FailedAttempts { get; init; }
+}
+
+/// <summary>POST /v1/goodbye — sent when the service stops.</summary>
+public sealed class GoodbyeRequest
+{
+    [JsonPropertyName("instance_id")]
+    public required string InstanceId { get; init; }
+
+    [JsonPropertyName("reason")]
+    public required string Reason { get; init; }  // service_stop | shutdown
+}
+
+public sealed class GoodbyeResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; init; }
 }
 
 /// <summary>Response z POST /v1/heartbeat.</summary>

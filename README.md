@@ -42,10 +42,11 @@ Kreator jest dostępny bez logowania do momentu ukończenia — zrób to od razu
 Build.cmd            → dist\
 ```
 
-**3. Instalacja na PC dziecka** — skopiuj `dist\`, uruchom jako administrator:
+**3. Instalacja na PC dziecka** — w panelu rodzica kliknij „Wygeneruj kod parowania”, skopiuj `dist\`
+na PC dziecka i uruchom jako administrator:
 
 ```
-Install.cmd          (tryb interaktywny: adres serwera, konto dziecka, hasło awaryjne)
+Install.cmd          (tryb interaktywny: adres serwera, kod parowania, konto dziecka, hasło awaryjne)
 ```
 
 Odinstalowanie: `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE, gdy system nie startuje).

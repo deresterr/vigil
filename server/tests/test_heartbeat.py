@@ -5,7 +5,8 @@ import pyotp
 import pytest
 import time_machine
 
-from app.db import get_connection
+from app.crypto import hash_password
+from app.db import get_connection, set_config_value
 from tests.conftest import Watchdog, config, state_for
 
 TZ = ZoneInfo("Europe/Warsaw")
@@ -63,7 +64,6 @@ def test_totp_grant_extends_limit(watchdog):
         assert watchdog.heartbeat()["lock_required"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: night extension lives on the day row; lost at local midnight")
 def test_night_extension_survives_midnight(watchdog):
     with time_machine.travel(datetime(2026, 11, 4, 23, 0, tzinfo=TZ), tick=False) as t:
         assert watchdog.heartbeat()["lock_reason"] == "night"
@@ -87,3 +87,33 @@ def test_injected_heartbeats_cannot_stall_counter(client):
                 attacker.heartbeat(active=False)
             real.heartbeat()
     assert state_for("2026-11-04")["seconds_used"] >= 55
+
+
+def _grant_night(watchdog, minutes: int) -> None:
+    code = pyotp.TOTP(config("totp_secret")).now()
+    r = watchdog.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": minutes})
+    assert r.json()["mode"] == "extend_night"
+
+
+def test_expired_night_extension_is_not_carried_over(watchdog):
+    with time_machine.travel(datetime(2026, 11, 4, 23, 0, tzinfo=TZ), tick=False) as t:
+        watchdog.heartbeat()
+        _grant_night(watchdog, 30)  # until 23:30
+        t.shift(timedelta(hours=2))  # 01:00, first request of the new day
+        assert watchdog.heartbeat()["lock_reason"] == "night"
+    assert state_for("2026-11-05")["night_extension_until_utc"] is None
+
+
+def test_admin_sees_and_clears_extension_after_midnight(client, watchdog):
+    with get_connection() as conn:
+        set_config_value(conn, "parent_password_hash", hash_password("haslo-rodzica"))
+    with time_machine.travel(datetime(2026, 11, 4, 23, 0, tzinfo=TZ), tick=False) as t:
+        watchdog.heartbeat()
+        _grant_night(watchdog, 120)  # until 01:00
+        t.shift(timedelta(minutes=90))  # 00:30, new local day
+        assert client.post("/admin/login", data={"password": "haslo-rodzica"}).status_code == 200
+        status = client.get("/admin/api/status").json()
+        assert status["night_extension_until_local"] == "2026-11-05 01:00"
+        assert status["lock_required"] is False
+        assert client.post("/admin/api/clear_extension").json()["ok"] is True
+        assert watchdog.heartbeat()["lock_reason"] == "night"

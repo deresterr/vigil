@@ -71,7 +71,6 @@ param(
     [string] $SigningKey,
     [string] $PairingCode,
     [string] $ChildUsername,
-    [string] $EmergencyPassword,
 
     [switch] $DisableWinRE,
     [switch] $NoUserPolicies
@@ -91,7 +90,6 @@ $guardianPs1   = Join-Path $InstallDir "vigil_guardian.ps1"
 $vigilToml     = Join-Path $InstallDir "vigil.toml"
 $signingDat    = Join-Path $InstallDir "signing.dat"
 $guardianDat   = Join-Path $InstallDir "guardian.dat"
-$emergencyDat  = Join-Path $InstallDir "emergency.dat"
 $backupDir     = Join-Path $InstallDir "backup"
 
 # Source files
@@ -305,20 +303,6 @@ function Step-ValidateInstallParams {
         Select-ChildUsername
     }
 
-    # EmergencyPassword — interaktywnie jeśli nie podane
-    if (-not $EmergencyPassword) {
-        Write-Host ""
-        Write-Host "  Hasło awaryjne (Ctrl+Shift+Alt+E na ekranie blokady):"
-        Write-Host "  Zostaw puste jeśli nie chcesz ustawiać." -ForegroundColor DarkGray
-        $secPwd = Read-Host "  >" -AsSecureString
-        $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-            [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPwd))
-        if ($plain.Length -gt 0) {
-            if ($plain.Length -lt 6) { throw "Hasło awaryjne musi mieć co najmniej 6 znaków." }
-            $script:EmergencyPassword = $plain
-        }
-    }
-
     Write-OK "Konfiguracja zebrana (server=$($script:ServerUrl))"
 }
 
@@ -435,38 +419,17 @@ function Step-WriteSigningDat {
     Write-OK "signing.dat zapisany ($($encrypted.Length) bajtów encrypted)"
 }
 
-function Step-WriteEmergencyDat {
-    if (-not $EmergencyPassword) {
-        Write-Step "Pomijam emergency password (parametr nie podany)"
-        Write-Warn "Bez emergency password nie będziesz mógł odblokować PC offline (gdy serwer/kontener padnie)."
-        Write-Warn "Aby dodać później: uruchom installer ponownie z -Mode update-config -EmergencyPassword '...'"
-        return
+function Step-RemoveLegacyEmergencyFiles {
+    # Before v0.5 offline unlock used an emergency password (emergency.dat, readable by the child)
+    # and a 24 h bypass.flag in C:\Users\Public\Vigil (forgeable). Both are gone (#9): the parent's
+    # TOTP code now works offline too. Remove leftovers from older installs.
+    $legacy = @((Join-Path $InstallDir "emergency.dat"), "$env:PUBLIC\Vigil")
+    foreach ($path in $legacy) {
+        if (Test-Path $path) {
+            Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+            Write-OK "Usunięto stary plik odblokowania awaryjnego: $path"
+        }
     }
-
-    if ($EmergencyPassword.Length -lt 6) {
-        throw "EmergencyPassword musi mieć co najmniej 6 znaków"
-    }
-
-    Write-Step "Szyfruję emergency password przez DPAPI LocalMachine"
-    # Entropy oddzielna od signing-key — żeby kompromitacja jednego nie pomagała w drugim
-    $entropy = [System.Text.Encoding]::UTF8.GetBytes("Vigil-Emergency-v1")
-    $pwBytes = [System.Text.Encoding]::UTF8.GetBytes($EmergencyPassword)
-    $encrypted = Protect-LocalMachine -Data $pwBytes -Entropy $entropy
-    [System.IO.File]::WriteAllBytes($emergencyDat, $encrypted)
-    [System.Array]::Clear($pwBytes, 0, $pwBytes.Length)
-
-    # ACL: SYSTEM:F, Admins:F, ChildUser:R (żeby lockscreen jako user mógł odczytać)
-    # *S-1-5-18 = NT AUTHORITY\SYSTEM (SID locale-agnostic, jak *S-1-5-32-544 dla Administrators)
-    & icacls.exe $emergencyDat /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' 2>&1 | Out-Null
-    if ($ChildUsername) {
-        & icacls.exe $emergencyDat /grant ("${ChildUsername}:R") 2>&1 | Out-Null
-    } else {
-        # Bez ChildUsername — zezwól Authenticated Users R (kompromis: każdy user może czytać hash,
-        # ale i tak DPAPI LocalMachine zabezpiecza że tylko ten komputer może odszyfrować)
-        & icacls.exe $emergencyDat /grant '*S-1-5-32-545:R' 2>&1 | Out-Null
-    }
-
-    Write-OK "emergency.dat zapisany — hotkey w lockscreen: Ctrl+Shift+Alt+E"
 }
 
 function Step-RegisterService {
@@ -1157,7 +1120,7 @@ function Invoke-Install {
     Step-WriteGuardianHash
     Step-WriteVigilToml
     Step-WriteSigningDat
-    Step-WriteEmergencyDat
+    Step-RemoveLegacyEmergencyFiles
     Step-RegisterService
     Step-SetServiceDacl
     Step-AddSafeBootEntries
@@ -1197,27 +1160,25 @@ function Invoke-UpdateConfig {
     if (-not (Test-Path $InstallDir)) {
         throw "$InstallDir nie istnieje — najpierw -Mode install"
     }
-    if (-not $ServerUrl -and -not $SigningKey -and -not $EmergencyPassword) {
-        throw "Podaj co najmniej jeden z: -ServerUrl, -SigningKey, -EmergencyPassword"
+    if (-not $ServerUrl -and -not $SigningKey) {
+        throw "Podaj co najmniej jeden z: -ServerUrl, -SigningKey"
     }
 
     # Załaduj istniejące values z vigil.toml gdy parametry nie podane
     $existingToml = if (Test-Path $vigilToml) { Get-Content $vigilToml -Raw } else { '' }
     if (-not $ServerUrl) {
         if ($existingToml -match 'server_url\s*=\s*"([^"]*)"') { $script:ServerUrl = $matches[1] }
-        elseif (-not $EmergencyPassword) { throw "ServerUrl nie podany i nie znaleziony w vigil.toml" }
+        else { throw "ServerUrl nie podany i nie znaleziony w vigil.toml" }
     } else { $script:ServerUrl = $ServerUrl }
 
-    # Stop przez multi-strategy (jeśli tylko emergency password zmieniamy, watchdog może żyć dalej)
-    $needRestart = $ServerUrl -or $SigningKey
-    if ($needRestart) { $null = Stop-VigilService }
+    $null = Stop-VigilService
 
     # Tymczasowo otwórz ACL żeby kolejne kroki mogły pisać
     Step-UnlockPermissions
 
     try {
         # Zawsze przepisz vigil.toml: usuwa bearer_token ze starych instalacji (protokół v1).
-        if ($needRestart) { Step-WriteVigilToml }
+        Step-WriteVigilToml
         if ($SigningKey) {
             $keyBytes = ConvertFrom-Base64UrlSafe $SigningKey
             if ($keyBytes.Length -lt 16) {
@@ -1225,19 +1186,15 @@ function Invoke-UpdateConfig {
             }
             Step-WriteSigningDat
         }
-        if ($EmergencyPassword) {
-            Step-WriteEmergencyDat
-        }
+        Step-RemoveLegacyEmergencyFiles
     } finally {
         # Niezależnie od success/fail — przywróć restrykcyjne ACL
         Step-LockDownPermissions
     }
 
-    if ($needRestart) {
-        $started = Start-VigilService
-        if (-not $started) {
-            Write-Warn "Service nie wstał po update-config — sprawdź Event Log"
-        }
+    $started = Start-VigilService
+    if (-not $started) {
+        Write-Warn "Service nie wstał po update-config — sprawdź Event Log"
     }
 
     Write-Host "`n[ UPDATE-CONFIG DONE ]`n" -ForegroundColor Green

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.Versioning;
@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using Vigil.Lockscreen.Native;
 using Vigil.Lockscreen.ViewModels;
 // Alias dla Screen z WinForms — żeby nie wciągać całego namespace, który konfliktuje z WPF
 // (np. KeyEventArgs jest w obu, Application też).
@@ -35,6 +34,7 @@ public partial class LockWindow : Window
         _screen = screen;
         DataContext = vm;
         InitializeComponent();
+        DataObject.AddPastingHandler(TotpInput, TotpInput_Pasting);
 
         // Pozycjonowanie na właściwym ekranie zanim WindowState=Maximized
         // (Maximized zachowuje się na ekranie gdzie jest okno gdy go ustawiamy).
@@ -50,19 +50,6 @@ public partial class LockWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Awaryjne odblokowanie: Ctrl+Shift+Alt+E → modal z password promptem.
-        // KeyboardBlocker globalny hook nie łapie tej kombinacji (tylko Win/Alt+Tab/F4/Esc,
-        // Ctrl+Esc, F1/F11/F12), więc trafi tu w WPF.
-        if (e.Key == Key.E
-            && (Keyboard.Modifiers & ModifierKeys.Control) != 0
-            && (Keyboard.Modifiers & ModifierKeys.Shift) != 0
-            && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
-        {
-            e.Handled = true;
-            OpenEmergencyDialog();
-            return;
-        }
-
         // Alt+F4
         if (e.Key == Key.System && e.SystemKey == Key.F4)
         {
@@ -80,44 +67,47 @@ public partial class LockWindow : Window
         }
     }
 
-    private void OpenEmergencyDialog()
+    // === Locked phase handlers ===
+
+    // === TOTP field: digits only, and it keeps the keyboard focus ===
+
+    private void TotpInput_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        // EmergencyAuth.IsConfigured() jest też sprawdzane wewnątrz dialogu — tu tylko
-        // żeby uniknąć flash okna gdy nie ma czego pytać.
-        if (!EmergencyAuth.IsConfigured())
-        {
-            return;
-        }
-
-        // Pauzujemy TopmostEnforcer: bez tego co 500 ms wracalibyśmy z fokusem na LockWindow,
-        // co odbiera focus z PasswordBox i uniemożliwia rodzicowi wpisanie hasła.
-        // KeyboardBlocker pozostaje aktywny → nawet z pauzą Win/Alt+Tab/F4 są blokowane.
-        // Cast bezpieczny przez `as` — jeśli kiedyś ktoś podmieni App, Pause/Resume są no-op.
-        var app = System.Windows.Application.Current as App;
-        app?.PauseTopmostEnforcer();
-        bool unlocked;
-        try
-        {
-            var dlg = new EmergencyWindow { Owner = this };
-            dlg.ShowDialog();
-            unlocked = dlg.Unlocked;
-        }
-        finally
-        {
-            // Wznawiamy enforcer-a niezależnie od wyniku. Przy Unlocked=true zaraz
-            // Application.Shutdown sprzątnie wszystko, ale Resume i tak jest tanie.
-            app?.ResumeTopmostEnforcer();
-        }
-
-        if (unlocked)
-        {
-            // Flag plik zapisany. Zamykamy lockscreen — watchdog widzi flagę i nie spawnuje
-            // przez kolejne 24h. ShutdownMode=OnExplicitShutdown więc trzeba Application.Current.Shutdown.
-            System.Windows.Application.Current.Shutdown(0);
-        }
+        e.Handled = !e.Text.All(char.IsAsciiDigit);
     }
 
-    // === Locked phase handlers ===
+    private void TotpInput_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Space does not raise PreviewTextInput in a WPF TextBox.
+        if (e.Key == Key.Space) e.Handled = true;
+    }
+
+    private void TotpInput_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        // Accept "123 456" or "123-456" from a password manager: keep the digits, max 6.
+        e.CancelCommand();
+        if (e.SourceDataObject.GetData(DataFormats.UnicodeText) is not string pasted) return;
+        var box = TotpInput;
+        var merged = box.Text[..box.SelectionStart] + pasted + box.Text[(box.SelectionStart + box.SelectionLength)..];
+        var digits = new string(merged.Where(char.IsAsciiDigit).Take(6).ToArray());
+        box.Text = digits;
+        box.CaretIndex = digits.Length;
+    }
+
+    private void TotpInput_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        // The field is hidden while a code is being checked and the keyboard focus goes with it;
+        // without this, digits typed after a wrong code went nowhere until the field was clicked.
+        if (!TotpInput.IsVisible) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            // Logical focus in every window; keyboard focus only in the active one, so lock windows
+            // on several monitors do not fight over activation. WPF restores the logical focus when a
+            // window is activated (e.g. by TopmostEnforcer).
+            FocusManager.SetFocusedElement(this, TotpInput);
+            if (IsActive) Keyboard.Focus(TotpInput);
+        }, System.Windows.Threading.DispatcherPriority.Input);
+    }
 
     private void TotpInput_KeyDown(object sender, KeyEventArgs e)
     {
@@ -132,7 +122,7 @@ public partial class LockWindow : Window
     private async void CheckTotp_Click(object sender, RoutedEventArgs e)
     {
         var code = _vm.TotpCode.Trim();
-        if (code.Length != 6 || !code.All(char.IsDigit))
+        if (code.Length != 6 || !code.All(char.IsAsciiDigit))
         {
             _vm.StatusMessage = "Kod musi mieć 6 cyfr.";
             return;
@@ -227,6 +217,8 @@ public partial class LockWindow : Window
                 _vm.StatusMessage = resp.Reason switch
                 {
                     "invalid_code" => "Nieprawidłowy kod. Spróbuj ponownie.",
+                    "offline_not_configured" => "Odblokowanie bez serwera jeszcze niedostępne — komputer nie pobrał kodu rodzica.",
+                    "network_error" => "Brak połączenia z serwerem. Spróbuj ponownie za chwilę.",
                     "lockout" => $"Zbyt wiele prób. Poczekaj {resp.LockoutSecondsRemaining ?? 0}s.",
                     _ => $"Błąd: {resp.Reason ?? "nieznany"}",
                 };

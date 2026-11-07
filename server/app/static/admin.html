@@ -487,7 +487,7 @@ const JOURNAL = {
   watchdog_shutdown:  d => ({cat: 'pc', icon: 'power', title: 'Komputer wyłączony',
                              sub: d.on_since ? `Włączony od ${d.on_since} (${fmtMin(d.minutes)})` : ''}),
   watchdog_offline:   d => ({cat: 'pc', icon: 'power', title: 'Brak połączenia z serwerem',
-                             sub: `Ok. ${fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60)))} — ekran był zablokowany`}),
+                             sub: `Przez ok. ${fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60)))}`}),
   lock_started:       d => d.reason === 'night'
                              ? {cat: 'lock', icon: 'moon', title: 'Cisza nocna — ekran zablokowany'}
                              : {cat: 'lock', icon: 'lock', title: 'Limit czasu wykorzystany — ekran zablokowany'},
@@ -501,9 +501,13 @@ const JOURNAL = {
                                ? 'Rodzic przedłużył ciszę nocną do ' + String(d.until_local || '').slice(11)
                                : `Rodzic dodał ${d.minutes} min`}),
   extensions_cleared: () => ({cat: 'parent', icon: 'lock', title: 'Rodzic cofnął dodatkowy czas', sub: 'Z panelu'}),
+  offline_unlock:     d => ({cat: 'parent', icon: 'unlock', title: `Odblokowano bez połączenia z serwerem na ${d.minutes} min`,
+                             sub: 'Kod z telefonu sprawdzony na komputerze dziecka'}),
   tamper_watchdog_restarted: d => ({title: 'Vigil został zatrzymany i uruchomiony ponownie',
                              sub: 'Komputer nie był wyłączany · przerwa ok. ' + fmtMin(Math.max(1, Math.round(d.down_awake_seconds / 60)))}),
   tamper_service_stopped:    () => ({title: 'Usługa Vigil została zatrzymana', sub: 'Również przy deinstalacji lub update-config'}),
+  tamper_lockscreen_killed:  d => ({title: 'Ekran blokady był wielokrotnie zamykany',
+                             sub: `${d.kills ?? '?'} razy w ${d.window_seconds ?? '?'} s · ` + (d.logged_off ? 'użytkownik został wylogowany' : 'wylogowanie się nie powiodło')}),
   tamper_watchdog_silent:    d => ({title: 'Vigil nie odzywał się, choć komputer działał',
                              sub: 'Ok. ' + fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60))) + ' — proces mógł zostać wstrzymany'}),
   totp_lockout:              d => ({title: 'Kilka błędnych kodów na ekranie blokady', sub: 'Odblokowanie wstrzymane na ' + fmtSec(d.seconds || 0)}),

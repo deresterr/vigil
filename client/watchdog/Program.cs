@@ -7,6 +7,7 @@ using Vigil.Watchdog;
 using Vigil.Watchdog.Configuration;
 using Vigil.Watchdog.Detection;
 using Vigil.Watchdog.Lockscreen;
+using Vigil.Watchdog.Offline;
 using Vigil.Watchdog.Server;
 
 [assembly: SupportedOSPlatform("windows")]
@@ -62,6 +63,9 @@ if (WindowsServiceHelpers.IsWindowsService())
     builder.Services.AddSingleton<IHostLifetime, VigilServiceLifetime>();
 
 builder.Services.AddSingleton(vigilConfig);
+builder.Services.AddSingleton(sp => new TotpSecretStore(
+    Path.Combine(ProgramDataRoot, "totp.dat"), sp.GetRequiredService<ILogger<TotpSecretStore>>()));
+builder.Services.AddSingleton<OfflineUnlock>();
 builder.Services.AddSingleton(sp => new HeartbeatClient(
     vigilConfig, signingKey, sp.GetRequiredService<ILogger<HeartbeatClient>>()));
 builder.Services.AddSingleton<SessionDetector>();

@@ -21,7 +21,7 @@ PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_
 
 ## Quick start
 
-### Fresh install (pełen, z hasłem awaryjnym i nazwą konta dziecka)
+### Fresh install (pełen, z nazwą konta dziecka)
 
 ```powershell
 # Skopiuj na docelowy PC: zawartość dist\ na PC dziecka
@@ -31,11 +31,10 @@ Install.cmd -Mode install `
     -ServerUrl 'http://192.168.0.2:8088' `
     -SigningKey 'XyZ123abc...' `
     -ChildUsername 'jasiek' `
-    -EmergencyPassword 'silne_haslo_zapamietane_przez_rodzica' `
     -DisableWinRE
 ```
 
-### Minimalny install (bez awaryjnego i bez per-user policies — tylko Default profile)
+### Minimalny install (bez per-user policies — tylko Default profile)
 
 ```powershell
 Install.cmd -Mode install `
@@ -43,8 +42,7 @@ Install.cmd -Mode install `
     -SigningKey 'XyZ123abc...'
 ```
 
-W tym wariancie hasło awaryjne nie działa (brak `emergency.dat`), a policies idą tylko do
-Default User profile (skutek dla nowo utworzonych kont).
+W tym wariancie policies idą tylko do Default User profile (skutek dla nowo utworzonych kont).
 
 ### Uninstall
 
@@ -78,12 +76,7 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
   DisableRegistryTools, DisableLockWorkstation, DisableChangePassword, NoLogoff, sticky keys,
   touchpad gestures) trafiają **tylko do Default User profile** — czyli nowo tworzonych kont.
   Z `-ChildUsername`: installer rezolwuje SID i pisze policies wprost do hive'u tego użytkownika
-  (live `HKEY_USERS\<SID>` jeśli zalogowany, `reg load` jego `NTUSER.DAT` jeśli nie). Plus
-  zacieśnia ACL na `emergency.dat` — Read tylko dla tego konta (zamiast `BUILTIN\Users`).
-- `-EmergencyPassword '<min. 6 znaków>'` — hasło awaryjne (DPAPI-encrypted → `emergency.dat`).
-  Pozwala rodzicowi zdjąć lockscreen lokalnie (bez sieci/serwera) hotkeyem `Ctrl+Shift+Alt+E`.
-  Opt-in: bez tego parametru hasło awaryjne po prostu nie działa (`EmergencyAuth.IsConfigured()`
-  zwraca false → dialog się nie otwiera).
+  (live `HKEY_USERS\<SID>` jeśli zalogowany, `reg load` jego `NTUSER.DAT` jeśli nie).
 - `-DisableWinRE` — wyłącz Windows Recovery Environment (`reagentc /disable`). Opt-in, bo
   to nie do końca odwracalne (uninstall NIE robi `reagentc /enable`)
 - `-NoUserPolicies` — pomiń aplikację policies w ogóle (ani Default profile, ani named user).
@@ -93,17 +86,15 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
 
 1. Sprawdza uprawnienia admin (fail-fast jeśli nie)
 2. Sprawdza obecność 4 plików w `-SourceDir`
-3. Waliduje parametry (signing_key min 16 bajtów po dekodowaniu, ServerUrl http/https,
-   EmergencyPassword min 6 znaków jeśli podany)
+3. Waliduje parametry (signing_key min 16 bajtów po dekodowaniu, ServerUrl http/https)
 4. Tworzy `C:\ProgramData\Vigil\` z ACL: SYSTEM full, Admin modify, AuthUsers r+x
 5. Kopiuje 4 binarki + backup `vigil_watchdog.exe` do `backup\`
 6. Generuje SHA256 hash, szyfruje DPAPI LocalMachine, zapisuje `guardian.dat` (dla vigil_guardian)
 7. Tworzy `vigil.toml` z server_url (bez sekretów; signing_key idzie do `signing.dat`)
 8. Szyfruje signing_key DPAPI LocalMachine z entropy `"Vigil-SigningKey-v1"`,
    zapisuje `signing.dat`
-9. Jeśli podano `-EmergencyPassword`: szyfruje DPAPI z entropy `"Vigil-Emergency-v1"`,
-   zapisuje `emergency.dat`. ACL: SYSTEM+Admins full, Read tylko dla `-ChildUsername`
-   (lub `BUILTIN\Users` jako fallback gdy nie podano).
+9. Usuwa pozostałości starego odblokowania awaryjnego (`emergency.dat`, `C:\Users\Public\Vigil\`).
+   Odblokowanie offline działa teraz kodem TOTP rodzica — sekret pobiera sam watchdog (`totp.dat`).
 10. Rejestruje service `vigil_watchdog` (auto-start, recovery: restart×3 bez reboota)
 11. Ustawia restrykcyjny DACL na service (Admin tylko query/start, nie stop/modify/delete)
 12. Dodaje SafeBoot entries (Minimal + Network) — vigil_watchdog działa też w safe mode
@@ -131,7 +122,7 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
    w hive tego użytkownika — usuwa wszystkie wartości pisane przy installu
    (`DisableTaskMgr`, `DisableRegistryTools`, `DisableLockWorkstation`, `DisableChangePassword`,
    `NoLogoff`, sticky keys, touchpad gestures). Pomijane jeśli `-NoUserPolicies`.
-5. Remove `C:\ProgramData\Vigil\` w całości — w tym `emergency.dat` i `signing.dat`
+5. Remove `C:\ProgramData\Vigil\` w całości — w tym `signing.dat` i `totp.dat`
    (z `takeown` + `icacls` żeby pokonać ACL z install)
 
 **`uninstall` NIE robi:**
@@ -139,8 +130,6 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
 - `reagentc /enable` cofać (zostawiamy ręcznie jeśli było wyłączone)
 - Policy w innych kontach niż Default i `-ChildUsername` — jeśli ktoś instalował kilka razy
   z różnymi userami, to `vigil-cleanup.ps1 -Force` przejdzie po wszystkich kontach.
-- `bypass.flag` w `C:\Users\Public\Vigil\` — to znika razem z całym katalogiem przy następnym
-  cleanupie Public, ale samo przez się zostaje (24h ważność, potem nieaktywny).
 
 ## Co `update-config` robi
 
@@ -180,10 +169,6 @@ Skrypt walidowany na realnym Windowsie (install / reinstall / uninstall / update
   (`reagentc /enable`).
 - **Backup binarki** (do restore przez guardian) jest single-version. Przy update binarki
   reinstalluje się też backup → traci się starą wersję jako recovery point.
-- **`-EmergencyPassword` nie da się zmienić bez reinstall** — installer ustawia raz, później
-  jedyna ścieżka to `update-config -EmergencyPassword 'nowe'` (lub ręczne usunięcie `emergency.dat`
-  i ponowny install). Decyzja produktowa: hasło awaryjne to ostatnia deska ratunku, lepiej żeby
-  zostawało niezmienne i pamiętane.
 
 ## Cleanup z Recovery (vigil-cleanup.ps1)
 

@@ -10,7 +10,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   child's session, started and kept alive by the watchdog), `shared/IpcMessages.cs` (linked into both).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D17), roadmap (M1 done, M2–M4).
+- `docs/review-2026-11.md` — known defects, decisions (D1–D17), roadmap (M1–M2 done, M3, M4.1).
   Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"
@@ -69,7 +69,9 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 ## Conventions
 - New code, comments, commit messages: English. Existing Polish comments: leave unless touching the code.
   User-facing strings (UI, installer output): Polish for now.
-- Python: plain `sqlite3` via `get_db()`; config through `get_config_value()`, defaults in `config.CONFIG_DEFAULTS`.
+- Python: plain `sqlite3` via `get_db()`; config through `get_config_value()`/`get_config_values()`, defaults in
+  `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`
+  (never edit an applied one) + a test that migrates an older database.
 - C#: async I/O, `ILogger<T>`, P/Invoke in `Native/`.
 - PowerShell: `Write-Step/OK/Warn/Skip` helpers, `$ErrorActionPreference = 'Stop'`.
 - One issue = one branch = one PR, except client changes batched for one VM session (see above).

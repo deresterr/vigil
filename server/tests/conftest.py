@@ -1,7 +1,7 @@
 """Shared fixtures: fresh SQLite DB per test + a signed "watchdog" client.
 
-Module-level state in the app (heartbeat config cache, login throttle) is reset per test, otherwise
-values from a previous test's DB leak into the next one.
+Module-level state in the app (login throttle) is reset per test, otherwise values from a previous
+test's DB leak into the next one.
 """
 
 from __future__ import annotations
@@ -18,13 +18,11 @@ from fastapi.testclient import TestClient
 
 import app.admin_auth
 import app.db
-import app.endpoints.heartbeat
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(app.db, "DATABASE_PATH", tmp_path / "vigil.db")
-    app.endpoints.heartbeat._hb_cfg = None
     app.admin_auth._login_failures.clear()
     from app.main import app as fastapi_app
 

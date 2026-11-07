@@ -6,6 +6,7 @@ Single-worker uvicorn + WAL mode — ale asyncio nadal obsługuje kilka request�
 
 Single-tenant: jeden PC dziecka = jeden kontener. Sekrety (signing_key,
 totp_secret, parent_password_hash) trzymane w `config` table jako pojedyncze klucze.
+Schema: migrations.py.
 """
 
 from __future__ import annotations
@@ -15,58 +16,13 @@ import json
 import logging
 import sqlite3
 from collections.abc import AsyncGenerator, Generator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
 
-from .config import DATABASE_PATH
+from .config import CONFIG_DEFAULTS, DATABASE_PATH
+from .migrations import migrate
 
 logger = logging.getLogger(__name__)
-
-
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS config (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
--- daily_state: jeden rekord per dzień (jeden klient w całym systemie).
--- seconds_used trzymany jako INTEGER w sekundach (unika floating-point przy każdym tick).
--- Konwersja na minuty robi się dopiero przy budowaniu response (seconds_used // 60).
-CREATE TABLE IF NOT EXISTS daily_state (
-    date_local                 TEXT PRIMARY KEY,
-    seconds_used               INTEGER NOT NULL DEFAULT 0,
-    limit_override_minutes     INTEGER NOT NULL DEFAULT 0,
-    night_extension_until_utc  TEXT,
-    manual_lock                INTEGER NOT NULL DEFAULT 0,
-    pause_active               INTEGER NOT NULL DEFAULT 0,
-    last_heartbeat_utc         TEXT,
-    last_session_active_utc    TEXT
-);
-
-CREATE TABLE IF NOT EXISTS events (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts_utc       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    event_type   TEXT NOT NULL,
-    details_json TEXT,
-    acked_utc    TEXT              -- alerts (#8): when the parent confirmed it; NULL = not yet
-);
-CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts_utc);
-CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
-
--- totp_lockout: jeden rekord (id=1) — TOTP rate-limiting po brute-force próbach.
-CREATE TABLE IF NOT EXISTS totp_lockout (
-    id                  INTEGER PRIMARY KEY CHECK (id = 1),
-    attempts_count      INTEGER NOT NULL DEFAULT 0,
-    first_attempt_utc   TEXT,
-    lockout_until_utc   TEXT
-);
-
-CREATE TABLE IF NOT EXISTS used_nonces (
-    nonce  TEXT PRIMARY KEY,
-    ts_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_nonces_ts ON used_nonces(ts_utc);
-"""
 
 
 def _configure_connection(conn: sqlite3.Connection) -> None:
@@ -76,32 +32,19 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
 
 
 def init_database() -> None:
-    """Tworzy schemat i ustawia WAL mode. Idempotent — można wołać przy każdym starcie."""
+    """WAL mode + schema migrations (migrations.py). Idempotent, runs at every start."""
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(DATABASE_PATH, check_same_thread=False) as conn:
-        # WAL mode jest persistent (zapisany w pliku DB), ale wołamy przy każdym starcie
-        # na wypadek świeżego pliku lub przywróconego z backupu w innym mode.
+    # isolation_level None: migrate() manages its own transactions.
+    with closing(sqlite3.connect(DATABASE_PATH, isolation_level=None)) as conn:
+        # WAL is persistent in the file, but a fresh file or a restored backup may not have it.
         mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
         if mode.lower() != "wal":
-            logger.warning("Nie udało się ustawić WAL mode, aktualnie: %s", mode)
+            logger.warning("Could not enable WAL mode, current: %s", mode)
+        conn.execute("PRAGMA synchronous = NORMAL")  # WAL + NORMAL: safe and fast
+        version = migrate(conn)
 
-        conn.execute("PRAGMA synchronous = NORMAL")  # WAL + NORMAL = bezpieczne i szybkie
-        conn.executescript(SCHEMA_SQL)
-        # Migracja: dodaj pause_active jeśli nie istnieje (istniejące bazy bez tej kolumny)
-        try:
-            conn.execute(
-                "ALTER TABLE daily_state ADD COLUMN pause_active INTEGER NOT NULL DEFAULT 0"
-            )
-        except sqlite3.OperationalError:
-            pass  # kolumna już istnieje
-        try:
-            conn.execute("ALTER TABLE events ADD COLUMN acked_utc TEXT")
-        except sqlite3.OperationalError:
-            pass  # column already exists
-        conn.commit()
-
-    logger.info("Schemat DB zainicjalizowany (%s)", DATABASE_PATH)
+    logger.info("Database ready (%s, schema %d)", DATABASE_PATH, version)
 
 
 @contextmanager
@@ -144,6 +87,13 @@ async def get_db() -> AsyncGenerator[sqlite3.Connection, None]:
 def get_config_value(conn: sqlite3.Connection, key: str) -> str | None:
     row = conn.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else None
+
+
+def get_config_values(conn: sqlite3.Connection, keys: tuple[str, ...]) -> dict[str, str]:
+    """Several config keys in one SELECT; a missing row falls back to CONFIG_DEFAULTS."""
+    placeholders = ",".join("?" * len(keys))
+    rows = dict(conn.execute(f"SELECT key, value FROM config WHERE key IN ({placeholders})", keys).fetchall())
+    return {k: rows.get(k, CONFIG_DEFAULTS.get(k, "")) for k in keys}
 
 
 def get_config_int(conn: sqlite3.Connection, key: str) -> int:

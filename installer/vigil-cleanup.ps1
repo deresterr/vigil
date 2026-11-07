@@ -464,7 +464,7 @@ function Remove-VigilFiles {
 
     $paths = @(
         (Join-Path $script:SystemDrive 'ProgramData\Vigil'),
-        (Join-Path $script:SystemDrive 'Users\Public\Vigil'),            # bypass.flag location
+        (Join-Path $script:SystemDrive 'Users\Public\Vigil'),            # legacy bypass.flag (before v0.5)
         (Join-Path $script:SystemDrive 'Windows\System32\Tasks\Vigil Guardian'),
         (Join-Path $script:SystemDrive 'Windows\System32\Tasks\Vigil Tray')
     )

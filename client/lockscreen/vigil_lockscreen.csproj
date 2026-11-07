@@ -26,10 +26,4 @@
     <Using Remove="System.Windows.Forms" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- DPAPI wrapper — ProtectedData.Protect/Unprotect w EmergencyAuth.cs.
-         W .NET Framework był built-in, w .NET 8+ jest osobny package. -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
-  </ItemGroup>
-
 </Project>

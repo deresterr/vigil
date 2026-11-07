@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Configuration;
 using Vigil.Watchdog.Detection;
 using Vigil.Watchdog.Lockscreen;
+using Vigil.Watchdog.Offline;
 using Vigil.Watchdog.Server;
 
 namespace Vigil.Watchdog;
@@ -25,6 +26,11 @@ public sealed class Worker : BackgroundService
     private readonly SessionDetector _sessions;
     private readonly ILockscreenManager _lockscreen;
     private readonly ILogger<Worker> _logger;
+    private readonly TotpSecretStore _totpStore;
+    private readonly OfflineUnlock _offline;
+    // True while the lock on screen is our own fail-closed lock (server unreachable): TOTP codes
+    // are then verified locally (#9) instead of being forwarded to the server.
+    private volatile bool _offlineLocked;
 
     private readonly DateTime _startTime = DateTime.UtcNow;
 
@@ -54,12 +60,16 @@ public sealed class Worker : BackgroundService
         HeartbeatClient client,
         SessionDetector sessions,
         ILockscreenManager lockscreen,
+        TotpSecretStore totpStore,
+        OfflineUnlock offline,
         ILogger<Worker> logger)
     {
         _config = config;
         _client = client;
         _sessions = sessions;
         _lockscreen = lockscreen;
+        _totpStore = totpStore;
+        _offline = offline;
         _logger = logger;
 
         // Podpinamy event handler dla TOTP — lockscreen UI → server.
@@ -160,6 +170,8 @@ public sealed class Worker : BackgroundService
         AwakeMs = AwakeClock.NowMs,
         AwakeMsAtStart = _awakeMsAtStart,
         FailedAttempts = _failedAttempts,
+        TotpFp = _totpStore.Fingerprint,
+        OfflineGrants = _offline.PendingGrants(),
     };
 
     public override async Task StopAsync(CancellationToken cancellationToken)
@@ -183,27 +195,6 @@ public sealed class Worker : BackgroundService
 
     private async Task TickAsync(CancellationToken ct)
     {
-        // Awaryjny bypass: jeśli ktoś wpisał emergency password w lockscreen i flag plik
-        // jest aktywny (max 24h), pomijamy całą logikę locka. Heartbeat wciąż wysyłamy
-        // żeby server akumulował czas używania, ale lockscreen NIE jest spawnowany.
-        if (BypassFlagChecker.IsActive(_logger))
-        {
-            // Zdejmij obecny lockscreen jeśli był aktywny
-            if (_lockscreen.IsLocked)
-            {
-                await _lockscreen.DismissAsync(ct).ConfigureAwait(false);
-            }
-            // Wyślij heartbeat (best effort — bo bez tego brak akumulacji czasu)
-            try
-            {
-                await _client.SendHeartbeatAsync(BuildRequest(true, true), ct).ConfigureAwait(false);
-                _lastSuccessfulHeartbeat = DateTime.UtcNow;
-                _failedAttempts = 0;
-            }
-            catch { _failedAttempts++; /* podczas bypassu olewamy server errors */ }
-            return;
-        }
-
         var (sessionActive, _) = _sessions.DetectActiveSession();
 
         // Brak idle/foreground tracking — server akumuluje czas gdy sesja aktywna i heartbeat dochodzi.
@@ -219,6 +210,12 @@ public sealed class Worker : BackgroundService
             serverOk = true;
             _lastSuccessfulHeartbeat = DateTime.UtcNow;
             _failedAttempts = 0;
+            _offline.OnServerReachable(req.OfflineGrants);
+            if (!string.IsNullOrEmpty(response.TotpSecret))
+            {
+                try { _totpStore.Save(response.TotpSecret); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Could not store the TOTP secret for offline unlock"); }
+            }
         }
         // Filter on our own stop token, not on the exception type: an HttpClient timeout is a
         // TaskCanceledException too, and letting it escape skipped the fail-closed check (#31).
@@ -249,19 +246,31 @@ public sealed class Worker : BackgroundService
     /// <summary>
     /// Fail-closed (invariant): lock once the server has been silent longer than the grace period
     /// (90 s after service start, 30 s otherwise). Called after a failed heartbeat and after any
-    /// tick that threw, so no exception path can skip it.
+    /// tick that threw, so no exception path can skip it. An active offline TOTP grant (#9) is the
+    /// only thing that keeps the PC unlocked meanwhile.
     /// </summary>
     private async Task FailClosedIfOverdueAsync(CancellationToken ct)
     {
         var graceSeconds = (DateTime.UtcNow - _startTime).TotalSeconds < 90 ? 90 : 30;
         var timeSinceLastSuccess = (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds;
-        if (timeSinceLastSuccess > graceSeconds)
+        if (timeSinceLastSuccess > graceSeconds && _offline.IsGrantActive)
+        {
+            // Parent unlocked with a TOTP code while offline (#9): stay unlocked until the grant ends.
+            if (_offlineLocked && _lockscreen.IsLocked)
+                await _lockscreen.DismissAsync(ct).ConfigureAwait(false);
+            _offlineLocked = false;
+        }
+        else if (timeSinceLastSuccess > graceSeconds)
         {
             // Fail-closed: server unreachable + grace minął
+            var canUnlock = _offline.HasSecret;
+            _offlineLocked = true;
             await _lockscreen.EnsureLockedAsync(new LockState(
                 Reason: "server_unreachable",
-                MainMessage: "Brak połączenia z serwerem rodzica. Komputer odblokuje się po przywróceniu połączenia.",
-                ShowTotpField: false,
+                MainMessage: canUnlock
+                    ? "Brak połączenia z serwerem rodzica. Rodzic może odblokować komputer kodem z telefonu."
+                    : "Brak połączenia z serwerem rodzica. Komputer odblokuje się po przywróceniu połączenia.",
+                ShowTotpField: canUnlock,
                 ShowResumeButton: false,
                 ShowRetryButton: true,
                 ShowShutdownButton: true,
@@ -274,6 +283,7 @@ public sealed class Worker : BackgroundService
 
     private async Task ApplyResponseAsync(HeartbeatResponse response, CancellationToken ct)
     {
+        _offlineLocked = false;
         if (response.LockRequired)
         {
             var ui = response.UiState;
@@ -327,6 +337,16 @@ public sealed class Worker : BackgroundService
     private async Task<TotpResult> HandleTotpFromLockscreenAsync(
         TotpFromLockscreen attempt, CancellationToken ct)
     {
+        if (_offlineLocked)
+        {
+            var offline = _offline.TryUnlock(attempt.Code, attempt.MinutesToGrant);
+            if (offline.Ok)
+            {
+                try { _retrySignal.Release(); } catch (SemaphoreFullException) { }  // dismiss on the next tick now
+            }
+            return offline;
+        }
+
         try
         {
             var resp = await _client.SendTotpAttemptAsync(new TotpAttemptRequest

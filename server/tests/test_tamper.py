@@ -121,3 +121,28 @@ def test_heartbeat_without_telemetry_still_works(watchdog):
 def test_bad_goodbye_reason_is_rejected(watchdog):
     r = watchdog.post("/v1/goodbye", {"instance_id": "x", "reason": "whatever"}, verify=False)
     assert r.status_code == 422
+
+
+def test_lockscreen_kill_loop_is_an_alert(client, watchdog):
+    r = watchdog.post("/v1/tamper_event", {"type": "lockscreen_killed", "kills": 3, "window_seconds": 60,
+                                           "logged_off": True})
+    assert r.json() == {"ok": True}
+    assert _events("tamper_lockscreen") == [
+        ("tamper_lockscreen_killed", {"kills": 3, "window_seconds": 60, "logged_off": True})]
+
+
+def test_unknown_tamper_event_is_rejected(watchdog):
+    assert watchdog.post("/v1/tamper_event", {"type": "anything"}, verify=False).status_code == 422
+
+
+def test_offline_is_stamped_when_the_outage_began(watchdog):
+    """Reported on reconnect, but the journal must place it before what happened during the outage."""
+    from datetime import datetime, timedelta, timezone
+
+    pc = Pc(watchdog)
+    pc.tick()
+    pc.tick(seconds=300, failed=60)
+    with get_connection() as conn:
+        ts = conn.execute("SELECT ts_utc FROM events WHERE event_type = 'watchdog_offline'").fetchone()[0]
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(ts)
+    assert timedelta(seconds=295) < age < timedelta(seconds=310)

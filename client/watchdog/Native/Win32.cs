@@ -149,4 +149,9 @@ public static partial class Win32
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool QueryUnbiasedInterruptTime(out ulong unbiasedTime);
+
+    // === Session logoff (kill-loop response, Lockscreen/RealLockscreenManager.cs) ===
+    [LibraryImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool WTSLogoffSession(IntPtr hServer, uint sessionId, [MarshalAs(UnmanagedType.Bool)] bool bWait);
 }

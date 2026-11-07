@@ -58,7 +58,7 @@ public static class DefaultMessages
         LockReason.Manual            => "Komputer został zablokowany przez rodzica.",
         LockReason.Pause             => "Pauza — czas nie leci. Wróć gdy będziesz gotowy!",
         LockReason.ServerUnreachable =>
-            "Brak połączenia z serwerem rodzica. Komputer odblokuje się po przywróceniu połączenia.",
+            "Brak połączenia z serwerem rodzica. Rodzic może odblokować komputer kodem z telefonu.",
         _ => "Komputer jest zablokowany.",
     };
 }

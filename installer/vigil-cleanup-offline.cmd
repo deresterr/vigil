@@ -112,7 +112,7 @@ echo ==^> Kasuje pliki Vigil
 
 
 
-REM Bypass flag dir (zapisany przez lockscreen po emergency unlock)
+REM Legacy: bypass.flag dir from installs before v0.5
 
 for %%T in ("Vigil Guardian" "Vigil Tray") do (
     if exist "%TARGET%\Windows\System32\Tasks\%%~T" (

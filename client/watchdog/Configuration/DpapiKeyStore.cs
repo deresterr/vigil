@@ -61,7 +61,7 @@ public sealed class DpapiKeyStore
         File.Move(tempPath, _filePath, overwrite: true);
 
         // Ustaw bezpieczne ACL na pliku — SYSTEM full, Administrators read.
-        TryRestrictFileAcl(_filePath);
+        RestrictFileAcl(_filePath, _logger);
 
         _logger.LogInformation("signing.dat zapisany ({Bytes}B encrypted)", encrypted.Length);
 
@@ -147,7 +147,8 @@ public sealed class DpapiKeyStore
         return Convert.FromBase64String(padded);
     }
 
-    private void TryRestrictFileAcl(string path)
+    /// <summary>SYSTEM full, Administrators read, no inheritance. Shared with TotpSecretStore.</summary>
+    internal static void RestrictFileAcl(string path, ILogger logger)
     {
         // ACL setting na Windowsie — jeśli się nie powiedzie (nietypowy filesystem) tylko logujemy,
         // nie crashujemy. Plik DPAPI i tak jest bezużyteczny poza maszyną.
@@ -172,7 +173,7 @@ public sealed class DpapiKeyStore
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Nie udało się ustawić ACL na {Path} — kontynuuję mimo to", path);
+            logger.LogWarning(ex, "Nie udało się ustawić ACL na {Path} — kontynuuję mimo to", path);
         }
     }
 }

@@ -4,7 +4,7 @@ Samodzielnie hostowana kontrola czasu dziecka przy komputerze z Windows 10/11.
 Serwer w Dockerze w domowej sieci liczy czas i decyduje o blokadzie; usługa na PC dziecka
 pokazuje pełnoekranową blokadę. Rodzic zarządza z przeglądarki i odblokowuje kodem TOTP z telefonu.
 
-> **Status: v0.5, przed wydaniem 1.0.** Działa w codziennym użyciu. Dziecko z uprawnieniami administratora
+> **Status: v0.6, przed wydaniem 1.0.** Działa w codziennym użyciu. Dziecko z uprawnieniami administratora
 > jest w stanie Vigila obejść — Vigil ma to utrudnić i pokazać rodzicowi, nie uniemożliwić
 > (patrz [Model zagrożeń](#model-zagrożeń)). Plan dalszych prac: [`docs/review-2026-11.md`](docs/review-2026-11.md).
 
@@ -34,17 +34,19 @@ PC nic nie jest odporne na manipulację. Każdy mechanizm Vigila należy do jedn
 **Utrudnia** — zatrzymuje proces bez uprawnień administratora i przypadkowe próby; administrator to obejdzie:
 - żądania do serwera podpisane kluczem z pliku dostępnego tylko dla SYSTEM i administratorów,
 - brak połączenia z serwerem = blokada (fail-closed),
-- usługa, której administrator nie zatrzyma zwykłym poleceniem; strażnik (guardian) przywraca usługę
-  i binarkę; usługa działa też w trybie awaryjnym,
-- ekran blokady na wszystkich monitorach, zablokowane skróty (Win, Alt+Tab, Alt+F4), polityki
-  (menedżer zadań, edytor rejestru, wylogowanie) — działają też na rodzica, bo to to samo konto,
-- wielokrotne zamykanie ekranu blokady kończy się wylogowaniem,
+- usługa, której administrator nie zatrzyma zwykłym poleceniem; strażnik (guardian) co 5 minut cofa
+  wyłączenie usługi, podmianę jej pliku i inne zmiany w instalacji; usługa działa też w trybie awaryjnym,
+- ekran blokady na wszystkich monitorach, zablokowane skróty (Win, Alt+Tab, Alt+F4), wyłączony
+  menedżer zadań i zmiana hasła konta — te dwie polityki działają też na rodzica, bo to to samo konto,
+- procesu Vigila w sesji dziecka nie da się zamknąć bez uprawnień administratora; zamykany
+  wielokrotnie (np. z podniesionego PowerShella) kończy się wylogowaniem,
 - odblokowanie offline kodem TOTP: sekret jest na dysku PC, administrator może go odczytać.
 
 **Wykrywa** — pokazuje w zakładce Dziennik jako alert do potwierdzenia:
 - zatrzymanie usługi Vigil, ponowne uruchomienie Vigila bez restartu systemu,
 - Vigil zamrożony lub wstrzymany, choć komputer działał,
 - wielokrotne zamykanie ekranu blokady,
+- każdą naprawę strażnika (np. wyłączona usługa, podmieniony plik),
 - serie błędnych kodów TOTP, nieudane logowania do panelu, unieważniony kod parowania.
 
 Odblokowania offline i okresy bez połączenia trafiają do Dziennika jako zwykłe wpisy.
@@ -105,7 +107,7 @@ Odinstalowanie: `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE, gdy syst
 | Katalog | Zawartość |
 |---|---|
 | `server/` | FastAPI + SQLite, panel rodzica, testy |
-| `client/` | usługa Windows (`watchdog`), ekran blokady (`lockscreen`), ikona w zasobniku (`tray`) |
+| `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`) |
 | `installer/` | skrypty instalacji, deinstalacji i strażnika integralności |
 | `docs/` | architektura, przegląd i roadmapa |
 

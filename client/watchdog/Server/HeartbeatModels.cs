@@ -68,6 +68,25 @@ public sealed class TamperEventRequest
     public bool LoggedOff { get; init; }
 }
 
+/// <summary>POST /v1/tamper_event type guardian_repaired — one vigil_guardian.ps1 finding (#36).</summary>
+public sealed class GuardianRepairRequest
+{
+    [JsonPropertyName("type")]
+    public string Type => "guardian_repaired";
+
+    [JsonPropertyName("check")]
+    public required string Check { get; init; }
+
+    [JsonPropertyName("repaired")]
+    public bool Repaired { get; init; }
+
+    [JsonPropertyName("record_id")]
+    public long RecordId { get; init; }
+
+    [JsonPropertyName("occurred_utc")]
+    public required string OccurredUtc { get; init; }
+}
+
 /// <summary>POST /v1/goodbye — sent when the service stops.</summary>
 public sealed class GoodbyeRequest
 {

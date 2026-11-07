@@ -1,4 +1,7 @@
+using System.Drawing;
 using System.Drawing.Drawing2D;
+
+namespace Vigil.Ui;
 
 /// <summary>
 /// Rysuje ikonę tray przez GDI+ — generowana w locie, bez plików zasobów.

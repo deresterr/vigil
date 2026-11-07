@@ -150,7 +150,28 @@ public static partial class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool QueryUnbiasedInterruptTime(out ulong unbiasedTime);
 
-    // === Session logoff (kill-loop response, Lockscreen/RealLockscreenManager.cs) ===
+    // === Security descriptors (vigil_ui process/thread DACL, Ui/UiProcessLauncher.cs) ===
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SECURITY_ATTRIBUTES
+    {
+        public int nLength;
+        public IntPtr lpSecurityDescriptor;
+        public int bInheritHandle;
+    }
+
+    public const uint SDDL_REVISION_1 = 1;
+
+    [LibraryImport("advapi32.dll", EntryPoint = "ConvertStringSecurityDescriptorToSecurityDescriptorW",
+        SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ConvertStringSecurityDescriptorToSecurityDescriptor(
+        string stringSecurityDescriptor, uint revision, out IntPtr securityDescriptor, IntPtr securityDescriptorSize);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    public static partial IntPtr LocalFree(IntPtr hMem);
+
+    // === Session logoff (kill-loop response, Ui/UiManager.cs) ===
     [LibraryImport("wtsapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool WTSLogoffSession(IntPtr hServer, uint sessionId, [MarshalAs(UnmanagedType.Bool)] bool bWait);

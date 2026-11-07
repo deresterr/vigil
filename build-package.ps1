@@ -9,10 +9,9 @@
     Uruchom z root projektu (repo root):
         .\build-package.ps1
 
-    Output: .\dist\ z 8 plikami:
+    Output: .\dist\ z plikami:
         vigil_watchdog.exe     (~80 MB self-contained)
-        vigil_lockscreen.exe   (~80 MB)
-        vigil_tray.exe         (~30 MB, WinForms tray icon)
+        vigil_ui.exe           (~80 MB, lock overlay + tray icon)
         vigil_guardian.ps1
         vigil_install.ps1
         Install.cmd            (launcher bez ExecutionPolicy)
@@ -45,8 +44,7 @@ if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'dist' }
 
 $projects = @(
     @{ Dir = 'client\watchdog';   Exe = 'vigil_watchdog.exe' }
-    @{ Dir = 'client\lockscreen'; Exe = 'vigil_lockscreen.exe' }
-    @{ Dir = 'client\tray';       Exe = 'vigil_tray.exe' }
+    @{ Dir = 'client\ui';         Exe = 'vigil_ui.exe' }
 )
 
 # === Validation ===

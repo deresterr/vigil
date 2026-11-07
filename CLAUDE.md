@@ -10,7 +10,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   child's session, started and kept alive by the watchdog), `shared/IpcMessages.cs` (linked into both).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D13), roadmap (M1 done, M2–M4).
+- `docs/review-2026-11.md` — known defects, decisions (D1–D17), roadmap (M1 done, M2–M4).
   Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"

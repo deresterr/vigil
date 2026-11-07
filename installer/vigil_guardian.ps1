@@ -1,73 +1,54 @@
 ﻿<#
 .SYNOPSIS
-    Drugi watchdog dla vigil_watchdog. Sprawdza integralność i odtwarza kompromitowane elementy.
+    Vigil Guardian: puts back what keeps vigil_watchdog running and reports every repair.
 
 .DESCRIPTION
-    Uruchamiany przez Scheduled Task jako SYSTEM, trigger: At startup + co 5 minut.
-    Sprawdza:
-      1. Service vigil_watchdog istnieje
-      2. Status == Running (3 retry restart przed reboot)
-      3. Hash vigil_watchdog.exe vs reference w DPAPI-protected guardian.dat
-      4. IFEO debugger key (HKLM Image File Execution Options) — nie powinien być
-      5. SafeBoot entries — czy istnieją (żeby vigil_watchdog działał w safe mode)
-      6. Service Recovery config — czy ma restart actions
+    Scheduled Task "Vigil Guardian" (SYSTEM, at startup + every 5 min). Threat model: friction +
+    detection. An elevated child can disable this task too; until then every change below is undone
+    and the watchdog reports it to the parent's journal as tamper_guardian_repaired (#36).
 
-    Wszystkie naprawcze działania logowane do Windows Event Log:
-      Source: Vigil Guardian
-      Log:    Application
+    Checks, in this order (a replaced binary needs a stop/start, the start type must be right before
+    starting the service):
+      7003 binary_replaced      vigil_watchdog.exe hash != guardian.dat → restore from backup\
+      7004 ifeo_debugger        IFEO Debugger on vigil_watchdog.exe → removed
+      7002 service_disabled     start type not automatic → automatic
+      7006 recovery_missing     no restart actions → the installer's ones
+      7005 safeboot_missing     SafeBoot Minimal/Network entries → recreated
+      7001 service_not_running  still stopped after the recovery delay → started
 
-    Instalacja Scheduled Task — patrz vigil_install.ps1 / Install.cmd, tutaj tylko sam script.
+    Event Log (Application, source "Vigil Guardian"): those IDs are the contract with the watchdog
+    (client/watchdog/Guardian/GuardianReporter.cs). Warning = repaired, Error = repair failed.
+    Other IDs (1xxx, 9999) are diagnostics only.
 #>
 
 [CmdletBinding()]
 param(
     [string]$ProgramDataRoot = "C:\ProgramData\Vigil",
     [string]$ServiceName     = "vigil_watchdog",
-    [string]$WatchdogExeName = "vigil_watchdog.exe",
-    [string]$EventSource     = "Vigil Guardian",
-    [int]   $MaxRestartRetries = 3,
-    [int]   $RebootDelaySeconds = 60,
-
-    # Tryb dry-run — sprawdza wszystko i loguje, ale nie wykonuje napraw.
-    # Przydatne do testowania bez ryzyka reboota.
-    [switch]$DryRun
+    [string]$EventSource     = "Vigil Guardian"
 )
 
-$ErrorActionPreference = 'Continue'  # nie chcemy żeby pojedynczy błąd zabił cały check
+$ErrorActionPreference = 'Continue'  # one failed check must not stop the others
 
-# === Stałe lokalne ===
-
-$watchdogExePath = Join-Path $ProgramDataRoot $WatchdogExeName
-$guardianDatPath = Join-Path $ProgramDataRoot "guardian.dat"
+$watchdogExePath    = Join-Path $ProgramDataRoot "vigil_watchdog.exe"
+$guardianDatPath    = Join-Path $ProgramDataRoot "guardian.dat"
 $watchdogBackupPath = Join-Path $ProgramDataRoot "backup\vigil_watchdog.exe"
-
-# Counter persistence — ile restartów z rzędu nie pomogło.
-# Nie chcemy reboota po pierwszym false-positive (np. timing race przy boot).
-$restartCounterPath = Join-Path $ProgramDataRoot "guardian_restart_counter.txt"
-
-# SafeBoot keys (Network = NetworkWindows, Minimal = SafeWindows)
-$safeBootKeys = @(
-    'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal\vigil_watchdog',
-    'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\vigil_watchdog'
+$serviceKey         = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
+$ifeoKey            = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\vigil_watchdog.exe'
+$safeBootKeys       = @(
+    "HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal\$ServiceName",
+    "HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\$ServiceName"
 )
+# Service recovery restarts the watchdog 60 s after a crash or kill; wait that out before calling a
+# stopped service tampering.
+$RecoveryWaitSeconds = 75
 
-# IFEO key — jeśli ktoś ustawi Debugger=cmd.exe to przy starcie vigil_watchdog.exe
-# system odpali debugger zamiast nas. Klasyczna technika persistence/sabotage.
-$ifeoKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\vigil_watchdog.exe'
+# === Event Log ===
 
-# === Logging helpers ===
-
-# Event Log source musi istnieć przed pisaniem. Tworzymy idempotentnie — jeśli już jest, ignoruje.
-# UWAGA: New-EventLog wymaga uprawnień admin (które guardian ma jako SYSTEM).
-function Ensure-EventSource {
+function Initialize-EventSource {
     if (-not [System.Diagnostics.EventLog]::SourceExists($EventSource)) {
-        try {
-            New-EventLog -LogName Application -Source $EventSource -ErrorAction Stop
-        } catch {
-            # Jeśli stworzenie source padło, zostaw — fall back na Write-Host żeby przynajmniej
-            # task scheduler history coś pokazało.
-            Write-Host "Nie udało się stworzyć event source: $_"
-        }
+        try { New-EventLog -LogName Application -Source $EventSource -ErrorAction Stop }
+        catch { Write-Host "Could not create the event source: $_" }
     }
 }
 
@@ -80,302 +61,146 @@ function Write-GuardianEvent {
     try {
         Write-EventLog -LogName Application -Source $EventSource `
             -EntryType $EntryType -EventId $EventId -Message $Message -ErrorAction Stop
-    } catch {
-        Write-Host "[$EntryType] $Message"
-    }
-    # Zawsze do stdout dla Task Scheduler history
-    Write-Host "[$EntryType] $Message"
+    } catch { }
+    Write-Host "[$EntryType $EventId] $Message"  # Task Scheduler history
 }
 
-# === Restart counter (persistent) ===
-
-function Get-RestartCounter {
-    if (Test-Path $restartCounterPath) {
-        $raw = Get-Content $restartCounterPath -Raw -ErrorAction SilentlyContinue
-        if ($raw -match '^\s*(\d+)\s*$') { return [int]$matches[1] }
-    }
-    return 0
-}
-
-function Set-RestartCounter {
-    param([int]$Value)
-    Set-Content -Path $restartCounterPath -Value $Value -Force -ErrorAction SilentlyContinue
-}
-
-function Reset-RestartCounter { Set-RestartCounter 0 }
-
-# === Check 1: Service istnieje ===
-
-function Test-ServiceExists {
-    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    return ($null -ne $svc)
-}
-
-# === Check 2: Service running (z restart logic) ===
-
-function Test-ServiceRunning {
-    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($null -eq $svc) { return $false }
-    return ($svc.Status -eq 'Running')
-}
-
-function Repair-Service {
-    if ($DryRun) {
-        Write-GuardianEvent -EntryType Warning -EventId 2001 `
-            -Message "[DryRun] Service $ServiceName nie running — pominięto restart"
-        return
-    }
-
-    $counter = Get-RestartCounter
-    $counter++
-    Set-RestartCounter $counter
-
-    Write-GuardianEvent -EntryType Warning -EventId 2002 `
-        -Message "Service $ServiceName nie running (próba $counter/$MaxRestartRetries) — Restart-Service"
-
+# Runs $Repair and logs the finding for the watchdog: Warning if it worked, Error if it threw.
+function Repair-Finding {
+    param([int] $EventId, [string] $What, [scriptblock] $Repair)
     try {
-        Start-Service -Name $ServiceName -ErrorAction Stop
-        # Daj 5s na faktyczny start
-        Start-Sleep -Seconds 5
-        $svc = Get-Service -Name $ServiceName
-        if ($svc.Status -eq 'Running') {
-            Write-GuardianEvent -EventId 2003 -Message "Service $ServiceName wystartował, counter zresetowany"
-            Reset-RestartCounter
-            return
-        }
+        & $Repair
+        Write-GuardianEvent -EntryType Warning -EventId $EventId -Message "$What — naprawione"
     } catch {
-        Write-GuardianEvent -EntryType Error -EventId 2004 `
-            -Message "Start-Service failed: $_"
-    }
-
-    # Jeśli osiągnęliśmy próg, reboot
-    if ($counter -ge $MaxRestartRetries) {
-        Write-GuardianEvent -EntryType Error -EventId 2099 `
-            -Message "Service $ServiceName nie wstaje po $counter próbach — reboot za $RebootDelaySeconds s"
-        Reset-RestartCounter
-        Start-Process -FilePath shutdown.exe -ArgumentList @(
-            '/r', '/t', "$RebootDelaySeconds",
-            '/c', "Vigil Guardian: vigil_watchdog nie odpowiada"
-        ) -NoNewWindow
+        Write-GuardianEvent -EntryType Error -EventId $EventId -Message "$What — naprawa nie powiodła się: $_"
     }
 }
 
-# === Check 3: Hash binarki ===
+# === Checks ===
 
-function Get-WatchdogReferenceHash {
-    # guardian.dat: DPAPI-encrypted plain text z hashem SHA256 (hex string). Zapisywany przez vigil_install.ps1 (Install.cmd).
+function Get-ReferenceHash {
+    # guardian.dat: SHA256 hex of vigil_watchdog.exe, DPAPI LocalMachine, written by the installer.
     if (-not (Test-Path $guardianDatPath)) { return $null }
     try {
-        $encrypted = [byte[]](Get-Content -Path $guardianDatPath -Encoding Byte -ErrorAction Stop)
         Add-Type -AssemblyName System.Security
         $plain = [System.Security.Cryptography.ProtectedData]::Unprotect(
-            $encrypted, $null,
+            [System.IO.File]::ReadAllBytes($guardianDatPath), $null,
             [System.Security.Cryptography.DataProtectionScope]::LocalMachine)
         return ([System.Text.Encoding]::UTF8.GetString($plain)).Trim()
     } catch {
-        Write-GuardianEvent -EntryType Warning -EventId 3001 `
-            -Message "Nie udało się odczytać guardian.dat: $_"
+        Write-GuardianEvent -EntryType Warning -EventId 1003 -Message "guardian.dat unreadable: $_"
         return $null
     }
 }
 
-function Test-WatchdogHash {
-    if (-not (Test-Path $watchdogExePath)) {
-        Write-GuardianEvent -EntryType Error -EventId 3002 `
-            -Message "Plik $watchdogExePath nie istnieje"
-        return $false
-    }
-
-    $referenceHash = Get-WatchdogReferenceHash
-    if (-not $referenceHash) {
-        # Brak reference — installer nie ustawił. Logujemy ale nie traktujemy jako fail
-        # (lepiej brak checka niż false-positive sabotage alert).
-        Write-GuardianEvent -EntryType Warning -EventId 3003 `
-            -Message "Brak reference hash w guardian.dat — pomijam check integralności"
-        return $true
-    }
-
-    $actualHash = (Get-FileHash -Path $watchdogExePath -Algorithm SHA256).Hash
-    return ($actualHash -eq $referenceHash)
+function Test-BinaryIntact {
+    $reference = Get-ReferenceHash
+    if (-not $reference) { return $true }  # no reference: better no check than a false alert
+    if (-not (Test-Path $watchdogExePath)) { return $false }
+    return ((Get-FileHash -Path $watchdogExePath -Algorithm SHA256).Hash -eq $reference)
 }
 
-function Repair-WatchdogBinary {
-    if (-not (Test-Path $watchdogBackupPath)) {
-        Write-GuardianEvent -EntryType Error -EventId 3098 `
-            -Message "Hash mismatch i brak backup w $watchdogBackupPath — manual recovery wymagany"
-        return
-    }
-    if ($DryRun) {
-        Write-GuardianEvent -EntryType Warning -EventId 3099 `
-            -Message "[DryRun] Hash mismatch — pominięto restore z backup"
-        return
-    }
-    try {
-        # Stop service przed nadpisaniem (file lock)
-        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        Copy-Item -Path $watchdogBackupPath -Destination $watchdogExePath -Force
-        Start-Service -Name $ServiceName -ErrorAction SilentlyContinue
-        Write-GuardianEvent -EntryType Warning -EventId 3010 `
-            -Message "Hash mismatch — restored z backup $watchdogBackupPath"
-    } catch {
-        Write-GuardianEvent -EntryType Error -EventId 3011 `
-            -Message "Restore z backup failed: $_"
-    }
+function Restore-Binary {
+    if (-not (Test-Path $watchdogBackupPath)) { throw "brak kopii $watchdogBackupPath" }
+    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue  # file lock
+    Start-Sleep -Seconds 2
+    Copy-Item -Path $watchdogBackupPath -Destination $watchdogExePath -Force -ErrorAction Stop
+    Start-Service -Name $ServiceName -ErrorAction Stop
 }
-
-# === Check 4: IFEO Debugger ===
 
 function Test-IfeoClean {
     if (-not (Test-Path $ifeoKey)) { return $true }
     $debugger = (Get-ItemProperty -Path $ifeoKey -Name 'Debugger' -ErrorAction SilentlyContinue).Debugger
-    return ([string]::IsNullOrEmpty($debugger))
+    return [string]::IsNullOrEmpty($debugger)
 }
 
-function Repair-Ifeo {
-    if ($DryRun) {
-        Write-GuardianEvent -EntryType Warning -EventId 4001 `
-            -Message "[DryRun] IFEO Debugger ustawiony — pominięto usunięcie"
-        return
-    }
-    try {
-        if (Test-Path $ifeoKey) {
-            Remove-ItemProperty -Path $ifeoKey -Name 'Debugger' -ErrorAction SilentlyContinue
-            # Jeśli klucz pusty po usunięciu Debugger, można usunąć cały klucz, ale safer
-            # zostawić — może mieć inne legitne values.
-        }
-        Write-GuardianEvent -EntryType Warning -EventId 4010 `
-            -Message "IFEO Debugger usunięty z $ifeoKey"
-    } catch {
-        Write-GuardianEvent -EntryType Error -EventId 4011 -Message "IFEO repair failed: $_"
-    }
+function Test-StartAutomatic {
+    # Start: 2 = automatic (installer: sc.exe create start= auto)
+    return ((Get-ItemProperty -Path $serviceKey -Name 'Start' -ErrorAction SilentlyContinue).Start -eq 2)
 }
 
-# === Check 5: SafeBoot entries ===
+function Test-ServiceRecovery {
+    $output = & sc.exe qfailure $ServiceName 2>&1 | Out-String
+    return ($output -match 'RESTART')
+}
+
+function Set-ServiceRecovery {
+    # Same as Step-RegisterService in vigil_install.ps1.
+    & sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "sc.exe failure: exit $LASTEXITCODE" }
+    & sc.exe failureflag $ServiceName 1 | Out-Null
+}
 
 function Test-SafeBootEntries {
     foreach ($key in $safeBootKeys) {
         if (-not (Test-Path $key)) { return $false }
-        # Default value w rejestrze PS access przez '(default)'.
-        # Get-ItemProperty zwraca obiekt PSCustomObject z property '(default)' (lowercase).
-        $props = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
-        if ($null -eq $props) { return $false }
-        $val = $props.'(default)'
-        # SafeBoot wymaga value "Service" dla services
-        if ($val -ne 'Service') { return $false }
+        if ((Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).'(default)' -ne 'Service') { return $false }
     }
     return $true
 }
 
-function Repair-SafeBootEntries {
-    if ($DryRun) {
-        Write-GuardianEvent -EntryType Warning -EventId 5001 `
-            -Message "[DryRun] SafeBoot entries brakują — pominięto recreate"
+function Set-SafeBootEntries {
+    foreach ($key in $safeBootKeys) {
+        if (-not (Test-Path $key)) { New-Item -Path $key -Force -ErrorAction Stop | Out-Null }
+        Set-Item -Path $key -Value 'Service' -Force -ErrorAction Stop  # the key's default value
+    }
+}
+
+function Test-ServiceUp {
+    $status = (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status
+    return ($status -eq 'Running' -or $status -eq 'StartPending')
+}
+
+function Start-WatchdogService {
+    Start-Service -Name $ServiceName -ErrorAction Stop
+    Start-Sleep -Seconds 5
+    if (-not (Test-ServiceUp)) { throw "usługa nie wstała" }
+}
+
+# === Main ===
+
+function Invoke-Guardian {
+    Initialize-EventSource
+
+    if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
+        # Nothing to repair without the service; reinstalling is the installer's job.
+        Write-GuardianEvent -EntryType Error -EventId 1099 -Message "Usługa $ServiceName nie istnieje"
         return
     }
-    foreach ($key in $safeBootKeys) {
-        try {
-            if (-not (Test-Path $key)) {
-                # Tworzymy całą ścieżkę
-                $parent = Split-Path -Parent $key
-                if (-not (Test-Path $parent)) { New-Item -Path $parent -Force | Out-Null }
-                New-Item -Path $key -Force | Out-Null
-            }
-            # Default value w rejestrze: Set-Item (nie Set-ItemProperty z Name='(Default)' — to nie działa).
-            # `Set-Item -Path <key> -Value "..."` ustawia default value.
-            Set-Item -Path $key -Value 'Service' -Force
-        } catch {
-            Write-GuardianEvent -EntryType Error -EventId 5011 `
-                -Message "SafeBoot $key recreate failed: $_"
+
+    if (-not (Test-BinaryIntact)) {
+        Repair-Finding 7003 "Plik vigil_watchdog.exe był podmieniony" { Restore-Binary }
+    }
+    if (-not (Test-IfeoClean)) {
+        Repair-Finding 7004 "IFEO Debugger na vigil_watchdog.exe" {
+            Remove-ItemProperty -Path $ifeoKey -Name 'Debugger' -ErrorAction Stop
         }
     }
-    Write-GuardianEvent -EntryType Warning -EventId 5010 -Message "SafeBoot entries recreated"
-}
-
-# === Check 6: Service Recovery config ===
-
-function Test-ServiceRecovery {
-    # sc qfailure zwraca text. Szukamy "RESTART -- Delay = 0 milliseconds." lub "REBOOT" w outputie.
-    $output = & sc.exe qfailure $ServiceName 2>&1 | Out-String
-    return ($output -match 'RESTART' -or $output -match 'REBOOT')
-}
-
-function Repair-ServiceRecovery {
-    if ($DryRun) {
-        Write-GuardianEvent -EntryType Warning -EventId 6001 `
-            -Message "[DryRun] Service Recovery config brakuje — pominięto"
-        return
+    if (-not (Test-StartAutomatic)) {
+        Repair-Finding 7002 "Usługa wyłączona z autostartu" {
+            & sc.exe config $ServiceName start= auto | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "sc.exe config: exit $LASTEXITCODE" }
+        }
     }
-    try {
-        # reset=60 (counter reset po 60s normalnej pracy)
-        # actions=restart/0/restart/0/reboot/60000 — restart natychmiast×2, potem reboot za 60s
-        & sc.exe failure $ServiceName reset= 60 actions= restart/0/restart/0/reboot/60000 | Out-Null
-        Write-GuardianEvent -EntryType Warning -EventId 6010 -Message "Service Recovery config recreated"
-    } catch {
-        Write-GuardianEvent -EntryType Error -EventId 6011 -Message "Service Recovery repair failed: $_"
-    }
-}
-
-# === Main flow ===
-
-function Main {
-    Ensure-EventSource
-
-    Write-GuardianEvent -EventId 1001 -Message "Guardian check start (DryRun=$DryRun)"
-
-    # Check 1: service exists. Jeśli nie, dalsze checki nie mają sensu.
-    if (-not (Test-ServiceExists)) {
-        Write-GuardianEvent -EntryType Error -EventId 1099 `
-            -Message "Service $ServiceName nie istnieje — installer powinien ją stworzyć"
-        # Guardian tylko alertuje, reinstall to job installera.
-        return
-    }
-
-    # Check 2: service running
-    if (-not (Test-ServiceRunning)) {
-        Repair-Service
-    } else {
-        # Service działa — reset counter (na wypadek gdyby poprzedni run go inkrementował)
-        if ((Get-RestartCounter) -gt 0) { Reset-RestartCounter }
-    }
-
-    # Check 3: hash. Restore tylko jeśli jest backup.
-    if (-not (Test-WatchdogHash)) {
-        Write-GuardianEvent -EntryType Warning -EventId 3009 `
-            -Message "Hash $WatchdogExeName != reference"
-        Repair-WatchdogBinary
-    }
-
-    # Check 4: IFEO debugger
-    if (-not (Test-IfeoClean)) {
-        Write-GuardianEvent -EntryType Warning -EventId 4009 `
-            -Message "IFEO Debugger key wykryty na vigil_watchdog.exe"
-        Repair-Ifeo
-    }
-
-    # Check 5: SafeBoot
-    if (-not (Test-SafeBootEntries)) {
-        Write-GuardianEvent -EntryType Warning -EventId 5009 `
-            -Message "SafeBoot entries niekompletne"
-        Repair-SafeBootEntries
-    }
-
-    # Check 6: Service Recovery config
     if (-not (Test-ServiceRecovery)) {
-        Write-GuardianEvent -EntryType Warning -EventId 6009 `
-            -Message "Service Recovery config brakuje"
-        Repair-ServiceRecovery
+        Repair-Finding 7006 "Brak automatycznego restartu usługi" { Set-ServiceRecovery }
     }
-
-    Write-GuardianEvent -EventId 1002 -Message "Guardian check zakończony"
+    if (-not (Test-SafeBootEntries)) {
+        Repair-Finding 7005 "Brak wpisów SafeBoot" { Set-SafeBootEntries }
+    }
+    if (-not (Test-ServiceUp)) {
+        # A crash or kill is restarted by service recovery after 60 s; update-config stops it briefly.
+        Start-Sleep -Seconds $RecoveryWaitSeconds
+        if (-not (Test-ServiceUp)) {
+            Repair-Finding 7001 "Usługa była zatrzymana" { Start-WatchdogService }
+        }
+    }
 }
 
-# Wrap całość żeby nieoczekiwany wyjątek też trafił do event log a nie tylko Task Scheduler history
 try {
-    Main
+    Invoke-Guardian
 } catch {
-    Ensure-EventSource
-    Write-GuardianEvent -EntryType Error -EventId 9999 `
-        -Message "Guardian crash: $_`n$($_.ScriptStackTrace)"
+    Initialize-EventSource
+    Write-GuardianEvent -EntryType Error -EventId 9999 -Message "Guardian crash: $_`n$($_.ScriptStackTrace)"
     exit 1
 }

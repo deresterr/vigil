@@ -13,6 +13,8 @@ import sqlite3
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
+from .db import get_config_values
+
 # === Datetime helpers ===
 
 
@@ -59,23 +61,14 @@ def is_in_night_window(now_local_time: time, night_start: time, night_end: time)
 
 
 def load_lock_config(conn: sqlite3.Connection) -> dict:
-    """Odczytuje z DB wszystkie klucze potrzebne do compute_lock_reason.
-
-    Używane przez ścieżki nie-heartbeat (admin, totp, pause) które nie korzystają
-    z cache. Heartbeat używa _get_hb_cfg() który batch-cachuje te i inne klucze.
-    """
-    keys = ("night_lock_start", "night_lock_end",
-            "daily_limit_weekday", "daily_limit_weekend")
-    rows = dict(
-        conn.execute(
-            "SELECT key, value FROM config WHERE key IN (?, ?, ?, ?)", keys
-        ).fetchall()
-    )
+    """Config keys compute_lock_reason needs (every caller, heartbeat included; no cache)."""
+    rows = get_config_values(conn, ("night_lock_start", "night_lock_end",
+                                    "daily_limit_weekday", "daily_limit_weekend"))
     return {
-        "night_lock_start":    rows.get("night_lock_start", "22:00"),
-        "night_lock_end":      rows.get("night_lock_end",   "07:00"),
-        "daily_limit_weekday": int(rows.get("daily_limit_weekday", "120")),
-        "daily_limit_weekend": int(rows.get("daily_limit_weekend", "240")),
+        "night_lock_start":    rows["night_lock_start"],
+        "night_lock_end":      rows["night_lock_end"],
+        "daily_limit_weekday": int(rows["daily_limit_weekday"]),
+        "daily_limit_weekend": int(rows["daily_limit_weekend"]),
     }
 
 
@@ -95,7 +88,7 @@ def compute_lock_reason(
 
     cfg musi zawierać: night_lock_start, night_lock_end,
                        daily_limit_weekday, daily_limit_weekend.
-    Można przekazać wynik load_lock_config(conn) lub pole z heartbeat cache.
+    Pass load_lock_config(conn).
     """
     if state["manual_lock"]:
         return "manual"

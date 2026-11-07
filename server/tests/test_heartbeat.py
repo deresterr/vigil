@@ -158,3 +158,12 @@ def test_totp_lockout_blocks_valid_code_until_it_expires(watchdog):
         t.shift(61)
         r = watchdog.post("/v1/totp_attempt", {"code": pyotp.TOTP(config("totp_secret")).now()})
         assert r.status_code == 200
+
+
+def test_settings_change_applies_on_the_next_heartbeat(watchdog):
+    """No config cache: a limit changed in the panel counts at once, not after a TTL."""
+    with time_machine.travel(NOON, tick=False):
+        assert watchdog.heartbeat()["lock_required"] is False
+        with get_connection() as conn:
+            set_config_value(conn, "daily_limit_weekday", "0")
+        assert watchdog.heartbeat()["lock_reason"] == "limit"

@@ -6,14 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using Vigil.Lockscreen.ViewModels;
+using Vigil.Ui.ViewModels;
 // Alias dla Screen z WinForms — żeby nie wciągać całego namespace, który konfliktuje z WPF
 // (np. KeyEventArgs jest w obu, Application też).
 using WinFormsScreen = System.Windows.Forms.Screen;
 // MessageBox z WPF (System.Windows.MessageBox) — alias żeby krócej się odwoływać.
 using MessageBox = System.Windows.MessageBox;
 
-namespace Vigil.Lockscreen;
+namespace Vigil.Ui;
 
 /// <summary>
 /// Fullscreen lockscreen window. Każdy monitor dostaje swoją instancję — wszystkie
@@ -155,7 +155,7 @@ public partial class LockWindow : Window
     private async void ResumeFromPause_Click(object sender, RoutedEventArgs e)
     {
         // Informujemy watchdoga — on woła serwer (/v1/pause_toggle), serwer wyłącza pauzę.
-        // Lockscreen zniknie przy następnym heartbeat gdy lock_reason != "pause".
+        // The overlay goes away on the next heartbeat once lock_reason != "pause".
         if (IsStandaloneTestMode())
         {
             _vm.StatusMessage = "Pauza zakończona (test).";
@@ -206,8 +206,7 @@ public partial class LockWindow : Window
             {
                 _vm.Phase = LockUiPhase.GrantApplied;
                 _vm.StatusMessage = resp.Applied ?? $"Dodano {minutes} minut.";
-                // Lockscreen zostaje na ekranie aż watchdog wyśle IpcExit (zauważy unlock przy
-                // następnym tickcie heartbeat).
+                // The overlay stays until the watchdog sends IpcUnlock (on its next heartbeat).
             }
             else
             {

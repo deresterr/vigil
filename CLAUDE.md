@@ -6,11 +6,11 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 ## Layout
 - `server/` — FastAPI + SQLite, one Docker container per child PC. Entry `app/main.py`,
   time/lock rules `app/lock_logic.py` + `app/endpoints/heartbeat.py`. Admin UI = static HTML in `app/static/`.
-- `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `lockscreen` (WPF, user session),
-  `tray` (WinForms, user session).
+- `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
+  child's session, started and kept alive by the watchdog), `shared/IpcMessages.cs` (linked into both).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D13), roadmap (M1 done, M2–M4).
+- `docs/review-2026-11.md` — known defects, decisions (D1–D17), roadmap (M1–M2 done, M3, M4.1).
   Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"
@@ -57,12 +57,14 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - C#: never filter with `when (ex is not OperationCanceledException)` — an `HttpClient` timeout is a
   `TaskCanceledException` and slipped past the fail-closed check (#31). Filter on the caller's token:
   `when (!ct.IsCancellationRequested)`.
-- `client/tray` has `ImplicitUsings=disable`: add `System.IO`, `System.IO.Pipes`, `System.Text`,
-  `System.Text.Json` explicitly (`System.IO.Pipes` does not bring `System.IO`).
-- XAML `x:Class` must match the code-behind namespace (`Vigil.Lockscreen.*`).
+- XAML `x:Class` must match the code-behind namespace (`Vigil.Ui.*`).
+- `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using
+  removed: it clashes with WPF (`Application`, `KeyEventArgs`). Alias what you need (`using Forms = …`).
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via
-  `CreateProcessAsUser` (`LockscreenProcessLauncher`), e.g. the `--restore-taskbar-only` helper.
-- `IpcMessages.cs` exists in both watchdog and lockscreen — keep them identical.
+  `CreateProcessAsUser` (`UiProcessLauncher`).
+- vigil_ui runs with a process DACL that denies the user `PROCESS_TERMINATE`/`WRITE_DAC`: never open the
+  own process by PID inside it (e.g. `Process.GetCurrentProcess().MainModule`) — use pseudo-handles or
+  `GetModuleHandle(null)`.
 
 ## Conventions
 - New code, comments, commit messages: English. Existing Polish comments: leave unless touching the code.

@@ -1,19 +1,20 @@
-# Architecture (as of v0.5)
+# Architecture (as of v0.6)
 
 Describes the system as it is. Planned changes live in `review-2026-11.md`.
 
 ```
  Parent: browser (/admin) + TOTP app on phone
               │
- ┌────────────▼─────────────┐   HTTP, LAN/VPN    ┌────────────────────────────────────────┐
- │ server (Docker)          │◄──────────────────►│ vigil_watchdog  (Windows Service, SYSTEM)│
- │ FastAPI + SQLite (WAL)   │  /v1/* every 1–30 s │   │ \\.\pipe\VigilUI      │ \\.\pipe\VigilTray
- │ 1 container = 1 child PC │                     │   ▼                       ▼              │
- └──────────────────────────┘                     │ vigil_lockscreen (WPF)  vigil_tray (WinForms)
-                                                  │  spawned on lock via     started by task
-                                                  │  CreateProcessAsUser     "Vigil Tray" at logon
-                                                  │ vigil_guardian.ps1 (task "Vigil Guardian", SYSTEM, 5 min)
-                                                  └────────────────────────────────────────┘
+ ┌────────────▼─────────────┐   HTTP, LAN/VPN     ┌─────────────────────────────────────────────┐
+ │ server (Docker)          │◄───────────────────►│ vigil_watchdog  (Windows Service, SYSTEM)   │
+ │ FastAPI + SQLite (WAL)   │  /v1/* every 1–60 s │   │ \\.\pipe\VigilUI                          │
+ │ 1 container = 1 child PC │                     │   ▼                                         │
+ └──────────────────────────┘                     │ vigil_ui (WPF, child's session): tray icon   │
+                                                  │   always, lock overlay on demand; started    │
+                                                  │   and kept alive by the watchdog             │
+                                                  │ vigil_guardian.ps1 (task "Vigil Guardian",   │
+                                                  │   SYSTEM, boot + 5 min)                      │
+                                                  └─────────────────────────────────────────────┘
 ```
 
 ## Server ↔ watchdog protocol (`/v1/*`)
@@ -74,7 +75,9 @@ Compared with the previous heartbeat (`wd_*` config keys, reset on pairing):
 | same instance, awake gap > 90 s, 0 failed attempts | `tamper_watchdog_silent` (suspended/frozen) |
 | same instance, awake gap > 90 s, retries | `watchdog_offline` (info) |
 | new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
-| lockscreen we spawned exits on its own 3× within 60 s (kill loop) | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
+| vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
+
+| vigil_guardian.ps1 repaired something (Event Log 7001–7006) | `tamper_guardian_repaired` (`check`, `repaired`), stamped with the repair time; sent by `GuardianReporter` every minute, deduped by record id + time |
 
 `tamper_*` = alerts for the parent. Not detected: a watchdog that is stopped and never comes back
 (the panel only shows "offline"), and anything an admin forges with the signing key.
@@ -103,34 +106,45 @@ Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cook
 ## Watchdog loop (`Worker.cs`)
 
 Every 5 s (1 s while locked, up to 60 s if the server says so):
-1. `SessionDetector` — any WTS session ≠ 0 in Active/Connected state.
-2. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, push state to tray.
-3. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message), unless an
+1. `UiManager.EnsureRunningAsync` — vigil_ui running and connected in the active session (below).
+2. `SessionDetector` — any WTS session ≠ 0 in Active/Connected state.
+3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, tray state.
+4. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message), unless an
    offline grant is active (see Offline unlock). Also on request timeouts and unexpected exceptions.
 
-Lock = spawn `vigil_lockscreen.exe` in the user session (`WTSQueryUserToken` → `CreateProcessAsUser`,
-desktop `WinSta0\Default`), wait ≤ 10 s for it to connect to `VigilUI` (peer verified by exe path),
-send `set_state`. Dismiss = `exit` message, kill after 1 s, then always spawn
-`vigil_lockscreen.exe --restore-taskbar-only`.
+vigil_ui (D8) is spawned in the active session (`WTSQueryUserToken` → `CreateProcessAsUser`, desktop
+`WinSta0\Default`) with a process/thread DACL that gives the user no terminate, suspend or WRITE_DAC
+(`OW` caps the owner's implicit rights; SYSTEM and BA full) — friction: an elevated admin can still
+kill it. The watchdog creates the pipe first, then waits ≤ 10 s for the connect (or less, if the process
+dies) and accepts only the PID it spawned. After a respawn it re-sends the lock and tray state, because
+a new UI starts unlocked. Lock = `set_state`, unlock = `unlock`; the UI hides the taskbar while locked
+and restores it on unlock and on start (an instance killed while locked leaves it hidden). Orphans in
+the session (previous watchdog instance; `vigil_lockscreen`/`vigil_tray` of versions before v0.6) are
+killed before a spawn. The UI quits when the pipe connect fails and 30 s after losing the pipe.
+Diagnostics: `%LOCALAPPDATA%\Vigil\ui.log`.
 
 The TOTP field accepts only digits (typed or pasted, max 6) and regains focus after each check.
 
-Lockscreen hardening: fullscreen on every monitor, `TopmostEnforcer` (500 ms), `KeyboardBlocker`
+Lock overlay hardening: fullscreen on every monitor, `TopmostEnforcer` (500 ms), `KeyboardBlocker`
 (WH_KEYBOARD_LL: Win, Alt+Tab, Alt+F4, Ctrl+Esc), `TaskbarHider`. Ctrl+Alt+Del cannot be blocked;
-installer policies (`DisableTaskMgr`, `DisableLockWorkstation`, `NoLogoff`, …) cover that path.
+the installer's per-user policies close what it offers: `DisableTaskMgr` (Task Manager over the overlay)
+and `DisableChangePassword` (the shared account's password), plus accessibility hotkeys and touchpad
+gestures off. Nothing else (D12: they hit the parent too); older installs' `DisableRegistryTools`,
+`DisableLockWorkstation` and `NoLogoff` are removed on install.
 
 ## IPC (JSON, one message per line)
 
 | Pipe | Server | Client | Messages |
 |---|---|---|---|
-| `VigilUI` | watchdog | lockscreen | → `set_state`, `exit`, `totp_response`; ← `totp_attempt`, `retry_now`, `resume_from_pause`, `shutdown_request` |
-| `VigilTray` | watchdog | tray | → `state_update` (`paused`, `can_pause`, `minutes_remaining`); ← `pause_toggle` |
+| `VigilUI` | watchdog | vigil_ui | → `set_state`, `unlock`, `tray_state` (`paused`, `can_pause`, `minutes_remaining`), `totp_response`, `exit`; ← `totp_attempt`, `retry_now`, `resume_from_pause`, `pause_toggle`, `shutdown_request` |
 
-Pipe DACL: SYSTEM + Administrators full, Authenticated Users read/write.
+Messages are defined once in `client/shared/IpcMessages.cs`, linked into both projects.
+Pipe DACL: SYSTEM + Administrators full, Authenticated Users read/write; the client PID check keeps
+other programs out.
 
 ## Offline unlock (`offline.py`, `Offline/OfflineUnlock.cs`)
 
-When the watchdog has failed closed (`server_unreachable`), a TOTP code typed on the lockscreen is
+When the watchdog has failed closed (`server_unreachable`), a TOTP code typed on the lock overlay is
 verified by the watchdog itself: ±1 step, each step once, every 3rd failure locks 60/300/900 s (cap),
 grant ≤ 120 min, ended as soon as the server answers. The secret comes from the server in the signed
 heartbeat response whenever the watchdog's `totp_fp` (sha256[:16]) differs — after pairing or a TOTP
@@ -143,15 +157,15 @@ the installer removes both.
 ## Windows footprint
 
 ```
-C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_lockscreen.exe, vigil_tray.exe, vigil_guardian.ps1,
+C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_ui.exe, vigil_guardian.ps1,
                         vigil.toml (server_url only), signing.dat, totp.dat, guardian.dat,
                         backup\vigil_watchdog.exe
                         ACL: SYSTEM full, Administrators modify, Authenticated Users read+execute (inherited)
 Service        vigil_watchdog ("Vigil Watchdog"), auto start, restart ×3, restricted DACL
-Tasks          "Vigil Guardian" (SYSTEM, boot + 5 min), "Vigil Tray" (child, at logon)
+Tasks          "Vigil Guardian" (SYSTEM, boot + 5 min)
 Registry       HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\{Minimal,Network}\vigil_watchdog
 Event Log      sources "Vigil Watchdog", "Vigil Guardian"
 ```
 
-Guardian checks: service exists, running, binary hash (restore from backup), IFEO debugger,
-SafeBoot keys, recovery config, tray task.
+Guardian (`docs/guardian.md`): binary hash (restore from backup), IFEO debugger, automatic start,
+recovery actions, SafeBoot keys, service running; each repair is an Event Log entry the watchdog reports.

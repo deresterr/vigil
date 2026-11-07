@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace Vigil.Lockscreen.ViewModels;
+namespace Vigil.Ui.ViewModels;
 
 /// <summary>
 /// State machine lockscreen UI:

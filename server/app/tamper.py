@@ -15,6 +15,7 @@ Events with the "tamper_" prefix are alerts for the parent panel (#8); the rest 
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 from .db import get_config_value, log_event, set_config_value
 
@@ -55,8 +56,11 @@ def process_telemetry(
                     # Alive before and after, never even tried in between: suspended or frozen.
                     log_event(db, "tamper_watchdog_silent", {"awake_gap_seconds": gap_s})
                 else:
+                    # Stamped when the outage began (we only hear of it on reconnect), so the journal
+                    # shows it before whatever happened during it, e.g. an offline unlock.
+                    started = datetime.now(timezone.utc) - timedelta(seconds=gap_s)
                     log_event(db, "watchdog_offline", {"awake_gap_seconds": gap_s,
-                                                       "failed_attempts": failed_attempts})
+                                                       "failed_attempts": failed_attempts}, ts_utc=started)
 
     set_config_value(db, "wd_instance_id", instance_id)
     set_config_value(db, "wd_awake_ms", awake_ms)

@@ -34,6 +34,7 @@ public partial class LockWindow : Window
         _screen = screen;
         DataContext = vm;
         InitializeComponent();
+        DataObject.AddPastingHandler(TotpInput, TotpInput_Pasting);
 
         // Pozycjonowanie na właściwym ekranie zanim WindowState=Maximized
         // (Maximized zachowuje się na ekranie gdzie jest okno gdy go ustawiamy).
@@ -68,6 +69,46 @@ public partial class LockWindow : Window
 
     // === Locked phase handlers ===
 
+    // === TOTP field: digits only, and it keeps the keyboard focus ===
+
+    private void TotpInput_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        e.Handled = !e.Text.All(char.IsAsciiDigit);
+    }
+
+    private void TotpInput_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Space does not raise PreviewTextInput in a WPF TextBox.
+        if (e.Key == Key.Space) e.Handled = true;
+    }
+
+    private void TotpInput_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        // Accept "123 456" or "123-456" from a password manager: keep the digits, max 6.
+        e.CancelCommand();
+        if (e.SourceDataObject.GetData(DataFormats.UnicodeText) is not string pasted) return;
+        var box = TotpInput;
+        var merged = box.Text[..box.SelectionStart] + pasted + box.Text[(box.SelectionStart + box.SelectionLength)..];
+        var digits = new string(merged.Where(char.IsAsciiDigit).Take(6).ToArray());
+        box.Text = digits;
+        box.CaretIndex = digits.Length;
+    }
+
+    private void TotpInput_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        // The field is hidden while a code is being checked and the keyboard focus goes with it;
+        // without this, digits typed after a wrong code went nowhere until the field was clicked.
+        if (!TotpInput.IsVisible) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            // Logical focus in every window; keyboard focus only in the active one, so lock windows
+            // on several monitors do not fight over activation. WPF restores the logical focus when a
+            // window is activated (e.g. by TopmostEnforcer).
+            FocusManager.SetFocusedElement(this, TotpInput);
+            if (IsActive) Keyboard.Focus(TotpInput);
+        }, System.Windows.Threading.DispatcherPriority.Input);
+    }
+
     private void TotpInput_KeyDown(object sender, KeyEventArgs e)
     {
         // Enter w TOTP field = klik "Sprawdź"
@@ -81,7 +122,7 @@ public partial class LockWindow : Window
     private async void CheckTotp_Click(object sender, RoutedEventArgs e)
     {
         var code = _vm.TotpCode.Trim();
-        if (code.Length != 6 || !code.All(char.IsDigit))
+        if (code.Length != 6 || !code.All(char.IsAsciiDigit))
         {
             _vm.StatusMessage = "Kod musi mieć 6 cyfr.";
             return;

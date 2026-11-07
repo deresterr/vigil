@@ -74,7 +74,11 @@
                                  FontSize="36"
                                  TextAlignment="Center"
                                  MaxLength="6"
-                                 KeyDown="TotpInput_KeyDown"/>
+                                 InputScope="Number"
+                                 KeyDown="TotpInput_KeyDown"
+                                 PreviewKeyDown="TotpInput_PreviewKeyDown"
+                                 PreviewTextInput="TotpInput_PreviewTextInput"
+                                 IsVisibleChanged="TotpInput_IsVisibleChanged"/>
                         <Button Content="Sprawdź"
                                 Margin="16,0,0,0"
                                 Padding="30,10"

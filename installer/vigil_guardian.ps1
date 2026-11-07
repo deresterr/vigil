@@ -367,16 +367,6 @@ function Main {
         Repair-ServiceRecovery
     }
 
-    # Check 7: Vigil Tray scheduled task.
-    # Guardian nie zna -ChildUsername więc nie może odtworzyć taska — tylko alarmuje.
-    # Jeśli brakuje: dziecko nie ma ikonki pauzy, ale blokady działają normalnie.
-    # Rodzic może odtworzyć przez: Install.cmd -Mode reinstall -ChildUsername <nazwa>
-    $trayTask = Get-ScheduledTask -TaskName 'Vigil Tray' -ErrorAction SilentlyContinue
-    if (-not $trayTask) {
-        Write-GuardianEvent -EntryType Warning -EventId 7009 `
-            -Message "Task 'Vigil Tray' nie istnieje — ikonka pauzy nie uruchomi sie przy logowaniu. Reinstall z -ChildUsername aby odtworzyc."
-    }
-
     Write-GuardianEvent -EventId 1002 -Message "Guardian check zakończony"
 }
 

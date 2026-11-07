@@ -84,8 +84,7 @@ if (-not $SourceDir) { $SourceDir = $PSScriptRoot }
 # === Stałe ===
 
 $watchdogExe   = Join-Path $InstallDir "vigil_watchdog.exe"
-$lockscreenExe = Join-Path $InstallDir "vigil_lockscreen.exe"
-$trayExe       = Join-Path $InstallDir "vigil_tray.exe"
+$uiExe         = Join-Path $InstallDir "vigil_ui.exe"
 $guardianPs1   = Join-Path $InstallDir "vigil_guardian.ps1"
 $vigilToml     = Join-Path $InstallDir "vigil.toml"
 $signingDat    = Join-Path $InstallDir "signing.dat"
@@ -95,8 +94,7 @@ $backupDir     = Join-Path $InstallDir "backup"
 # Source files
 $srcFiles = @{
     'vigil_watchdog.exe'    = (Join-Path $SourceDir 'vigil_watchdog.exe')
-    'vigil_lockscreen.exe'  = (Join-Path $SourceDir 'vigil_lockscreen.exe')
-    'vigil_tray.exe'        = (Join-Path $SourceDir 'vigil_tray.exe')
+    'vigil_ui.exe'          = (Join-Path $SourceDir 'vigil_ui.exe')
     'vigil_guardian.ps1'    = (Join-Path $SourceDir 'vigil_guardian.ps1')
 }
 
@@ -354,8 +352,8 @@ function Step-LockDownPermissions {
             'Allow')
         $acl.AddAccessRule($rule)
 
-        # Authenticated Users read+execute (child user też tu wpada — żeby vigil_lockscreen.exe
-        # mógł być spawnowany przez SYSTEM w user session)
+        # Authenticated Users read+execute (the child too: SYSTEM spawns vigil_ui.exe in the
+        # child's session with the child's token)
         $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
             (New-Object System.Security.Principal.SecurityIdentifier(
                 [System.Security.Principal.WellKnownSidType]::AuthenticatedUserSid, $null)),
@@ -374,6 +372,7 @@ function Step-LockDownPermissions {
 
 function Step-CopyBinaries {
     Write-Step "Kopiuję binarki do $InstallDir"
+    Stop-VigilUiProcesses  # a running vigil_ui keeps its exe locked
     foreach ($name in $srcFiles.Keys) {
         $dst = Join-Path $InstallDir $name
         Copy-Item -Path $srcFiles[$name] -Destination $dst -Force
@@ -419,15 +418,39 @@ function Step-WriteSigningDat {
     Write-OK "signing.dat zapisany ($($encrypted.Length) bajtów encrypted)"
 }
 
-function Step-RemoveLegacyEmergencyFiles {
-    # Before v0.5 offline unlock used an emergency password (emergency.dat, readable by the child)
-    # and a 24 h bypass.flag in C:\Users\Public\Vigil (forgeable). Both are gone (#9): the parent's
-    # TOTP code now works offline too. Remove leftovers from older installs.
+function Stop-VigilUiProcesses {
+    # vigil_ui runs in the child's session and holds its exe open; also the separate lockscreen/tray
+    # of versions before D8. An elevated installer may kill them despite their process DACL (BA full).
+    foreach ($name in @('vigil_ui', 'vigil_lockscreen', 'vigil_tray')) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            Write-OK "Zatrzymano proces $name (pid $($_.Id))"
+        }
+    }
+}
+
+function Step-StopUiProcesses {
+    Write-Step "Zatrzymuję procesy UI Vigila w sesji użytkownika"
+    Stop-VigilUiProcesses
+}
+
+function Step-RemoveLegacyFiles {
+    # Leftovers of older installs:
+    #  - before v0.5 offline unlock used an emergency password (emergency.dat, readable by the child)
+    #    and a 24 h bypass.flag in C:\Users\Public\Vigil (forgeable). Gone (#9): the parent's TOTP
+    #    code works offline too.
+    #  - before D8 (#35) lock screen and tray were two exes; vigil_ui.exe replaced both, and the
+    #    watchdog starts it instead of the "Vigil Tray" task (removed in Step-RemoveTrayTask).
     $legacy = @((Join-Path $InstallDir "emergency.dat"), "$env:PUBLIC\Vigil")
+    # Old exes only once the new binaries are in place (update-config keeps the installed ones).
+    if (Test-Path $uiExe) {
+        Stop-VigilUiProcesses
+        $legacy += (Join-Path $InstallDir "vigil_lockscreen.exe"), (Join-Path $InstallDir "vigil_tray.exe")
+    }
     foreach ($path in $legacy) {
         if (Test-Path $path) {
             Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            Write-OK "Usunięto stary plik odblokowania awaryjnego: $path"
+            Write-OK "Usunięto pozostałość starszej wersji: $path"
         }
     }
 }
@@ -538,41 +561,8 @@ function Step-RegisterGuardianTask {
 
     Write-OK "Scheduled Task '$TaskName' (boot + co 5 min)"
 }
-function Step-RegisterTrayTask {
-    # Tray uruchamia się przez Scheduled Task (at logon) zamiast HKCU\Run:
-    #   - Task jest widoczny tylko w Task Scheduler, nie w Settings → Startup
-    #   - Child nie ma uprawnień kasowania zadań systemowych (tylko Admin/SYSTEM)
-    #   - Guardian może sprawdzić istnienie taska i alarmować gdy brakuje
-    if (-not $ChildUsername) {
-        Write-Warn "Brak -ChildUsername — pomijam rejestrację Vigil Tray task"
-        Write-Warn "  Dziecko nie będzie miało ikonki pauzy w zasobniku do czasu reinstall z -ChildUsername"
-        return
-    }
-    Write-Step "Tworzę Scheduled Task 'Vigil Tray' (autostart ikonki dla $ChildUsername)"
-
-    $trayTaskName = "Vigil Tray"
-    $existing = Get-ScheduledTask -TaskName $trayTaskName -ErrorAction SilentlyContinue
-    if ($existing) {
-        Unregister-ScheduledTask -TaskName $trayTaskName -Confirm:$false
-    }
-
-    $action    = New-ScheduledTaskAction -Execute "`"$trayExe`""
-    $trigger   = New-ScheduledTaskTrigger -AtLogon -User $ChildUsername
-    $principal = New-ScheduledTaskPrincipal -UserId $ChildUsername `
-                     -RunLevel Limited -LogonType Interactive
-    $settings  = New-ScheduledTaskSettingsSet `
-                     -AllowStartIfOnBatteries `
-                     -DontStopIfGoingOnBatteries `
-                     -ExecutionTimeLimit 0   # brak limitu — tray działa cały czas
-
-    Register-ScheduledTask -TaskName $trayTaskName `
-        -Action $action -Trigger $trigger `
-        -Principal $principal -Settings $settings -Force | Out-Null
-
-    Write-OK "Task 'Vigil Tray' zarejestrowany (at logon user=$ChildUsername)"
-}
-
 function Step-RemoveTrayTask {
+    # Before D8 (#35) the tray was started by this task at logon; the watchdog starts vigil_ui now.
     $trayTaskName = "Vigil Tray"
     $existing = Get-ScheduledTask -TaskName $trayTaskName -ErrorAction SilentlyContinue
     if ($existing) {
@@ -1120,12 +1110,12 @@ function Invoke-Install {
     Step-WriteGuardianHash
     Step-WriteVigilToml
     Step-WriteSigningDat
-    Step-RemoveLegacyEmergencyFiles
+    Step-RemoveLegacyFiles
     Step-RegisterService
     Step-SetServiceDacl
     Step-AddSafeBootEntries
     Step-RegisterGuardianTask
-    Step-RegisterTrayTask
+    Step-RemoveTrayTask
     Step-DisableF8
     Step-DisableWinRE
     Step-ApplyUserPolicies
@@ -1143,6 +1133,7 @@ function Invoke-Uninstall {
 
     Step-RequireAdmin
     Step-StopAndRemoveService
+    Step-StopUiProcesses
     Step-UnregisterGuardianTask
     Step-RemoveTrayTask
     Step-RemoveSafeBoot
@@ -1186,7 +1177,7 @@ function Invoke-UpdateConfig {
             }
             Step-WriteSigningDat
         }
-        Step-RemoveLegacyEmergencyFiles
+        Step-RemoveLegacyFiles
     } finally {
         # Niezależnie od success/fail — przywróć restrykcyjne ACL
         Step-LockDownPermissions

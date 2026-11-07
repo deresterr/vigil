@@ -4,20 +4,15 @@ using System.Runtime.Versioning;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
-namespace Vigil.Watchdog.Lockscreen;
+namespace Vigil.Watchdog.Ui;
 
 /// <summary>
-/// Named pipe server (\\.\pipe\VigilUI) — przyjmuje połączenie z vigil_lockscreen.exe,
-/// czyta JSON line-delimited messages, wysyła w drugą stronę.
+/// Named pipe server \\.\pipe\VigilUI for vigil_ui (one client). JSON, one message per line
+/// (shared/IpcMessages.cs). One reader task dispatches each line to MessageReceived; writes are
+/// serialized with a semaphore. The client is verified by PID (WaitForClientAsync).
 ///
-/// Concurrency model: jeden background reader task czyta linia-po-linii, każda linia
-/// dispatch'owana na event MessageReceived. Pisanie zsynchronizowane przez SemaphoreSlim
-/// (NamedPipeServerStream nie jest thread-safe dla równoczesnych operacji).
-///
-/// Jeden lockscreen client per watchdog. Jeśli przyjdzie drugi connect — odrzucamy.
-///
-/// Pipe DACL: SYSTEM full + Authenticated Users RW. Bardziej restrictive (per session SID)
-/// w przyszłości — child user też jest Authenticated User więc to działa.
+/// Pipe DACL: SYSTEM + Administrators full, Authenticated Users read/write — the PID check, not the
+/// DACL, keeps other programs out.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class NamedPipeIpcServer : IDisposable
@@ -26,7 +21,6 @@ public sealed class NamedPipeIpcServer : IDisposable
 
     private readonly ILogger<NamedPipeIpcServer> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private string? _expectedClientPath;
 
     private NamedPipeServerStream? _pipe;
     private CancellationTokenSource? _readerCts;
@@ -45,22 +39,15 @@ public sealed class NamedPipeIpcServer : IDisposable
     }
 
     /// <summary>
-    /// Tworzy pipe i czeka na klienta. Zwraca po tym jak lockscreen się połączy.
-    /// Niblokujący względem dispatch — reader startuje od razu po connect.
+    /// Creates the pipe and waits for vigil_ui. The reader starts right after the connect.
     ///
-    /// <paramref name="expectedClientPath"/> — jeśli niepusta, weryfikujemy po accept
-    /// że proces klienta to dokładnie ten plik exe (chroni przed fake-client attack:
-    /// child user mógłby się normalnie podłączyć i wysłać shutdown_request, ale jego
-    /// proces nie jest vigil_lockscreen.exe z naszego install dir).
+    /// The client must be the process we just spawned: <paramref name="expectedPid"/> completes with
+    /// its PID once CreateProcessAsUser returns. A copy of vigil_ui.exe started by the child, or any
+    /// other program, is rejected even if it races ours to the pipe.
     /// </summary>
-    public async Task WaitForClientAsync(CancellationToken ct, string? expectedClientPath = null)
+    public async Task WaitForClientAsync(Task<uint> expectedPid, CancellationToken ct)
     {
-        await DisconnectAsync().ConfigureAwait(false);  // cleanup poprzedniego connection jeśli był
-
-        _expectedClientPath = expectedClientPath;
-
-        // PipeSecurity dla DACL — trzeba ustawić zanim WaitForConnection.
-        var security = BuildPipeSecurity();
+        await DisconnectAsync().ConfigureAwait(false);
 
         _pipe = NamedPipeServerStreamAcl.Create(
             PipeName,
@@ -70,73 +57,26 @@ public sealed class NamedPipeIpcServer : IDisposable
             PipeOptions.Asynchronous,
             inBufferSize: 4096,
             outBufferSize: 4096,
-            pipeSecurity: security);
+            pipeSecurity: BuildPipeSecurity());
 
-        _logger.LogInformation("Pipe \\\\.\\pipe\\{Name} czeka na połączenie...", PipeName);
+        _logger.LogInformation("Pipe \\\\.\\pipe\\{Name} waiting for vigil_ui", PipeName);
         await _pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+        var pid = await expectedPid.WaitAsync(ct).ConfigureAwait(false);
 
-        // Weryfikacja peer process — chroni przed fake lockscreen-impersonator z child user.
-        if (!VerifyPeerProcess(_pipe))
+        if (!GetNamedPipeClientProcessId(_pipe.SafePipeHandle.DangerousGetHandle(), out var clientPid)
+            || clientPid != pid)
         {
-            _logger.LogWarning("Pipe peer process nie pasuje do expected — odrzucam connection");
+            _logger.LogWarning("Pipe client pid={Client} is not the vigil_ui we spawned (pid={Expected}), rejecting",
+                clientPid, pid);
             try { _pipe.Disconnect(); } catch { /* ignore */ }
             _pipe.Dispose();
             _pipe = null;
             throw new UnauthorizedAccessException("Pipe peer verification failed");
         }
 
-        _logger.LogInformation("Lockscreen podłączony do pipe (weryfikacja peer OK).");
-
-        // Start reader task
+        _logger.LogInformation("vigil_ui connected (pid={Pid})", pid);
         _readerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _readerTask = Task.Run(() => ReaderLoopAsync(_readerCts.Token), _readerCts.Token);
-    }
-
-    /// <summary>
-    /// Weryfikuje że proces po drugiej stronie pipe to dokładnie _expectedClientPath.
-    /// Używa GetNamedPipeClientProcessId + Process.MainModule.FileName.
-    /// Jeśli _expectedClientPath == null lub puste, zwraca true (verification disabled).
-    /// </summary>
-    private bool VerifyPeerProcess(NamedPipeServerStream pipe)
-    {
-        if (string.IsNullOrEmpty(_expectedClientPath)) return true;
-
-        if (!GetNamedPipeClientProcessId(pipe.SafePipeHandle.DangerousGetHandle(), out var pid))
-        {
-            _logger.LogWarning("GetNamedPipeClientProcessId failed, errno={Err}",
-                Marshal.GetLastWin32Error());
-            return false;
-        }
-
-        try
-        {
-            using var p = System.Diagnostics.Process.GetProcessById((int)pid);
-            // MainModule może rzucić Win32Exception jeśli proces 32-bit a my 64-bit lub vice versa,
-            // ale CreateProcessAsUser tworzy lockscreen z tego samego pakietu więc bitness matches.
-            var modulePath = p.MainModule?.FileName;
-            if (string.IsNullOrEmpty(modulePath))
-            {
-                _logger.LogWarning("Peer process pid={Pid} ma puste MainModule.FileName", pid);
-                return false;
-            }
-            // Compare case-insensitive — Windows paths
-            if (!string.Equals(
-                    Path.GetFullPath(modulePath),
-                    Path.GetFullPath(_expectedClientPath),
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning(
-                    "Peer process path mismatch: expected={Expected}, actual={Actual}",
-                    _expectedClientPath, modulePath);
-                return false;
-            }
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "VerifyPeerProcess crashed dla pid={Pid}", pid);
-            return false;
-        }
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]

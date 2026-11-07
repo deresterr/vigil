@@ -1,6 +1,6 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
-namespace Vigil.Lockscreen.Native;
+namespace Vigil.Ui.Native;
 
 public static class TaskbarHider
 {
@@ -93,9 +93,8 @@ public static class TaskbarHider
     }
 
     /// <summary>
-    /// Przywraca wszystkie okna paska zadań przez fresh FindWindow — nie wymaga
-    /// wcześniej zapisanych uchwytów. Używane przez tryb --restore-taskbar-only
-    /// spawnowany przez watchdog po Kill() lockscreena.
+    /// Restores every taskbar window via a fresh FindWindow, no saved handles needed. Called when
+    /// vigil_ui starts: a previous instance killed while locked left the taskbar hidden.
     /// </summary>
     public static void RestoreAll()
     {

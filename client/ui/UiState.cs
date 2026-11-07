@@ -1,6 +1,6 @@
 using System;
 
-namespace Vigil.Lockscreen;
+namespace Vigil.Ui;
 
 /// <summary>
 /// Stan UI lockscreen, mirroring serwerowego ui_state z heartbeat response.

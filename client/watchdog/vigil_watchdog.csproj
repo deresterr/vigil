@@ -36,4 +36,8 @@
     <PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\shared\IpcMessages.cs" Link="Ui\IpcMessages.cs" />
+  </ItemGroup>
+
 </Project>

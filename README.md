@@ -76,9 +76,20 @@ Kreator jest dostępny bez logowania do momentu ukończenia — zrób to od razu
 
 **2. Paczka dla PC dziecka** (na Windows, w katalogu repo)
 
+Potrzebny .NET 8 SDK — tylko na maszynie, która buduje; paczka jest self-contained, PC dziecka go nie potrzebuje:
+
+```
+winget install Microsoft.DotNet.SDK.8
+```
+
+Potem (w nowym oknie, żeby `dotnet` był w PATH):
+
 ```
 Build.cmd            → dist\
 ```
+
+Zamiast budować lokalnie możesz pobrać gotowe `dist\` z artefaktu `vigil-client-…` ostatniego przebiegu CI
+(zakładka Actions).
 
 **3. Instalacja na PC dziecka** — w panelu rodzica kliknij „Wygeneruj kod parowania”, skopiuj `dist\`
 na PC dziecka i uruchom jako administrator:

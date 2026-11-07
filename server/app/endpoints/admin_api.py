@@ -38,7 +38,6 @@ from ..db import (
     set_config_value,
     update_daily_state,
 )
-from ..endpoints.heartbeat import invalidate_heartbeat_config_cache
 from ..lock_logic import (
     compute_lock_reason,
     is_in_night_window,
@@ -355,9 +354,6 @@ async def update_config(request: Request, db: sqlite3.Connection = Depends(get_d
         updated.append(key)
 
     log_event(db, "config_updated", {"keys": updated, "via": "admin_ui"})
-    # Unieważnij cache heartbeat — _get_hb_cfg() cachuje klucze config na 60s.
-    # Bez tego zmiany (night_lock_start, daily_limit_*) działałyby z ~60s opóźnieniem.
-    invalidate_heartbeat_config_cache()
     return {"ok": True, "updated": updated}
 
 
@@ -415,8 +411,6 @@ async def regen_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
     set_config_value(db, "totp_last_step", 0)
     # Reset lockoutu — żeby admin nie musiał czekać po regeneracji
     db.execute("DELETE FROM totp_lockout")
-    # totp_secret jest w _HB_CFG_KEYS — inwaliduj cache żeby nowy secret był widoczny od razu
-    invalidate_heartbeat_config_cache()
 
     uri = pyotp.TOTP(new_secret).provisioning_uri(name="rodzic", issuer_name=TOTP_ISSUER)
     log_event(db, "totp_regenerated", {"via": "admin_ui"})

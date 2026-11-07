@@ -37,10 +37,6 @@ def run_bootstrap() -> None:
     """Wołane przy starcie aplikacji (lifespan). Idempotent."""
     with get_connection() as conn:
         _insert_config_defaults(conn)
-        # Protocol v2 dropped the bearer token; remove it from databases created before.
-        conn.execute("DELETE FROM config WHERE key = 'bearer_token'")
-        # Pairing codes replaced the open init mode.
-        conn.execute("DELETE FROM config WHERE key = 'init_open'")
 
         if not _is_first_run(conn):
             logger.info("Database OK.")

@@ -7,7 +7,6 @@ o `delta` (clamped 0..15s) jeśli ostatnia aktywność była niedawno (gap detec
 from __future__ import annotations
 
 import sqlite3
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -18,6 +17,7 @@ from ..auth import authenticate_request
 from ..db import (
     ensure_daily_state,
     get_config_value,
+    get_config_values,
     get_db,
     log_event,
     set_config_value,
@@ -26,6 +26,7 @@ from ..db import (
 from ..lock_logic import (
     compute_lock_reason,
     is_weekend,
+    load_lock_config,
     parse_iso_utc,
     utc_iso,
 )
@@ -35,54 +36,20 @@ from ..tamper import GOODBYE_REASONS, process_goodbye, process_telemetry
 router = APIRouter()
 
 
-# ── Heartbeat config cache ────────────────────────────────────────────────────
-# Wszystkie klucze config potrzebne per heartbeat ładowane jednym SELECT i cache'owane.
-# TTL 60s: zmiany przez admin UI działają w ciągu minuty.
-# invalidate_heartbeat_config_cache() wołane przez admin_api gdy ustawienia zmienione.
-_hb_cfg: dict | None = None
-_hb_cfg_ts: float = 0.0
-_HB_CFG_TTL = 60.0
+def _load_hb_cfg(db: sqlite3.Connection) -> dict:
+    """Config for one heartbeat, read fresh every time (one SELECT; no cache to invalidate)."""
+    cfg = load_lock_config(db)
+    extra = get_config_values(db, ("timezone", "heartbeat_delta_max", "gap_detection_threshold",
+                                   "totp_secret", "events_retention_days"))
+    cfg.update(
+        timezone=extra["timezone"],
+        heartbeat_delta_max=int(extra["heartbeat_delta_max"]),
+        gap_detection_threshold=int(extra["gap_detection_threshold"]),
+        totp_secret=extra["totp_secret"],
+        events_retention_days=int(extra["events_retention_days"]),
+    )
+    return cfg
 
-_HB_CFG_KEYS = (
-    "timezone", "night_lock_start", "night_lock_end",
-    "daily_limit_weekday", "daily_limit_weekend",
-    "heartbeat_delta_max", "gap_detection_threshold",
-    "totp_secret", "events_retention_days",
-)
-
-
-def invalidate_heartbeat_config_cache() -> None:
-    """Wywoływane przez admin_api po zmianie ustawień — zmiany obowiązują od razu."""
-    global _hb_cfg
-    _hb_cfg = None
-
-
-def _get_hb_cfg(db) -> dict:
-    """Batch-load wszystkich kluczy config potrzebnych w heartbeat. Cache 60s."""
-    global _hb_cfg, _hb_cfg_ts
-    now = time.monotonic()
-    if _hb_cfg is not None and now - _hb_cfg_ts < _HB_CFG_TTL:
-        return _hb_cfg
-
-    placeholders = ",".join("?" * len(_HB_CFG_KEYS))
-    rows = dict(db.execute(
-        f"SELECT key, value FROM config WHERE key IN ({placeholders})",
-        _HB_CFG_KEYS
-    ).fetchall())
-
-    _hb_cfg = {
-        "timezone":               rows.get("timezone", "Europe/Warsaw"),
-        "night_lock_start":       rows.get("night_lock_start", "22:00"),
-        "night_lock_end":         rows.get("night_lock_end",   "07:00"),
-        "daily_limit_weekday":    int(rows.get("daily_limit_weekday", "120")),
-        "daily_limit_weekend":    int(rows.get("daily_limit_weekend", "240")),
-        "heartbeat_delta_max":    int(rows.get("heartbeat_delta_max", "15")),
-        "gap_detection_threshold": int(rows.get("gap_detection_threshold", "30")),
-        "totp_secret":            rows.get("totp_secret", ""),
-        "events_retention_days":  int(rows.get("events_retention_days", "30")),
-    }
-    _hb_cfg_ts = now
-    return _hb_cfg
 
 # Counter dla okresowego cleanup events (single-worker uvicorn → bezpieczne).
 _heartbeat_counter = 0
@@ -174,7 +141,7 @@ async def heartbeat(
     body = _validate_request_body(raw_body)
 
     # === 0. Batch-load config (cache 60s, jeden SELECT dla wszystkich kluczy) ===
-    cfg = _get_hb_cfg(db)
+    cfg = _load_hb_cfg(db)
 
     now_utc = datetime.now(timezone.utc)
     tz = ZoneInfo(cfg["timezone"])

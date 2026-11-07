@@ -54,6 +54,10 @@ night_extension_until_utc, manual_lock, pause_active, last_heartbeat_utc, last_s
 A new day's row inherits `manual_lock` and a still-active `night_extension_until_utc` from the previous row. Weekend limit applies Fri–Sun (`is_weekend`).
 `user_active` is currently just `session_active` (no idle detection).
 
+Schema changes only through `migrations.py` (`PRAGMA user_version` = migrations applied, one transaction
+each; a database newer than the code is refused). Config is read from SQLite on every request, no cache;
+missing keys fall back to `CONFIG_DEFAULTS`.
+
 Other tables: `config` (key/value incl. secrets: `signing_key`, `totp_secret`,
 `admin_session_key`, `parent_password_hash`), `events` (audit log, pruned after `events_retention_days`),
 `totp_lockout` (single row), `used_nonces`.

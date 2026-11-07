@@ -49,7 +49,7 @@
 
     1. Service Windows: vigil_watchdog (włącznie z konfiguracją, recovery actions, DACL)
     2. Scheduled Task: "Vigil Guardian", "Vigil Tray"
-    3. Procesy (online): vigil_watchdog.exe, vigil_lockscreen.exe, vigil_tray.exe, vigil_guardian (PS)
+    3. Procesy (online): vigil_watchdog.exe, vigil_ui.exe (+ vigil_lockscreen/vigil_tray sprzed v0.6), vigil_guardian (PS)
     4. Pliki:
         - C:\ProgramData\Vigil\
         - C:\Windows\System32\Tasks\Vigil Guardian
@@ -314,8 +314,9 @@ function Remove-VigilService {
 }
 
 function Stop-VigilProcesses {
-    Write-Step "Zabijam procesy Vigil (lockscreen, tray, watchdog)"
-    $names = @('vigil_watchdog', 'vigil_lockscreen', 'vigil_tray')
+    Write-Step "Zabijam procesy Vigil (watchdog, UI)"
+    # Watchdog first, otherwise it respawns vigil_ui. vigil_lockscreen/vigil_tray: versions before D8.
+    $names = @('vigil_watchdog', 'vigil_ui', 'vigil_lockscreen', 'vigil_tray')
     foreach ($n in $names) {
         $procs = Get-Process -Name $n -ErrorAction SilentlyContinue
         if (-not $procs) { Write-Skip "$n nie działa"; continue }

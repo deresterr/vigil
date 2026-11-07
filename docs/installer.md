@@ -1,7 +1,7 @@
 # vigil-installer
 
-PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_lockscreen.exe`,
-`vigil_tray.exe`, `vigil_guardian.ps1`.
+PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_ui.exe`,
+`vigil_guardian.ps1`.
 
 ## Pliki
 
@@ -73,8 +73,7 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
 - `-SourceDir <path>` — gdzie szukać binarek, default `$PSScriptRoot`
 - `-InstallDir 'C:\ProgramData\Vigil'` — default
 - `-ChildUsername 'jasiek'` — nazwa konta dziecka. Bez tego policies (DisableTaskMgr,
-  DisableRegistryTools, DisableLockWorkstation, DisableChangePassword, NoLogoff, sticky keys,
-  touchpad gestures) trafiają **tylko do Default User profile** — czyli nowo tworzonych kont.
+  DisableChangePassword, sticky keys, touchpad gestures) trafiają **tylko do Default User profile** — czyli nowo tworzonych kont.
   Z `-ChildUsername`: installer rezolwuje SID i pisze policies wprost do hive'u tego użytkownika
   (live `HKEY_USERS\<SID>` jeśli zalogowany, `reg load` jego `NTUSER.DAT` jeśli nie).
 - `-DisableWinRE` — wyłącz Windows Recovery Environment (`reagentc /disable`). Opt-in, bo
@@ -85,20 +84,21 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
 ## Co installer robi w trybie `install`
 
 1. Sprawdza uprawnienia admin (fail-fast jeśli nie)
-2. Sprawdza obecność 4 plików w `-SourceDir`
+2. Sprawdza obecność 3 plików w `-SourceDir` (`vigil_watchdog.exe`, `vigil_ui.exe`, `vigil_guardian.ps1`)
 3. Waliduje parametry (signing_key min 16 bajtów po dekodowaniu, ServerUrl http/https)
 4. Tworzy `C:\ProgramData\Vigil\` z ACL: SYSTEM full, Admin modify, AuthUsers r+x
-5. Kopiuje 4 binarki + backup `vigil_watchdog.exe` do `backup\`
+5. Zatrzymuje działające `vigil_ui`, kopiuje 3 pliki + backup `vigil_watchdog.exe` do `backup\`
 6. Generuje SHA256 hash, szyfruje DPAPI LocalMachine, zapisuje `guardian.dat` (dla vigil_guardian)
 7. Tworzy `vigil.toml` z server_url (bez sekretów; signing_key idzie do `signing.dat`)
 8. Szyfruje signing_key DPAPI LocalMachine z entropy `"Vigil-SigningKey-v1"`,
    zapisuje `signing.dat`
-9. Usuwa pozostałości starego odblokowania awaryjnego (`emergency.dat`, `C:\Users\Public\Vigil\`).
+9. Usuwa pozostałości starszych wersji: odblokowanie awaryjne (`emergency.dat`, `C:\Users\Public\Vigil\`),
+   `vigil_lockscreen.exe`, `vigil_tray.exe` (zastąpione przez `vigil_ui.exe`, które uruchamia watchdog).
    Odblokowanie offline działa teraz kodem TOTP rodzica — sekret pobiera sam watchdog (`totp.dat`).
 10. Rejestruje service `vigil_watchdog` (auto-start, recovery: restart×3 bez reboota)
 11. Ustawia restrykcyjny DACL na service (Admin tylko query/start, nie stop/modify/delete)
 12. Dodaje SafeBoot entries (Minimal + Network) — vigil_watchdog działa też w safe mode
-13. Tworzy Scheduled Task `Vigil Guardian` (SYSTEM, AtStartup + co 5 min)
+13. Tworzy Scheduled Task `Vigil Guardian` (SYSTEM, AtStartup + co 5 min); usuwa stare zadanie `Vigil Tray`
 14. `bcdedit bootmenupolicy Standard` — wyłącza F8 menu
 15. `reagentc /disable` (opt-in przez `-DisableWinRE`)
 16. Aplikuje user policies (chyba że `-NoUserPolicies`):
@@ -106,8 +106,9 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
       Skutek dla NOWO TWORZONYCH kont.
     - **Jeśli `-ChildUsername` podany**: rezolwuje SID. Live HKU jeśli zalogowany,
       `reg load` NTUSER.DAT jeśli nie. Skutek dla istniejącego konta dziecka **od razu**.
-    - Pisane klucze: `DisableTaskMgr`, `DisableRegistryTools`, `DisableLockWorkstation`,
-      `DisableChangePassword`, `NoLogoff`, sticky keys hot-keys off, PrecisionTouchPad gesty off.
+    - Pisane klucze: `DisableTaskMgr`, `DisableChangePassword`, sticky keys hot-keys off,
+      PrecisionTouchPad gesty off. Tylko to, co zamyka drogę spod blokady — to samo konto co rodzic (D12).
+      `DisableRegistryTools`, `DisableLockWorkstation`, `NoLogoff` ze starszych wersji są usuwane.
 17. Start service
 18. Smoke test — czeka 15s i sprawdza czy `vigil_watchdog` jest w stanie Running.
     Opcjonalnie loguje potwierdzenie z Event Log (`Vigil Watchdog`, source może jeszcze
@@ -115,11 +116,11 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
 
 ## Co `uninstall` robi
 
-1. Stop + delete service
-2. Unregister Scheduled Task
+1. Stop + delete service, zatrzymuje `vigil_ui` (i stare `vigil_lockscreen`/`vigil_tray`)
+2. Unregister Scheduled Tasks (`Vigil Guardian`, stare `Vigil Tray`)
 3. Remove SafeBoot entries
 4. Cofa user policies w Default User profile + (jeśli `-ChildUsername` podany przy uninstall)
-   w hive tego użytkownika — usuwa wszystkie wartości pisane przy installu
+   w hive tego użytkownika — usuwa wszystkie wartości pisane przy installu, także przez starsze wersje
    (`DisableTaskMgr`, `DisableRegistryTools`, `DisableLockWorkstation`, `DisableChangePassword`,
    `NoLogoff`, sticky keys, touchpad gestures). Pomijane jeśli `-NoUserPolicies`.
 5. Remove `C:\ProgramData\Vigil\` w całości — w tym `signing.dat` i `totp.dat`
@@ -220,8 +221,8 @@ pliki, kasuje service entry z SYSTEM hive.
 ### Co konkretnie kasuje
 
 1. **Service**: `vigil_watchdog` (z wieloma strategiami fallback gdy DACL blokuje)
-2. **Scheduled Tasks**: `Vigil Guardian`, `Vigil Tray`
-3. **Procesy**: `vigil_watchdog.exe`, `vigil_lockscreen.exe`, `vigil_tray.exe`
+2. **Scheduled Tasks**: `Vigil Guardian`, `Vigil Tray` (sprzed v0.6)
+3. **Procesy**: `vigil_watchdog.exe`, `vigil_ui.exe` (+ `vigil_lockscreen.exe`, `vigil_tray.exe` sprzed v0.6)
 4. **Katalogi**:
    - `<drive>:\ProgramData\Vigil\`
    - `<drive>:\ProgramData\ParentalControl\` (stara nazwa)

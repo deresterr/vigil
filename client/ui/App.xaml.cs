@@ -34,7 +34,6 @@ public partial class App : Application
     private bool _useKeyboardBlocker = true;
     private DispatcherTimer? _clockTimer;
     private DispatcherTimer? _pipeLossTimer;
-    private IntPtr[]? _hiddenTaskbars;
     private TrayIcon? _tray;
     private bool _locked;
 
@@ -149,11 +148,10 @@ public partial class App : Application
         UiLog.Write("unlock");
         CloseWindows();
         _kbBlocker?.Uninstall();
-        if (_hiddenTaskbars is not null)
-        {
-            TaskbarHider.Restore(_hiddenTaskbars);
-            _hiddenTaskbars = null;
-        }
+        // The taskbar windows that exist now, not the ones seen at lock time: after a boot into a
+        // lock Explorer creates them later, TopmostEnforcer hides those too, and restoring the old
+        // handles left the taskbar hidden after unlock.
+        TaskbarHider.RestoreAll();
     }
 
     private void OnPipeLost()
@@ -213,7 +211,8 @@ public partial class App : Application
     private void CreateWindowsForAllScreens()
     {
         // Hide the taskbar while locked: otherwise Start could launch something over the overlay.
-        _hiddenTaskbars ??= TaskbarHider.Hide();
+        // TopmostEnforcer hides it again every 500 ms (Explorer may recreate it).
+        TaskbarHider.Hide();
 
         foreach (var screen in WinFormsScreen.AllScreens)
         {

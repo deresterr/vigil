@@ -43,58 +43,27 @@ public static class TaskbarHider
     private static extern bool PostMessage(
         IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-    public static IntPtr[] Hide()
+    /// <summary>
+    /// Hides every taskbar window that exists right now (primary, Start button, secondary monitors).
+    /// Idempotent and cheap: TopmostEnforcer calls it every 500 ms while locked, since Explorer may create or recreate
+    /// these windows at any time (boot, Explorer restart). No handles are kept: RestoreAll finds them again.
+    /// </summary>
+    public static void Hide()
     {
-        var hidden = new List<IntPtr>();
-
         var taskbar = FindWindow("Shell_TrayWnd", null);
-        if (taskbar != IntPtr.Zero)
-        {
-            ShowWindow(taskbar, SW_HIDE);
-            hidden.Add(taskbar);
-        }
+        if (taskbar != IntPtr.Zero) ShowWindow(taskbar, SW_HIDE);
 
         var startBtn = FindWindow("Start", null);
-        if (startBtn != IntPtr.Zero)
-        {
-            ShowWindow(startBtn, SW_HIDE);
-            hidden.Add(startBtn);
-        }
+        if (startBtn != IntPtr.Zero) ShowWindow(startBtn, SW_HIDE);
 
         var secondary = IntPtr.Zero;
-        while ((secondary = FindWindowEx(
-            IntPtr.Zero,
-            secondary,
-            "Shell_SecondaryTrayWnd",
-            null)) != IntPtr.Zero)
-        {
+        while ((secondary = FindWindowEx(IntPtr.Zero, secondary, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
             ShowWindow(secondary, SW_HIDE);
-            hidden.Add(secondary);
-        }
-
-        return hidden.ToArray();
-    }
-
-    public static void Restore(IntPtr[] hiddenHandles)
-    {
-        foreach (var h in hiddenHandles)
-        {
-            RestoreWindow(h);
-        }
-
-        // WM_SETTINGCHANGE — wymusza refresh stanu powłoki po przywróceniu okien
-        try
-        {
-            var tray = FindWindow("Shell_TrayWnd", null);
-            if (tray != IntPtr.Zero)
-                PostMessage(tray, WM_SETTINGCHANGE, IntPtr.Zero, IntPtr.Zero);
-        }
-        catch { /* ignoruj */ }
     }
 
     /// <summary>
-    /// Restores every taskbar window via a fresh FindWindow, no saved handles needed. Called when
-    /// vigil_ui starts: a previous instance killed while locked left the taskbar hidden.
+    /// Restores every taskbar window via a fresh FindWindow. Called on unlock and when vigil_ui
+    /// starts (a previous instance killed while locked left the taskbar hidden).
     /// </summary>
     public static void RestoreAll()
     {

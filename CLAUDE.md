@@ -10,7 +10,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   `tray` (WinForms, user session).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D10), roadmap and the M1 task list.
+- `docs/review-2026-11.md` — known defects, decisions (D1–D13), roadmap (M1 done, M2–M4).
   Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"
@@ -19,6 +19,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   (path-filtered on PRs; every push to main builds everything and is never cancelled).
   Push the branch and read the CI result instead of guessing. CI uploads `dist/` as an artifact —
   that package is what Mateusz runs on the Windows VM for runtime tests.
+- **One PR with client changes per VM test session.** VM tests are expensive for Mateusz: batch every client
+  change waiting for a runtime test into one PR (merge the issue branches into it, as #29 did for #9 + #10)
+  and hand over one test checklist with the CI artifact. He runs the server from the same PR branch.
+  Server-only changes still go one issue per PR. No stacked PRs: every PR targets `main`.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 
 ## Invariants (changing any of these is a design decision — ask first)
@@ -66,4 +70,5 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - Python: plain `sqlite3` via `get_db()`; config through `get_config_value()`, defaults in `config.CONFIG_DEFAULTS`.
 - C#: async I/O, `ILogger<T>`, P/Invoke in `Native/`.
 - PowerShell: `Write-Step/OK/Warn/Skip` helpers, `$ErrorActionPreference = 'Stop'`.
-- One issue = one branch = one PR. Update this file in the same PR when an invariant or gotcha changes.
+- One issue = one branch = one PR, except client changes batched for one VM session (see above).
+  Update this file in the same PR when an invariant or gotcha changes.

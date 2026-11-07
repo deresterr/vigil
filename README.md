@@ -36,9 +36,10 @@ PC nic nie jest odporne na manipulację. Każdy mechanizm Vigila należy do jedn
 - brak połączenia z serwerem = blokada (fail-closed),
 - usługa, której administrator nie zatrzyma zwykłym poleceniem; strażnik (guardian) przywraca usługę
   i binarkę; usługa działa też w trybie awaryjnym,
-- ekran blokady na wszystkich monitorach, zablokowane skróty (Win, Alt+Tab, Alt+F4), polityki
-  (menedżer zadań, edytor rejestru, wylogowanie) — działają też na rodzica, bo to to samo konto,
-- wielokrotne zamykanie ekranu blokady kończy się wylogowaniem,
+- ekran blokady na wszystkich monitorach, zablokowane skróty (Win, Alt+Tab, Alt+F4), wyłączony
+  menedżer zadań i zmiana hasła konta — te dwie polityki działają też na rodzica, bo to to samo konto,
+- procesu Vigila w sesji dziecka nie da się zamknąć bez uprawnień administratora; zamykany
+  wielokrotnie (np. z podniesionego PowerShella) kończy się wylogowaniem,
 - odblokowanie offline kodem TOTP: sekret jest na dysku PC, administrator może go odczytać.
 
 **Wykrywa** — pokazuje w zakładce Dziennik jako alert do potwierdzenia:
@@ -105,7 +106,7 @@ Odinstalowanie: `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE, gdy syst
 | Katalog | Zawartość |
 |---|---|
 | `server/` | FastAPI + SQLite, panel rodzica, testy |
-| `client/` | usługa Windows (`watchdog`), ekran blokady (`lockscreen`), ikona w zasobniku (`tray`) |
+| `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`) |
 | `installer/` | skrypty instalacji, deinstalacji i strażnika integralności |
 | `docs/` | architektura, przegląd i roadmapa |
 

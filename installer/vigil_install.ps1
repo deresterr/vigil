@@ -37,8 +37,8 @@
 
 .PARAMETER ChildUsername
     Nazwa konta dziecka na lokalnym PC (np. 'jasiek'). Jeśli podane, installer zaaplikuje
-    policy (DisableTaskMgr, DisableRegistryTools, DisableLockWorkstation, NoLogoff,
-    sticky-keys hot-key off) DIRECT do tego konta. Bez tego parametru — tylko Default
+    policy (DisableTaskMgr, DisableChangePassword, sticky-keys hot-key off, gesty touchpada)
+    DIRECT do tego konta. Bez tego parametru — tylko Default
     profile (efekt dla NOWO tworzonych kont).
 
 .EXAMPLE
@@ -623,19 +623,23 @@ function Set-PoliciesForRegistryHive {
         [string]$Label      # tylko do logowania
     )
 
-    # Software\Microsoft\Windows\CurrentVersion\Policies\System
+    # Only policies that close a way out of the lock screen (#37). The parent maintains the PC through
+    # the same account (D12), so each of these hits the parent too; against an elevated child they are
+    # friction only.
+    #   DisableTaskMgr        — Ctrl+Alt+Del → Task Manager would run programs over the overlay
+    #   DisableChangePassword — the child must not change the password of the shared account
     $policiesSystem = "$BasePath\Software\Microsoft\Windows\CurrentVersion\Policies\System"
     if (-not (Test-Path $policiesSystem)) { New-Item -Path $policiesSystem -Force | Out-Null }
     Set-ItemProperty -Path $policiesSystem -Name 'DisableTaskMgr'        -Value 1 -Type DWord -Force
-    Set-ItemProperty -Path $policiesSystem -Name 'DisableRegistryTools'  -Value 1 -Type DWord -Force
-    Set-ItemProperty -Path $policiesSystem -Name 'DisableLockWorkstation' -Value 1 -Type DWord -Force
-    Set-ItemProperty -Path $policiesSystem -Name 'DisableChangePassword'  -Value 1 -Type DWord -Force
+    Set-ItemProperty -Path $policiesSystem -Name 'DisableChangePassword' -Value 1 -Type DWord -Force
 
-    # Software\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    # Set by versions before v0.6, dropped in #37 — no escape from the overlay, only a nuisance for the
+    # parent: DisableRegistryTools (regedit/reg.exe), DisableLockWorkstation (Win+L), NoLogoff.
+    Remove-ItemProperty -Path $policiesSystem -Name 'DisableRegistryTools', 'DisableLockWorkstation' -ErrorAction SilentlyContinue
     $policiesExplorer = "$BasePath\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-    if (-not (Test-Path $policiesExplorer)) { New-Item -Path $policiesExplorer -Force | Out-Null }
-    # NoLogoff = 1 → ukryj "Wyloguj" w menu start (też SAS) — żeby dziecko nie sign-out'owało
-    Set-ItemProperty -Path $policiesExplorer -Name 'NoLogoff' -Value 1 -Type DWord -Force
+    if (Test-Path $policiesExplorer) {
+        Remove-ItemProperty -Path $policiesExplorer -Name 'NoLogoff' -ErrorAction SilentlyContinue
+    }
 
     # Wyłącz Sticky Keys / Filter Keys / Toggle Keys / Mouse Keys ACTIVATION SHORTCUTS.
     # Bez tego: 5×Shift = sticky keys dialog, 8s Shift hold = filter keys dialog, mogą zasłonić lockscreen
@@ -661,7 +665,7 @@ function Set-PoliciesForRegistryHive {
     Set-ItemProperty -Path $touchpadPath -Name 'ThreeFingerTapEnabled'   -Value 0 -Type DWord -Force
     Set-ItemProperty -Path $touchpadPath -Name 'FourFingerTapEnabled'    -Value 0 -Type DWord -Force
 
-    Write-OK "${Label}: DisableTaskMgr/RegistryTools/LockWorkstation/ChangePassword, NoLogoff, sticky/filter keys off, touchpad gestures off"
+    Write-OK "${Label}: DisableTaskMgr, DisableChangePassword, skróty sticky/filter keys off, gesty touchpada off"
 }
 
 function Step-ApplyUserPolicies {

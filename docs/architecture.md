@@ -1,4 +1,4 @@
-# Architecture (as of v0.4)
+# Architecture (as of v0.5)
 
 Describes the system as it is. Planned changes live in `review-2026-11.md`.
 
@@ -84,7 +84,9 @@ stored: `pairing_code_hash`, `pairing_expires_utc`, `pairing_attempts`); `Instal
 and stores the returned key in `signing.dat`. Pairing again (reinstall, new PC) rotates the key, so the
 previously paired PC fails closed.
 
-Journal tab (`endpoints/journal.py`, `GET /admin/api/journal?days=&before=`): per local day, newest first —
+Journal tab (`endpoints/journal.py`, `GET /admin/api/journal?days=&before=`): per local day, newest first
+by `ts_utc` (not insertion order: `watchdog_offline` and `offline_unlock` arrive on reconnect and carry the
+time they happened) —
 PC on/off (`watchdog_*`), lock starts (`lock_started`, logged by the heartbeat when `last_lock_reason` changes
 to limit/night), pause (on/off paired into one entry), parent actions that change locking, and alerts.
 Alerts = `tamper_*` + `totp_lockout`, `admin_login_locked`, `pairing_code_invalidated`; unconfirmed ones are
@@ -97,14 +99,17 @@ Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cook
 ## Watchdog loop (`Worker.cs`)
 
 Every 5 s (1 s while locked, up to 60 s if the server says so):
-2. `SessionDetector` — any WTS session ≠ 0 in Active/Connected state.
-3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, push state to tray.
-4. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message).
+1. `SessionDetector` — any WTS session ≠ 0 in Active/Connected state.
+2. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, push state to tray.
+3. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message), unless an
+   offline grant is active (see Offline unlock). Also on request timeouts and unexpected exceptions.
 
 Lock = spawn `vigil_lockscreen.exe` in the user session (`WTSQueryUserToken` → `CreateProcessAsUser`,
 desktop `WinSta0\Default`), wait ≤ 10 s for it to connect to `VigilUI` (peer verified by exe path),
 send `set_state`. Dismiss = `exit` message, kill after 1 s, then always spawn
 `vigil_lockscreen.exe --restore-taskbar-only`.
+
+The TOTP field accepts only digits (typed or pasted, max 6) and regains focus after each check.
 
 Lockscreen hardening: fullscreen on every monitor, `TopmostEnforcer` (500 ms), `KeyboardBlocker`
 (WH_KEYBOARD_LL: Win, Alt+Tab, Alt+F4, Ctrl+Esc), `TaskbarHider`. Ctrl+Alt+Del cannot be blocked;

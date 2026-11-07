@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Vigil.Watchdog;
 using Vigil.Watchdog.Configuration;
 using Vigil.Watchdog.Detection;
+using Vigil.Watchdog.Guardian;
 using Vigil.Watchdog.Ui;
 using Vigil.Watchdog.Offline;
 using Vigil.Watchdog.Server;
@@ -76,6 +77,7 @@ builder.Services.AddSingleton<UiProcessLauncher>();
 builder.Services.AddSingleton<IUiManager, UiManager>();
 
 builder.Services.AddHostedService<Worker>();
+builder.Services.AddHostedService<GuardianReporter>();
 
 var host = builder.Build();
 await host.RunAsync();

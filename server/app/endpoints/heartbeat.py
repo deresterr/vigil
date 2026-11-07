@@ -303,7 +303,36 @@ async def goodbye(
 
 
 # Tamper events the watchdog observes itself (#10). Wire type -> journal event type.
-_TAMPER_EVENTS = {"lockscreen_killed": "tamper_lockscreen_killed"}
+_TAMPER_EVENTS = {
+    "lockscreen_killed": "tamper_lockscreen_killed",
+    "guardian_repaired": "tamper_guardian_repaired",
+}
+# What vigil_guardian.ps1 found broken (#36); the watchdog maps its Event Log IDs to these names.
+GUARDIAN_CHECKS = frozenset(
+    {"service_not_running", "service_disabled", "binary_replaced", "ifeo_debugger", "safeboot_missing",
+     "recovery_missing"})
+# The watchdog re-sends the guardian's events of the last day after every restart; older ones are noise.
+_GUARDIAN_MAX_AGE = timedelta(days=2)
+
+
+def _guardian_details(body: dict) -> tuple[dict, datetime] | None:
+    """Validated details + time of a guardian_repaired report, or None if malformed."""
+    check, record_id, repaired = body.get("check"), body.get("record_id"), body.get("repaired")
+    if check not in GUARDIAN_CHECKS or not isinstance(repaired, bool):
+        return None
+    if not isinstance(record_id, int) or isinstance(record_id, bool) or record_id < 0:
+        return None
+    try:
+        occurred = datetime.fromisoformat(str(body.get("occurred_utc")).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if occurred.tzinfo is None:
+        return None
+    occurred = occurred.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if not now - _GUARDIAN_MAX_AGE <= occurred <= now + timedelta(minutes=5):
+        return None
+    return {"check": check, "repaired": repaired, "record_id": record_id}, min(occurred, now)
 
 
 @router.post("/v1/tamper_event")
@@ -315,6 +344,21 @@ async def tamper_event(
     body = await request.json()
     if not isinstance(body, dict) or body.get("type") not in _TAMPER_EVENTS:
         raise HTTPException(status_code=422, detail="invalid_type")
+    if body["type"] == "guardian_repaired":
+        parsed = _guardian_details(body)
+        if parsed is None:
+            raise HTTPException(status_code=422, detail="invalid_guardian_report")
+        details, occurred = parsed
+        # Event Log record IDs restart when the log is cleared: the time is part of the identity.
+        seen = db.execute(
+            "SELECT 1 FROM events WHERE event_type = 'tamper_guardian_repaired' "
+            "AND json_extract(details_json, '$.record_id') = ? AND ts_utc = ?",
+            (details["record_id"], occurred.isoformat()),
+        ).fetchone()
+        if not seen:
+            log_event(db, "tamper_guardian_repaired", details, ts_utc=occurred)
+        return {"ok": True}
+
     details = {k: body[k] for k in ("kills", "window_seconds", "logged_off")
                if isinstance(body.get(k), int | bool)}
     log_event(db, _TAMPER_EVENTS[body["type"]], details)

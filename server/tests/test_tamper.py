@@ -1,6 +1,9 @@
 """Tamper detection from watchdog telemetry (app/tamper.py, issue #7)."""
 
 import json
+from datetime import datetime, timedelta, timezone
+
+import time_machine
 
 from app.db import get_connection
 from tests.conftest import Watchdog
@@ -137,8 +140,6 @@ def test_unknown_tamper_event_is_rejected(watchdog):
 
 def test_offline_is_stamped_when_the_outage_began(watchdog):
     """Reported on reconnect, but the journal must place it before what happened during the outage."""
-    from datetime import datetime, timedelta, timezone
-
     pc = Pc(watchdog)
     pc.tick()
     pc.tick(seconds=300, failed=60)
@@ -146,3 +147,38 @@ def test_offline_is_stamped_when_the_outage_began(watchdog):
         ts = conn.execute("SELECT ts_utc FROM events WHERE event_type = 'watchdog_offline'").fetchone()[0]
     age = datetime.now(timezone.utc) - datetime.fromisoformat(ts)
     assert timedelta(seconds=295) < age < timedelta(seconds=310)
+
+
+def _guardian_report(watchdog, **over):
+    body = {"type": "guardian_repaired", "check": "service_disabled", "repaired": True, "record_id": 4711,
+            "occurred_utc": (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()}
+    body.update(over)
+    return watchdog.post("/v1/tamper_event", body, verify=False)
+
+
+def test_guardian_repair_is_an_alert_stamped_when_it_happened(watchdog):
+    assert _guardian_report(watchdog).status_code == 200
+    assert _events("tamper_guardian") == [
+        ("tamper_guardian_repaired", {"check": "service_disabled", "repaired": True, "record_id": 4711})]
+    with get_connection() as conn:
+        ts = conn.execute("SELECT ts_utc FROM events WHERE event_type = 'tamper_guardian_repaired'").fetchone()[0]
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(ts)
+    assert timedelta(minutes=2) < age < timedelta(minutes=4)
+
+
+def test_guardian_report_resent_after_a_watchdog_restart_is_logged_once(watchdog):
+    occurred = "2026-11-07T10:00:00+00:00"
+    with time_machine.travel(datetime(2026, 11, 7, 10, 5, tzinfo=timezone.utc), tick=False):
+        for _ in range(2):
+            assert _guardian_report(watchdog, occurred_utc=occurred).status_code == 200
+        # Same record id after the Event Log was cleared, but a different time: a new event.
+        assert _guardian_report(watchdog, occurred_utc="2026-11-07T10:04:00Z").status_code == 200
+    assert len(_events("tamper_guardian")) == 2
+
+
+def test_malformed_guardian_reports_are_rejected(watchdog):
+    for over in ({"check": "rm_rf"}, {"repaired": "yes"}, {"record_id": -1}, {"record_id": True},
+                 {"occurred_utc": "yesterday"}, {"occurred_utc": "2026-11-07T10:00:00"},
+                 {"occurred_utc": "2020-01-01T00:00:00Z"}):
+        assert _guardian_report(watchdog, **over).status_code == 422, over
+    assert _events("tamper_guardian") == []

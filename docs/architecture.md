@@ -73,6 +73,8 @@ Compared with the previous heartbeat (`wd_*` config keys, reset on pairing):
 | new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
 | vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
 
+| vigil_guardian.ps1 repaired something (Event Log 7001–7006) | `tamper_guardian_repaired` (`check`, `repaired`), stamped with the repair time; sent by `GuardianReporter` every minute, deduped by record id + time |
+
 `tamper_*` = alerts for the parent. Not detected: a watchdog that is stopped and never comes back
 (the panel only shows "offline"), and anything an admin forges with the signing key.
 
@@ -161,5 +163,5 @@ Registry       HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\{Minimal,Network}\
 Event Log      sources "Vigil Watchdog", "Vigil Guardian"
 ```
 
-Guardian checks: service exists, running, binary hash (restore from backup), IFEO debugger,
-SafeBoot keys, recovery config.
+Guardian (`docs/guardian.md`): binary hash (restore from backup), IFEO debugger, automatic start,
+recovery actions, SafeBoot keys, service running; each repair is an Event Log entry the watchdog reports.

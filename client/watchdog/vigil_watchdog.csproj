@@ -34,6 +34,8 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <!-- NamedPipeServerStreamAcl + PipeSecurity (DACL na pipe). W .NET 8 osobny package. -->
     <PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
+    <!-- EventLogReader: reads vigil_guardian.ps1 findings (Guardian/GuardianReporter.cs). -->
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

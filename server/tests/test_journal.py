@@ -127,3 +127,19 @@ def test_ack_ignores_non_alerts_and_rejects_bad_ids(client):
 
 def test_journal_requires_admin_session(client):
     assert client.get("/admin/api/journal").status_code == 401
+
+
+def test_entries_are_ordered_by_event_time_not_arrival(client):
+    """Offline unlocks and outages reach the server on reconnect; the journal must still read in order."""
+    with time_machine.travel(datetime(2026, 11, 4, 0, 45, tzinfo=TZ), tick=False):
+        _login(client)
+        with get_connection() as conn:
+            log_event(conn, "watchdog_offline", {"awake_gap_seconds": 180},
+                      ts_utc=datetime(2026, 11, 4, 0, 39, tzinfo=TZ))
+            log_event(conn, "offline_unlock", {"minutes": 60, "step": 1},
+                      ts_utc=datetime(2026, 11, 4, 0, 41, tzinfo=TZ))
+            log_event(conn, "watchdog_started", {"same_boot": False},
+                      ts_utc=datetime(2026, 11, 4, 0, 34, tzinfo=TZ))
+        entries = _today(client)["entries"]
+    assert [(e["time"], e["type"]) for e in entries] == [
+        ("00:41", "offline_unlock"), ("00:39", "watchdog_offline"), ("00:34", "watchdog_started")]

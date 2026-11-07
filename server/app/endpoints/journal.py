@@ -106,7 +106,10 @@ async def journal(db: sqlite3.Connection = Depends(get_db), before: str | None =
         lo, hi = _day_bounds_utc(day, tz)
         rows = db.execute(
             f"SELECT id, ts_utc, event_type, details_json, acked_utc FROM events "
-            f"WHERE ts_utc >= ? AND ts_utc < ? AND (event_type IN ({types}) OR {ALERT_WHERE}) ORDER BY id",
+            f"WHERE ts_utc >= ? AND ts_utc < ? AND (event_type IN ({types}) OR {ALERT_WHERE}) "
+            # By when it happened, not when the server heard of it: offline unlocks and outages
+            # are reported on reconnect, minutes after the fact.
+            f"ORDER BY ts_utc, id",
             (lo, hi),
         ).fetchall()
         state = db.execute(

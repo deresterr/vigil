@@ -487,7 +487,7 @@ const JOURNAL = {
   watchdog_shutdown:  d => ({cat: 'pc', icon: 'power', title: 'Komputer wyłączony',
                              sub: d.on_since ? `Włączony od ${d.on_since} (${fmtMin(d.minutes)})` : ''}),
   watchdog_offline:   d => ({cat: 'pc', icon: 'power', title: 'Brak połączenia z serwerem',
-                             sub: `Ok. ${fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60)))} — ekran był zablokowany`}),
+                             sub: `Przez ok. ${fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60)))}`}),
   lock_started:       d => d.reason === 'night'
                              ? {cat: 'lock', icon: 'moon', title: 'Cisza nocna — ekran zablokowany'}
                              : {cat: 'lock', icon: 'lock', title: 'Limit czasu wykorzystany — ekran zablokowany'},

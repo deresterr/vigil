@@ -1,18 +1,16 @@
+using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Vigil.Watchdog.Lockscreen;
+namespace Vigil.Ipc;
 
-/// <summary>
-/// Pipe protocol — JSON line-delimited messages.
-/// Każdy message ma "type" jako discriminator. Bidirectional na tym samym pipe (PipeDirection.InOut).
-///
-/// IDENTYCZNE klasy są w vigil-lockscreen/IpcMessages.cs — celowy duplikat, bo single-binary
-/// publish dla każdego projektu osobno (shared library by wymagała osobnego pakietu).
-/// </summary>
+// Pipe \\.\pipe\VigilUI between vigil_watchdog (server, SYSTEM) and vigil_ui (client, child's session).
+// JSON, one message per line, "type" is the discriminator. This one file is compiled into both
+// projects (<Compile Include Link>), so the two sides cannot drift apart.
 
-// === Watchdog → Lockscreen ===
+// === Watchdog → UI ===
 
+/// <summary>Show the lock overlay (or update it) with this state.</summary>
 public sealed record IpcSetState
 {
     [JsonPropertyName("type")] public string Type => "set_state";
@@ -26,6 +24,22 @@ public sealed record IpcSetState
     [JsonPropertyName("current_time_display")] public string? CurrentTimeDisplay { get; init; }
 }
 
+/// <summary>Hide the lock overlay; the process keeps running with its tray icon.</summary>
+public sealed record IpcUnlock
+{
+    [JsonPropertyName("type")] public string Type => "unlock";
+}
+
+/// <summary>Tray tooltip state, sent after every heartbeat.</summary>
+public sealed record IpcTrayState
+{
+    [JsonPropertyName("type")] public string Type => "tray_state";
+    [JsonPropertyName("paused")] public bool Paused { get; init; }
+    [JsonPropertyName("can_pause")] public bool CanPause { get; init; }
+    [JsonPropertyName("minutes_remaining")] public int MinutesRemaining { get; init; }
+}
+
+/// <summary>Quit the UI process (service stopping).</summary>
 public sealed record IpcExit
 {
     [JsonPropertyName("type")] public string Type => "exit";
@@ -41,7 +55,7 @@ public sealed record IpcTotpResponse
     [JsonPropertyName("lockout_seconds_remaining")] public int? LockoutSecondsRemaining { get; init; }
 }
 
-// === Lockscreen → Watchdog ===
+// === UI → Watchdog ===
 
 public sealed record IpcTotpAttempt
 {
@@ -60,28 +74,29 @@ public sealed record IpcShutdownRequest
     [JsonPropertyName("type")] public string Type => "shutdown_request";
 }
 
-// Lockscreen → Watchdog: dziecko kliknęło "Jestem z powrotem" podczas pauzy
+/// <summary>"Jestem z powrotem" on the pause lock screen.</summary>
 public sealed record IpcResumeFromPause
 {
     [JsonPropertyName("type")] public string Type => "resume_from_pause";
 }
 
-/// <summary>
-/// Helpers: serializacja do single-line JSON + dispatcher po `type` field przy odbiorze.
-/// </summary>
+/// <summary>Left click on the tray icon.</summary>
+public sealed record IpcPauseToggle
+{
+    [JsonPropertyName("type")] public string Type => "pause_toggle";
+}
+
 public static class IpcSerializer
 {
     private static readonly JsonSerializerOptions _opts = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // WriteIndented = false — single line per message, line-delimited protocol
     };
 
+    /// <summary>Single-line JSON (no indentation): the protocol is line-delimited.</summary>
     public static string Serialize(object message) => JsonSerializer.Serialize(message, message.GetType(), _opts);
 
-    /// <summary>
-    /// Próbuje rozpoznać typ przez "type" field. Zwraca null dla nieznanego typu.
-    /// </summary>
+    /// <summary>Message by its "type", or null for malformed or unknown lines.</summary>
     public static object? TryDeserialize(string line)
     {
         try
@@ -89,16 +104,18 @@ public static class IpcSerializer
             using var doc = JsonDocument.Parse(line);
             if (!doc.RootElement.TryGetProperty("type", out var typeProp))
                 return null;
-            var typeName = typeProp.GetString();
-            return typeName switch
+            return typeProp.GetString() switch
             {
                 "set_state" => JsonSerializer.Deserialize<IpcSetState>(line, _opts),
+                "unlock" => JsonSerializer.Deserialize<IpcUnlock>(line, _opts),
+                "tray_state" => JsonSerializer.Deserialize<IpcTrayState>(line, _opts),
                 "exit" => JsonSerializer.Deserialize<IpcExit>(line, _opts),
                 "totp_response" => JsonSerializer.Deserialize<IpcTotpResponse>(line, _opts),
                 "totp_attempt" => JsonSerializer.Deserialize<IpcTotpAttempt>(line, _opts),
                 "retry_now" => JsonSerializer.Deserialize<IpcRetryNow>(line, _opts),
                 "shutdown_request" => JsonSerializer.Deserialize<IpcShutdownRequest>(line, _opts),
                 "resume_from_pause" => JsonSerializer.Deserialize<IpcResumeFromPause>(line, _opts),
+                "pause_toggle" => JsonSerializer.Deserialize<IpcPauseToggle>(line, _opts),
                 _ => null,
             };
         }

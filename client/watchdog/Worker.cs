@@ -5,7 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Configuration;
 using Vigil.Watchdog.Detection;
-using Vigil.Watchdog.Lockscreen;
+using Vigil.Watchdog.Ui;
 using Vigil.Watchdog.Offline;
 using Vigil.Watchdog.Server;
 
@@ -24,7 +24,7 @@ public sealed class Worker : BackgroundService
     private readonly VigilConfig _config;
     private readonly HeartbeatClient _client;
     private readonly SessionDetector _sessions;
-    private readonly ILockscreenManager _lockscreen;
+    private readonly IUiManager _ui;
     private readonly ILogger<Worker> _logger;
     private readonly TotpSecretStore _totpStore;
     private readonly OfflineUnlock _offline;
@@ -40,15 +40,11 @@ public sealed class Worker : BackgroundService
     private int _failedAttempts;
     private DateTime _lastSuccessfulHeartbeat = DateTime.MinValue;
 
-    // Tray IPC — watchdog nasłuchuje na żądania pauzy z vigil_tray.exe
-    private TrayIpcServer? _trayIpc;
-
     // Tick interval:
     //  - normalny (sesja aktywna lub nie zalogowany) — 5s. Server odbiera heartbeat, akumuluje czas.
     //  - gdy lockscreen JEST AKTYWNY — 1s. Krótszy bo:
     //     * po unlock chcemy szybko zauważyć (dziecko nie powinno czekać 5s)
-    //     * jeśli dziecko zabije vigil_lockscreen.exe (Task Manager itp.), respawn nastąpi pod sekundę
-    //       zamiast 5s nieosłoniętego desktopu
+    //     * jeśli vigil_ui zniknie, respawn nastąpi pod sekundę zamiast 5s nieosłoniętego desktopu
     private static readonly TimeSpan _tickIntervalNormal = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan _tickIntervalLocked = TimeSpan.FromSeconds(1);
     // Adaptive interval sugerowany przez serwer (next_check_seconds).
@@ -59,7 +55,7 @@ public sealed class Worker : BackgroundService
         VigilConfig config,
         HeartbeatClient client,
         SessionDetector sessions,
-        ILockscreenManager lockscreen,
+        IUiManager ui,
         TotpSecretStore totpStore,
         OfflineUnlock offline,
         ILogger<Worker> logger)
@@ -67,16 +63,15 @@ public sealed class Worker : BackgroundService
         _config = config;
         _client = client;
         _sessions = sessions;
-        _lockscreen = lockscreen;
+        _ui = ui;
         _totpStore = totpStore;
         _offline = offline;
         _logger = logger;
 
-        // Podpinamy event handler dla TOTP — lockscreen UI → server.
-        // DI gwarantuje że _lockscreen jest non-null (rzucił by przy resolve gdyby brakowało).
-        _lockscreen.OnTotpAttempt += HandleTotpFromLockscreenAsync;
-        _lockscreen.OnRetryRequest += HandleRetryRequestAsync;
-        _lockscreen.OnResumeFromPause += HandleResumeFromPauseAsync;
+        _ui.OnTotpAttempt += HandleTotpFromLockscreenAsync;
+        _ui.OnRetryRequest += HandleRetryRequestAsync;
+        _ui.OnResumeFromPause += HandleResumeFromPauseAsync;
+        _ui.OnPauseToggle += HandlePauseToggleAsync;
     }
 
     private readonly SemaphoreSlim _retrySignal = new(0, 1);
@@ -99,9 +94,10 @@ public sealed class Worker : BackgroundService
         }
     }
 
-    private async Task HandlePauseToggleAsync()
+    private async Task HandlePauseToggleAsync(CancellationToken ct)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(8));
         try
         {
             var result = await _client.SendPauseToggleAsync(cts.Token).ConfigureAwait(false);
@@ -117,9 +113,6 @@ public sealed class Worker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Vigil uruchomiony. Server: {Server}", _config.ServerUrl);
-
-        _trayIpc = new TrayIpcServer(_logger, HandlePauseToggleAsync);
-        _ = Task.Run(() => _trayIpc.RunAsync(stoppingToken), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -151,7 +144,7 @@ public sealed class Worker : BackgroundService
                 // retry musi wywołać Release ponownie.
                 // Krótszy interval gdy lockscreen jest aktywny — szybszy unlock + szybszy respawn
                 // jeśli dziecko zabije process.
-                var interval = _lockscreen.IsLocked ? _tickIntervalLocked : _tickIntervalAdaptive;
+                var interval = _ui.IsLocked ? _tickIntervalLocked : _tickIntervalAdaptive;
                 await _retrySignal.WaitAsync(interval, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { break; }
@@ -195,6 +188,9 @@ public sealed class Worker : BackgroundService
 
     private async Task TickAsync(CancellationToken ct)
     {
+        // vigil_ui first: it must be up (tray, and ready to lock) whether or not the server answers.
+        await _ui.EnsureRunningAsync(ct).ConfigureAwait(false);
+
         var (sessionActive, _) = _sessions.DetectActiveSession();
 
         // Brak idle/foreground tracking — server akumuluje czas gdy sesja aktywna i heartbeat dochodzi.
@@ -231,7 +227,7 @@ public sealed class Worker : BackgroundService
         {
             // Adaptuj interwał do sugestii serwera gdy nie locked.
             // Serwer wysyła 30s gdy sesja nieaktywna — redukuje load gdy dziecko niezalogowane.
-            if (!_lockscreen.IsLocked && response.NextCheckSeconds > 0)
+            if (!_ui.IsLocked && response.NextCheckSeconds > 0)
                 _tickIntervalAdaptive = TimeSpan.FromSeconds(
                     Math.Clamp(response.NextCheckSeconds, 5, 60));
 
@@ -256,8 +252,8 @@ public sealed class Worker : BackgroundService
         if (timeSinceLastSuccess > graceSeconds && _offline.IsGrantActive)
         {
             // Parent unlocked with a TOTP code while offline (#9): stay unlocked until the grant ends.
-            if (_offlineLocked && _lockscreen.IsLocked)
-                await _lockscreen.DismissAsync(ct).ConfigureAwait(false);
+            if (_offlineLocked)
+                await _ui.DismissAsync(ct).ConfigureAwait(false);
             _offlineLocked = false;
         }
         else if (timeSinceLastSuccess > graceSeconds)
@@ -265,7 +261,7 @@ public sealed class Worker : BackgroundService
             // Fail-closed: server unreachable + grace minął
             var canUnlock = _offline.HasSecret;
             _offlineLocked = true;
-            await _lockscreen.EnsureLockedAsync(new LockState(
+            await _ui.EnsureLockedAsync(new LockState(
                 Reason: "server_unreachable",
                 MainMessage: canUnlock
                     ? "Brak połączenia z serwerem rodzica. Rodzic może odblokować komputer kodem z telefonu."
@@ -288,7 +284,7 @@ public sealed class Worker : BackgroundService
         {
             var ui = response.UiState;
             var isPause = response.LockReason == "pause";
-            await _lockscreen.EnsureLockedAsync(new LockState(
+            await _ui.EnsureLockedAsync(new LockState(
                 Reason: response.LockReason ?? "unknown",
                 MainMessage: ui?.MainMessage,
                 ShowTotpField: ui?.ShowTotpField ?? false,
@@ -300,35 +296,15 @@ public sealed class Worker : BackgroundService
                 ct).ConfigureAwait(false);
 
             // Tray: pauza aktywna → "paused" icon; inne blokady → "locked" icon
-            await UpdateTrayStateAsync(
-                paused: isPause,
-                canPause: false,
-                minutesRemaining: response.MinutesRemaining).ConfigureAwait(false);
+            await _ui.SendTrayStateAsync(paused: isPause, canPause: false, response.MinutesRemaining, ct)
+                .ConfigureAwait(false);
             return;
         }
 
-        if (_lockscreen.IsLocked)
-        {
-            await _lockscreen.DismissAsync(ct).ConfigureAwait(false);
-        }
+        await _ui.DismissAsync(ct).ConfigureAwait(false);
+        await _ui.SendTrayStateAsync(paused: false, canPause: true, response.MinutesRemaining, ct)
+            .ConfigureAwait(false);
 
-        // Tray: normalny tryb → "playing" icon z pozostałymi minutami
-        await UpdateTrayStateAsync(
-            paused: false,
-            canPause: true,
-            minutesRemaining: response.MinutesRemaining).ConfigureAwait(false);
-
-    }
-
-    private async Task UpdateTrayStateAsync(bool paused, bool canPause, int minutesRemaining)
-    {
-        if (_trayIpc is null) return;
-        try
-        {
-            await _trayIpc.SendStateUpdateAsync(paused, canPause, minutesRemaining)
-                .ConfigureAwait(false);
-        }
-        catch { /* tray niedostępny */ }
     }
 
     /// <summary>

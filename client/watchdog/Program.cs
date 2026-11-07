@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 using Vigil.Watchdog;
 using Vigil.Watchdog.Configuration;
 using Vigil.Watchdog.Detection;
-using Vigil.Watchdog.Lockscreen;
+using Vigil.Watchdog.Ui;
 using Vigil.Watchdog.Offline;
 using Vigil.Watchdog.Server;
 
@@ -70,11 +70,10 @@ builder.Services.AddSingleton(sp => new HeartbeatClient(
     vigilConfig, signingKey, sp.GetRequiredService<ILogger<HeartbeatClient>>()));
 builder.Services.AddSingleton<SessionDetector>();
 
-var lockscreenExe = Path.Combine(ProgramDataRoot, "vigil_lockscreen.exe");
-builder.Services.AddSingleton(new LockscreenManagerOptions { LockscreenExePath = lockscreenExe });
+builder.Services.AddSingleton(new UiManagerOptions { UiExePath = Path.Combine(ProgramDataRoot, "vigil_ui.exe") });
 builder.Services.AddSingleton<NamedPipeIpcServer>();
-builder.Services.AddSingleton<LockscreenProcessLauncher>();
-builder.Services.AddSingleton<ILockscreenManager, RealLockscreenManager>();
+builder.Services.AddSingleton<UiProcessLauncher>();
+builder.Services.AddSingleton<IUiManager, UiManager>();
 
 builder.Services.AddHostedService<Worker>();
 

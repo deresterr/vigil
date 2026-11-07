@@ -1,10 +1,10 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Windows.Input;
 
-namespace Vigil.Lockscreen.Native;
+namespace Vigil.Ui.Native;
 
 /// <summary>
 /// Niskopoziomowy keyboard hook (WH_KEYBOARD_LL) blokujący kombinacje umożliwiające ucieczkę
@@ -52,9 +52,9 @@ public sealed class KeyboardBlocker : IDisposable
     public void Install()
     {
         if (_hookId != IntPtr.Zero) return;
-        using var process = Process.GetCurrentProcess();
-        using var module = process.MainModule!;
-        _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(module.ModuleName!), 0);
+        // Our own exe module. Not via Process.MainModule: that opens the process by PID, and vigil_ui
+        // runs with a restrictive process DACL (UiProcessLauncher).
+        _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
         if (_hookId == IntPtr.Zero)
         {
             throw new System.ComponentModel.Win32Exception(
@@ -154,7 +154,7 @@ public sealed class KeyboardBlocker : IDisposable
     private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr GetModuleHandle(string lpModuleName);
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
     [DllImport("user32.dll")]
     private static extern short GetKeyState(int nVirtKey);

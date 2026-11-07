@@ -1,9 +1,9 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 
-namespace Vigil.Lockscreen.Native;
+namespace Vigil.Ui.Native;
 
 /// <summary>
 /// Co 500ms re-asserts topmost + foreground na liście podanych okien lockscreen.
@@ -72,6 +72,13 @@ public sealed class TopmostEnforcer : IDisposable
 
     public void Start() => _timer.Start();
     public void Stop()  => _timer.Stop();
+
+    /// <summary>Stop and forget all windows (overlay hidden; the process keeps running).</summary>
+    public void Clear()
+    {
+        _timer.Stop();
+        _windows.Clear();
+    }
 
     private void ReassertAll()
     {

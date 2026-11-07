@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Vigil.Lockscreen;
+namespace Vigil.Ui;
 
 /// <summary>
 /// Pipe client łączący się z vigil_watchdog. Bidirectional pipe, JSON line-delimited.

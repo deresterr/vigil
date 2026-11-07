@@ -482,6 +482,15 @@ const fmtSec = s => s >= 60 ? Math.round(s / 60) + ' min' : s + ' s';
 const VIA = d => d.via === 'admin_ui' ? 'Z panelu' : 'Kod z telefonu wpisany na ekranie blokady';
 
 // type -> {cat, icon, title, sub}. Polish wording lives only here.
+// vigil_guardian.ps1 checks (#36), keys as in server GUARDIAN_CHECKS.
+const GUARDIAN_CHECKS = {
+  service_not_running: 'usługa Vigil była zatrzymana',
+  service_disabled:    'usługa Vigil była wyłączona z autostartu',
+  binary_replaced:     'plik usługi Vigil był podmieniony',
+  ifeo_debugger:       'start usługi był przechwytywany (IFEO)',
+  safeboot_missing:    'usunięto start Vigila w trybie awaryjnym',
+  recovery_missing:    'usunięto automatyczny restart usługi',
+};
 const JOURNAL = {
   watchdog_started:   d => ({cat: 'pc', icon: 'power', title: d.same_boot ? 'Vigil uruchomiony ponownie' : 'Komputer włączony'}),
   watchdog_shutdown:  d => ({cat: 'pc', icon: 'power', title: 'Komputer wyłączony',
@@ -508,6 +517,8 @@ const JOURNAL = {
   tamper_service_stopped:    () => ({title: 'Usługa Vigil została zatrzymana', sub: 'Również przy deinstalacji lub update-config'}),
   tamper_lockscreen_killed:  d => ({title: 'Ekran blokady był wielokrotnie zamykany',
                              sub: `${d.kills ?? '?'} razy w ${d.window_seconds ?? '?'} s · ` + (d.logged_off ? 'użytkownik został wylogowany' : 'wylogowanie się nie powiodło')}),
+  tamper_guardian_repaired:  d => ({title: 'Strażnik Vigila znalazł zmianę w instalacji',
+                             sub: (GUARDIAN_CHECKS[d.check] || d.check) + ' · ' + (d.repaired ? 'naprawione' : 'naprawa nie powiodła się')}),
   tamper_watchdog_silent:    d => ({title: 'Vigil nie odzywał się, choć komputer działał',
                              sub: 'Ok. ' + fmtMin(Math.max(1, Math.round(d.awake_gap_seconds / 60))) + ' — proces mógł zostać wstrzymany'}),
   totp_lockout:              d => ({title: 'Kilka błędnych kodów na ekranie blokady', sub: 'Odblokowanie wstrzymane na ' + fmtSec(d.seconds || 0)}),

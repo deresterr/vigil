@@ -4,13 +4,12 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
-    <!-- WPF + minimalny WinForms dla System.Windows.Forms.Screen.AllScreens (multi-monitor enumeration).
-         Alternatywa to P/Invoke EnumDisplayMonitors — Screen jest prostszy. -->
+    <!-- WPF + WinForms for Screen.AllScreens (one lock window per monitor) and NotifyIcon (tray). -->
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>Vigil.Lockscreen</RootNamespace>
-    <AssemblyName>vigil_lockscreen</AssemblyName>
+    <RootNamespace>Vigil.Ui</RootNamespace>
+    <AssemblyName>vigil_ui</AssemblyName>
 
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
@@ -24,6 +23,7 @@
          co konfliktuje z WPF (Application, KeyEventArgs istnieją w obu). Używamy aliasu
          WinFormsScreen w plikach które potrzebują Screen.AllScreens — implicit nie potrzebny. -->
     <Using Remove="System.Windows.Forms" />
+    <Compile Include="..\shared\IpcMessages.cs" Link="IpcMessages.cs" />
   </ItemGroup>
 
 </Project>

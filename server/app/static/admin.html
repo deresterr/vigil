@@ -169,8 +169,10 @@
     .sched .hd { font-size: 0.75rem; color: #888; }
     .sched .day { color: #ccc; font-weight: 600; }
     .sched .day.weekend { color: #60a5fa; }
-    .sched .day.today::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 4px;
-                               border-radius: 50%; background: #4ade80; vertical-align: middle; }
+    /* Today's dot sits in the card padding, left of the label: no column moves. */
+    .sched .day { position: relative; }
+    .sched .day.today::before { content: ''; position: absolute; left: -11px; top: 50%; width: 6px; height: 6px;
+                                margin-top: -3px; border-radius: 50%; background: #4ade80; }
     .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
     .sched input { padding: 10px 8px; font-size: 0.95rem; min-width: 0; }
     #notice {

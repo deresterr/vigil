@@ -1,4 +1,4 @@
-"""Shared fixtures: fresh SQLite DB per test + a signed "watchdog" client.
+"""Shared fixtures: fresh SQLite DB per test, one child with one paired device, a signed "watchdog".
 
 Module-level state in the app (login throttle) is reset per test, otherwise values from a previous
 test's DB leak into the next one.
@@ -29,7 +29,34 @@ def client(tmp_path, monkeypatch):
     with TestClient(fastapi_app) as c:
         with app.db.get_connection() as conn:
             app.db.set_config_value(conn, "setup_complete", "1")
+        add_child("Ola")
+        add_device(1, "PC")
         yield c
+
+
+def add_child(name: str, weekday: int = 120, weekend: int = 240, night: tuple[str, str] = ("21:30", "06:30")) -> int:
+    with app.db.get_connection() as conn:
+        return conn.execute(
+            "INSERT INTO children(name, daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end, "
+            "created_utc) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, weekday, weekend, *night, datetime.now(UTC).isoformat()),
+        ).lastrowid
+
+
+def add_device(child_id: int, name: str) -> int:
+    """A paired device with a random key (Watchdog(client, device_id) signs with it)."""
+    key = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
+    with app.db.get_connection() as conn:
+        return conn.execute(
+            "INSERT INTO devices(child_id, name, signing_key, paired_utc) VALUES (?, ?, ?, ?)",
+            (child_id, name, key, datetime.now(UTC).isoformat()),
+        ).lastrowid
+
+
+def device_key(device_id: int) -> bytes:
+    with app.db.get_connection() as conn:
+        key_b64 = conn.execute("SELECT signing_key FROM devices WHERE id = ?", (device_id,)).fetchone()[0]
+    return base64.urlsafe_b64decode(key_b64 + "=" * (-len(key_b64) % 4))
 
 
 def config(key: str) -> str:
@@ -37,21 +64,25 @@ def config(key: str) -> str:
         return app.db.get_config_value(conn, key)
 
 
-def state_for(date_iso: str) -> dict:
+def state_for(date_iso: str, child_id: int = 1) -> dict:
     with app.db.get_connection() as conn:
-        row = conn.execute("SELECT * FROM daily_state WHERE date_local = ?", (date_iso,)).fetchone()
+        row = conn.execute("SELECT * FROM child_daily WHERE child_id = ? AND date_local = ?",
+                           (child_id, date_iso)).fetchone()
         return dict(row) if row else {}
+
+
+def set_child(child_id: int = 1, **fields) -> None:
+    with app.db.get_connection() as conn:
+        conn.execute(f"UPDATE children SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                     (*fields.values(), child_id))
 
 
 class Watchdog:
     """Speaks the /v1 protocol the way vigil_watchdog does (HeartbeatClient.cs)."""
 
-    def __init__(self, client: TestClient, key: bytes | None = None):
+    def __init__(self, client: TestClient, device_id: int = 1, key: bytes | None = None):
         self.c = client
-        if key is None:
-            key_b64 = config("signing_key")
-            key = base64.urlsafe_b64decode(key_b64 + "=" * (-len(key_b64) % 4))
-        self.key = key
+        self.key = key if key is not None else device_key(device_id)
 
     def headers(self, path: str, body: bytes, nonce: str | None = None, ts: str | None = None) -> dict:
         nonce = nonce or base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode()

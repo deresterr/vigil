@@ -224,6 +224,49 @@
     .secret-row .copy-btn.copied { background: #16a34a; }
     .secret-label { font-size: 0.85rem; color: #aaa; margin: 12px 0 0; font-weight: 600; }
     .secret-label:first-child { margin-top: 0; }
+    /* Child switcher (D7, variant D): name in the header + bottom sheet */
+    .child-btn { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -6px 0 -6px -10px; padding: 0 10px;
+      background: transparent; border: none; border-radius: 8px; color: #e8e8e8; font: inherit; font-size: 1.05rem; font-weight: 600; }
+    .child-btn:disabled { cursor: default; opacity: 1; }
+    .child-btn .chev { display: none; }
+    .child-btn.multi .chev { display: inline; }
+    .child-btn.multi:active { background: #2e2e2e; }
+    .child-btn .ping { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; }
+    .sheet-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 60; }
+    .sheet-backdrop.show { display: block; }
+    .sheet { position: absolute; left: 0; right: 0; bottom: 0; max-width: 720px; margin: 0 auto; background: #232323;
+      border-top: 1px solid #444; border-radius: 16px 16px 0 0; padding: 10px 16px max(24px, env(safe-area-inset-bottom));
+      display: flex; flex-direction: column; gap: 8px; max-height: 80vh; overflow-y: auto; }
+    .sheet .grab { align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #555; margin-bottom: 6px; }
+    .sheet h3 { margin: 0 0 4px; font-size: .95rem; font-weight: 600; color: #ccc; text-transform: uppercase; letter-spacing: .04em; }
+    .sheet-item { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 14px; background: #1a1a1a;
+      border: 1px solid #333; border-radius: 10px; color: #e8e8e8; text-align: left; font: inherit; cursor: pointer; width: 100%; }
+    .sheet-item.on { border-color: #2563eb; }
+    .sheet-item .nm { display: block; font-size: 1rem; }
+    .sheet-item.on .nm { font-weight: 600; }
+    .sheet-item .st { display: block; font-size: .85rem; color: #9ca3af; }
+    .sheet-item .grow { flex: 1; min-width: 0; }
+    .sdot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; background: #4ade80; }
+    .sdot.limit { background: #fb923c; } .sdot.night { background: #818cf8; } .sdot.manual { background: #f87171; }
+    .sdot.pause { background: #94a3b8; }
+    .cnt { background: #dc2626; color: #fff; border-radius: 9px; font-size: .72rem; line-height: 18px; min-width: 18px;
+      padding: 0 5px; font-weight: 600; text-align: center; }
+    /* Device rows (Status + Settings) */
+    ul.devs { list-style: none; margin: 0; padding: 0; }
+    ul.devs li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #2e2e2e; flex-wrap: wrap; }
+    ul.devs li:first-child { border-top: none; }
+    ul.devs .dd { width: 10px; height: 10px; border-radius: 50%; background: #f87171; flex: 0 0 auto; }
+    ul.devs .dd.on { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+    ul.devs .grow { flex: 1; min-width: 0; }
+    ul.devs .nm { margin: 0; font-size: .95rem; }
+    ul.devs .st { margin: 2px 0 0; font-size: .84rem; color: #9ca3af; }
+    ul.devs .mins { font-size: .9rem; color: #ccc; font-variant-numeric: tabular-nums; }
+    ul.devs .acts { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding-left: 20px; }
+    .btn-sm { min-height: 40px; padding: 0 12px; background: transparent; border: 1px solid #444; border-radius: 8px;
+      color: #ccc; font: inherit; font-size: .85rem; cursor: pointer; }
+    .btn-sm.danger { border-color: #7f1d1d; color: #fca5a5; }
+    .section-label { margin: 18px 0 8px; font-size: .8rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+    .section-label:first-child { margin-top: 4px; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
     .muted { color: #888; font-size: 0.85rem; }
@@ -238,7 +281,11 @@
 <body>
 
 <header>
-  <h1 id="pageTitle">Vigil</h1>
+  <button class="child-btn" id="childBtn" onclick="openSheet()" aria-haspopup="dialog" disabled>
+    <span id="pageTitle">Vigil</span>
+    <svg class="chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+    <span class="ping" id="childPing" hidden title="Ostrzeżenie u innego dziecka"></span>
+  </button>
   <div class="watchdog-status">
     <span class="dot" id="watchdogDot"></span>
     <span id="watchdogText">...</span>
@@ -259,7 +306,7 @@
     <p class="substate" id="lockSubstate"></p>
   </div>
 
-  <div class="card">
+  <div class="card" id="todayCard">
     <h2>Dziś</h2>
     <div class="time-grid">
       <div class="stat">
@@ -274,8 +321,14 @@
     <p class="muted" id="limitInfo" style="text-align:center; margin-top:10px"></p>
   </div>
 
-  <div class="card">
+  <div class="card" id="devicesCard">
+    <h2>Komputery</h2>
+    <ul class="devs" id="devicesList"></ul>
+  </div>
+
+  <div class="card" id="actionsCard">
     <h2>Akcje</h2>
+    <p class="muted muted-block" id="actionsNote" hidden>Dotyczą wszystkich komputerów dziecka.</p>
     <div class="action-grid">
       <button class="btn btn-primary" onclick="grantTime(15)">+15 min</button>
       <button class="btn btn-primary" onclick="grantTime(30)">+30 min</button>
@@ -312,9 +365,12 @@
 
 <div id="tab-settings" class="tab-content">
 
+  <div id="childSettings">
+  <p class="section-label" id="childSectionLabel">Dziecko</p>
+
   <div class="card">
     <h2>Dzienny limit</h2>
-    <p class="muted muted-block">Ile minut dziennie dziecko może korzystać z komputera. Po wyczerpaniu limitu ekran się blokuje. Piątkowe popołudnie i weekend mają osobny limit — bo wtedy zwykle dziecko może grać dłużej.</p>
+    <p class="muted muted-block">Ile minut dziennie dziecko może korzystać z komputerów — łącznie na wszystkich swoich. Po wyczerpaniu limitu ekran się blokuje. Piątek–niedziela ma osobny limit.</p>
     <div class="form-row">
       <label for="cfgLimitWeekday">Pon-Czw (minuty)</label>
       <input type="number" id="cfgLimitWeekday" min="0" max="1440" step="1" required>
@@ -328,7 +384,7 @@
 
   <div class="card">
     <h2>Cisza nocna</h2>
-    <p class="muted muted-block">Godziny, w których komputer jest zablokowany niezależnie od limitu czasu. Typowo: wieczór i noc, żeby dziecko nie grało po cichu po pójściu spać.</p>
+    <p class="muted muted-block">Godziny, w których komputery dziecka są zablokowane niezależnie od limitu czasu.</p>
     <div class="form-row">
       <label for="cfgNightStart">Początek</label>
       <input type="time" id="cfgNightStart" required>
@@ -338,6 +394,44 @@
       <input type="time" id="cfgNightEnd" required>
     </div>
     <button class="btn btn-primary" onclick="saveNight()" style="margin-top: 14px;">Zapisz ciszę nocną</button>
+  </div>
+
+  <div class="card">
+    <h2>Komputery dziecka</h2>
+    <ul class="devs" id="settingsDevices" style="margin-bottom: 14px;"></ul>
+    <button class="btn btn-warn" onclick="addDevice()">Dodaj komputer</button>
+    <p class="muted" style="margin: 10px 0 0;">„Odłącz” unieważnia klucz komputera — od razu się zablokuje. „Sparuj ponownie” po reinstalacji Vigila na tym samym komputerze.</p>
+  </div>
+
+  <div class="card">
+    <h2>Profil dziecka</h2>
+    <div class="form-row">
+      <label for="childName">Imię</label>
+      <input type="text" id="childName" maxlength="40">
+    </div>
+    <div class="action-row" style="margin-top: 14px;">
+      <button class="btn btn-secondary" onclick="saveChildName()">Zapisz imię</button>
+      <button class="btn btn-danger" onclick="deleteChild()">Usuń dziecko</button>
+    </div>
+    <p class="muted" style="margin: 10px 0 0;">Usunięcie wymaga najpierw odłączenia komputerów dziecka. Dziennik zostaje.</p>
+  </div>
+  </div>
+
+  <p class="section-label">Wspólne dla wszystkich dzieci</p>
+
+  <div class="card">
+    <h2>Dzieci</h2>
+    <ul class="devs" id="childrenList" style="margin-bottom: 14px;"></ul>
+    <button class="btn btn-primary" onclick="addChild()">Dodaj dziecko</button>
+  </div>
+
+  <div class="card">
+    <h2>Kod TOTP (aplikacja w telefonie)</h2>
+    <p class="muted muted-block">Kod z aplikacji <b>Aegis</b> (lub Google Authenticator) na Twoim telefonie — wpisz go na ekranie blokady, żeby odblokować komputer. Jeden kod działa dla wszystkich dzieci, także bez połączenia z serwerem. „Wygeneruj nowy”, jeśli zgubiłeś dostęp do telefonu.</p>
+    <div class="action-stack">
+      <button class="btn btn-primary" onclick="showTotp()">Pokaż obecny kod TOTP</button>
+      <button class="btn btn-warn" onclick="regenTotp()">Wygeneruj nowy kod TOTP</button>
+    </div>
   </div>
 
   <div class="card">
@@ -354,28 +448,6 @@
   </div>
 
   <div class="card">
-    <h2>Kod TOTP (aplikacja w telefonie)</h2>
-    <p class="muted muted-block">Kod z aplikacji <b>Aegis</b> (lub Google Authenticator) na Twoim telefonie — wpisz go na ekranie blokady dziecka żeby odblokować komputer. „Wygeneruj nowy" jeśli zgubiłeś dostęp do telefonu.</p>
-    <div class="action-stack">
-      <button class="btn btn-primary" onclick="showTotp()">Pokaż obecny kod TOTP</button>
-      <button class="btn btn-warn" onclick="regenTotp()">Wygeneruj nowy kod TOTP</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Parowanie komputera dziecka</h2>
-    <p class="muted muted-block">Wygeneruj jednorazowy kod i wpisz go w <code>Install.cmd</code> na PC dziecka. Kod jest ważny 10 minut. Sparowanie generuje nowy klucz — poprzednio sparowany komputer przestanie się łączyć.</p>
-    <button class="btn btn-warn" onclick="newPairingCode()">Wygeneruj kod parowania</button>
-
-    <h2 style="margin-top: 24px;">Klucz podpisujący</h2>
-    <p class="muted muted-block">Klucz, którym komputer dziecka podpisuje połączenia z serwerem — generowany raz przy instalacji. „Wygeneruj nowy”, jeśli podejrzewasz, że ktoś go przejął; po zmianie uruchom update-config na PC dziecka.</p>
-    <div class="action-stack">
-      <button class="btn btn-primary" onclick="showTokens()">Pokaż obecny klucz</button>
-      <button class="btn btn-danger" onclick="regenTokens()">Wygeneruj nowy klucz</button>
-    </div>
-  </div>
-
-  <div class="card">
     <h2>Sesja</h2>
     <button class="btn btn-secondary" onclick="logout()">Wyloguj</button>
   </div>
@@ -383,6 +455,15 @@
 </div>
 
 </main>
+
+<div class="sheet-backdrop" id="sheet" onclick="if (event.target.id === 'sheet') closeSheet()">
+  <div class="sheet" role="dialog" aria-labelledby="sheetTitle">
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="sheetTitle">Dziecko</h3>
+    <div id="sheetItems" style="display: flex; flex-direction: column; gap: 8px;"></div>
+    <button class="btn btn-ghost" onclick="closeSheet(); addChild()" style="color: #93c5fd;">Dodaj dziecko</button>
+  </div>
+</div>
 
 <div id="notice"></div>
 
@@ -401,8 +482,9 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'settings' && !configLoaded) loadConfig();
+    if (btn.dataset.tab === 'settings') fillChildSettings(true);
     if (btn.dataset.tab === 'journal') loadJournal(false);
+    renderHeader();
   });
 });
 
@@ -448,14 +530,86 @@ function notice(msg, type = '') {
 
 let pollTimer = null;
 
+// === Children (D7) ===
+// selectedChild: whose Status/Settings are shown. journalChild: 'all' or a child id (Journal tab only).
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode: not remembered */ } },
+};
+let status = null;
+let selectedChild = Number(store.get('vigil.child')) || null;
+let journalChild = 'all';
+const LOCK_LABEL = {limit: 'Limit wyczerpany', night: 'Cisza nocna', manual: 'Zablokowany ręcznie', pause: 'Pauza'};
+const activeTab = () => document.querySelector('nav.tabs button.active').dataset.tab;
+const multiChild = () => (status?.children.length || 0) > 1;
+
 async function loadStatus() {
   try {
-    const s = await api('/admin/api/status');
+    const q = selectedChild ? '?child_id=' + selectedChild : '';
+    let s;
+    try { s = await api('/admin/api/status' + q); }
+    catch (e) {
+      if (e.message !== 'child_not_found') throw e;
+      selectedChild = null;  // removed meanwhile: back to the first child
+      s = await api('/admin/api/status');
+    }
+    status = s;
+    if (s.child) selectedChild = s.child.id;
     renderStatus(s);
   } catch (e) {
     document.getElementById('watchdogText').textContent = 'Błąd';
     document.getElementById('watchdogDot').className = 'dot offline';
   }
+}
+
+function renderHeader() {
+  if (!status) return;
+  const btn = document.getElementById('childBtn');
+  const onJournal = activeTab() === 'journal';
+  const name = onJournal && journalChild === 'all' && multiChild() ? 'Wszystkie dzieci'
+    : onJournal && journalChild !== 'all' ? (status.children.find(c => c.id === journalChild) || {}).name
+    : status.child?.name;
+  document.getElementById('pageTitle').textContent = name || 'Vigil';
+  document.title = status.child ? 'Vigil · ' + status.child.name : 'Vigil';
+  btn.classList.toggle('multi', multiChild());
+  btn.disabled = !multiChild();
+  // Red dot: an unconfirmed alert of a child that is not on screen.
+  const shown = onJournal ? journalChild : selectedChild;
+  document.getElementById('childPing').hidden =
+    shown === 'all' || !status.children.some(c => c.id !== shown && c.alerts_unacked);
+}
+
+function openSheet() {
+  if (!multiChild()) return;
+  const onJournal = activeTab() === 'journal';
+  const current = onJournal ? journalChild : selectedChild;
+  const item = (id, name, st, dotCls, cnt) =>
+    `<button class="sheet-item${id === current ? ' on' : ''}" onclick="pickChild(${id === 'all' ? "'all'" : id})">` +
+    (dotCls === null ? '' : `<span class="sdot ${dotCls}"></span>`) +
+    `<span class="grow"><span class="nm">${esc(name)}</span><span class="st">${esc(st)}</span></span>` +
+    (cnt ? `<span class="cnt">${cnt}</span>` : '') + '</button>';
+  let html = onJournal ? item('all', 'Wszystkie dzieci', 'Dziennik całej rodziny', null, status.alerts_unacked) : '';
+  for (const c of status.children) {
+    const pcs = c.devices_total === 1 ? '1 komputer' : c.devices_total + ' komputery';
+    html += item(c.id, c.name, (LOCK_LABEL[c.lock_reason] || 'Odblokowany') + ' · ' + pcs, c.lock_reason || '',
+                 c.alerts_unacked);
+  }
+  document.getElementById('sheetItems').innerHTML = html;
+  document.getElementById('sheet').classList.add('show');
+}
+function closeSheet() { document.getElementById('sheet').classList.remove('show'); }
+
+function pickChild(id) {
+  closeSheet();
+  if (activeTab() === 'journal') {
+    journalChild = id;
+    renderHeader();
+    loadJournal(false);
+    return;
+  }
+  selectedChild = id;
+  store.set('vigil.child', id);
+  loadStatus().then(() => fillChildSettings(true));
 }
 
 function fmtMinutes(m) {
@@ -524,6 +678,10 @@ const JOURNAL = {
   totp_lockout:              d => ({title: 'Kilka błędnych kodów na ekranie blokady', sub: 'Odblokowanie wstrzymane na ' + fmtSec(d.seconds || 0)}),
   admin_login_locked:        d => ({title: 'Wiele nieudanych logowań do panelu', sub: `Z adresu ${d.ip} · logowanie wstrzymane na ${fmtSec(d.seconds || 0)}`}),
   pairing_code_invalidated:  () => ({title: 'Kod parowania unieważniony', sub: 'Po 5 błędnych próbach'}),
+  device_paired:      () => ({cat: 'pc', icon: 'plus', title: 'Sparowano komputer'}),
+  device_unpaired:    () => ({cat: 'parent', icon: 'lock', title: 'Rodzic odłączył komputer'}),
+  child_added:        () => ({cat: 'parent', icon: 'plus', title: 'Dodano dziecko'}),
+  child_removed:      () => ({cat: 'parent', icon: 'lock', title: 'Usunięto dziecko'}),
 };
 let journalDays = [], journalHasMore = false, journalFilter = 'all', alertsUnacked = 0;
 
@@ -545,6 +703,10 @@ function renderEntry(e) {
   const view = (JOURNAL[e.type] || (() => ({title: e.type})))(e.details || {});
   const cat = e.alert ? 'alert' : (view.cls || view.cat || 'pc');
   const unacked = e.alert && !e.acked;
+  // Who and where, only when it is not obvious: several children / several PCs.
+  const who = [journalChild === 'all' && multiChild() ? e.child_name : null,
+               (status?.devices_total || 0) > 1 ? e.device_name : null].filter(Boolean);
+  if (who.length) view.sub = who.join(' · ') + (view.sub ? ' · ' + view.sub : '');
   return `<li class="ev ${cat}${unacked ? ' unacked' : ''}"><span class="t">${esc(e.time)}</span>` +
     `<span class="ic">${jIcon(e.alert ? 'alert' : view.icon)}</span><div class="tx">` +
     `<p class="ti">${esc(view.title)}</p>${view.sub ? `<p class="sub">${esc(view.sub)}</p>` : ''}` +
@@ -562,8 +724,10 @@ function renderJournal() {
   const html = journalDays.map(day => {
     const entries = day.entries.filter(keep);
     if (filtered && !entries.length) return '';  // filtered view: skip empty days
-    const sum = day.minutes_used || entries.length
-      ? `<p class="sum">Czas przy komputerze: ${fmtMin(day.minutes_used)} z ${fmtMin(day.limit_minutes)}</p>` : '';
+    const used = day.children.some(c => c.minutes_used);
+    const sum = !used && !entries.length ? '' : day.children.length === 1
+      ? `<p class="sum">Czas przy komputerze: ${fmtMin(day.children[0].minutes_used)} z ${fmtMin(day.children[0].limit_minutes)}</p>`
+      : `<p class="sum">${day.children.map(c => esc(c.name) + ' ' + fmtMin(c.minutes_used)).join(' · ')}</p>`;
     const list = entries.length ? `<ul class="log">${entries.map(renderEntry).join('')}</ul>`
       : '<p class="jempty">Komputer nie był używany.</p>';
     return `<section class="jday"><h3>${esc(dayLabel(day.date))}</h3>${sum}</section>${list}`;
@@ -582,6 +746,7 @@ async function loadJournal(older) {
     } else {
       url = '/admin/api/journal?days=' + Math.min(14, Math.max(3, journalDays.length));
     }
+    if (journalChild !== 'all') url += '&child_id=' + journalChild;
     const r = await api(url);
     journalDays = older ? journalDays.concat(r.days) : r.days;
     journalHasMore = r.has_more;
@@ -617,91 +782,98 @@ async function ackAlerts(ids) {
 
 function renderStatus(s) {
   setAlertCount(s.alerts_unacked);
+  renderHeader();
   const dot = document.getElementById('watchdogDot');
   const text = document.getElementById('watchdogText');
-    // Aktualizuj tytuł i nagłówek
-  if (s.device_name) {
-    document.title = s.device_name;
-    document.getElementById('pageTitle').textContent = s.device_name;
-  }
-
-
-if (s.pairing_active && !s.watchdog_online) {
-    // Kod parowania aktywny: pomarańczowy dot, podmienia Online/Offline
+  dot.style.background = '';
+  if (s.pairing_active) {
     dot.className = 'dot';
-    dot.style.background = '#f59e0b';
+    dot.style.background = '#f59e0b';  // a pairing code is waiting for its PC
     text.textContent = 'Czeka na sparowanie';
-  } else if (s.watchdog_online) {
-    dot.className = 'dot online';
-    dot.style.background = '';
-    text.textContent = 'Online';
-  } else {
+  } else if (!s.devices_total) {
     dot.className = 'dot offline';
-    dot.style.background = '';
-    text.textContent = 'Offline';
-    if (s.last_heartbeat_ago_seconds !== null) {
-      const min = Math.floor(s.last_heartbeat_ago_seconds / 60);
-      text.textContent = 'Offline (' + min + ' min)';
-    }
+    text.textContent = 'Brak komputerów';
+  } else if (s.devices_total === 1) {
+    // The one PC; its details are at hand when it belongs to the child on screen.
+    const d = s.child?.devices[0];
+    dot.className = 'dot ' + (s.devices_online ? 'online' : 'offline');
+    text.textContent = s.devices_online ? 'Online'
+      : d?.last_heartbeat_ago_seconds != null ? 'Offline (' + Math.floor(d.last_heartbeat_ago_seconds / 60) + ' min)'
+      : 'Offline';
+  } else {
+    dot.className = 'dot ' + (s.devices_online ? 'online' : 'offline');
+    text.textContent = s.devices_online + ' z ' + s.devices_total + ' online';
   }
 
+  const c = s.child;
+  for (const id of ['todayCard', 'devicesCard', 'actionsCard', 'childSettings']) document.getElementById(id).hidden = !c;
   const lockStateEl = document.getElementById('lockStateText');
   const sub = document.getElementById('lockSubstate');
-  if (s.lock_required) {
+  renderChildrenList(s);
+  if (!c) {
+    lockStateEl.textContent = 'Brak dzieci';
+    lockStateEl.className = 'lock-state';
+    sub.textContent = 'Dodaj dziecko w Ustawieniach, potem sparuj jego komputer.';
+    return;
+  }
+  if (c.lock_required) {
     lockStateEl.textContent = '🔒 Zablokowany';
-    if (s.lock_reason === 'limit') {
-      lockStateEl.className = 'lock-state locked-limit';
-      sub.textContent = 'Skończył się dzienny czas';
-    } else if (s.lock_reason === 'night') {
-      lockStateEl.className = 'lock-state locked-night';
-      sub.textContent = 'Cisza nocna';
-    } else if (s.lock_reason === 'manual') {
-      lockStateEl.className = 'lock-state locked-manual';
-      sub.textContent = 'Zablokowany ręcznie';
-    } else if (s.lock_reason === 'pause') {
-      lockStateEl.className = 'lock-state locked-pause';
-      sub.textContent = 'Pauza';
-    } else {
-      lockStateEl.className = 'lock-state locked-manual';
-      sub.textContent = s.lock_reason;
-    }
+    const cls = {limit: 'locked-limit', night: 'locked-night', manual: 'locked-manual', pause: 'locked-pause'};
+    lockStateEl.className = 'lock-state ' + (cls[c.lock_reason] || 'locked-manual');
+    sub.textContent = {limit: 'Skończył się dzienny czas', night: 'Cisza nocna', manual: 'Zablokowany ręcznie',
+                       pause: 'Pauza'}[c.lock_reason] || c.lock_reason;
   } else {
     lockStateEl.textContent = '✓ Odblokowany';
     lockStateEl.className = 'lock-state unlocked';
-    sub.textContent = 'Komputer dostępny';
+    sub.textContent = c.devices.length > 1 ? 'Komputery dostępne' : 'Komputer dostępny';
   }
 
-  document.getElementById('minutesUsed').textContent = fmtMinutes(s.minutes_used);
+  document.getElementById('minutesUsed').textContent = fmtMinutes(c.minutes_used);
   const remEl = document.getElementById('minutesRemaining');
-  remEl.textContent = fmtMinutes(s.minutes_remaining);
+  remEl.textContent = fmtMinutes(c.minutes_remaining);
   remEl.className = 'value';
-  if (s.minutes_remaining <= 5) remEl.classList.add('danger');
-  else if (s.minutes_remaining <= 15) remEl.classList.add('warn');
+  if (c.minutes_remaining <= 5) remEl.classList.add('danger');
+  else if (c.minutes_remaining <= 15) remEl.classList.add('warn');
 
-  let limitInfo = 'Limit: ' + fmtMinutes(s.daily_limit);
-  if (s.is_weekend) limitInfo += ' (weekend)';
-  if (s.limit_override_minutes && s.limit_override_minutes !== 0) {
-    limitInfo += ' + ' + fmtMinutes(s.limit_override_minutes) + ' bonus';
-  }
-  if (s.night_extension_until_local) {
-    limitInfo += ' • Cisza nocna do ' + s.night_extension_until_local;
-  }
+  let limitInfo = 'Limit: ' + fmtMinutes(c.daily_limit);
+  if (c.is_weekend) limitInfo += ' (weekend)';
+  if (c.limit_override_minutes) limitInfo += ' + ' + fmtMinutes(c.limit_override_minutes) + ' bonus';
+  if (c.night_extension_until_local) limitInfo += ' • Cisza nocna do ' + c.night_extension_until_local;
+  if (c.devices.length > 1) limitInfo += ' • suma ze wszystkich komputerów';
   document.getElementById('limitInfo').textContent = limitInfo;
 
+  document.getElementById('devicesList').innerHTML = c.devices.length ? c.devices.map(d =>
+    `<li><span class="dd${d.online ? ' on' : ''}"></span><div class="grow"><p class="nm">${esc(d.name)}</p>` +
+    `<p class="st">${d.online ? (d.active_now ? 'Online · teraz używany' : 'Online')
+      : d.last_heartbeat_local ? 'Offline · ostatnio ' + esc(lastSeen(d.last_heartbeat_local)) : 'Jeszcze się nie połączył'}</p></div>` +
+    `<span class="mins">${fmtMinutes(d.minutes_today)}</span></li>`).join('')
+    : '<li><p class="st">Brak sparowanych komputerów — dodaj w Ustawieniach.</p></li>';
+  document.getElementById('actionsNote').hidden = c.devices.length < 2;
+
   const lockBtn = document.getElementById('manualLockBtn');
-  if (s.manual_lock) {
-    lockBtn.textContent = '🔓 Wyłącz manualną blokadę';
-    lockBtn.className = 'btn btn-success';
-  } else {
-    lockBtn.textContent = '🔒 Włącz manualną blokadę';
-    lockBtn.className = 'btn btn-danger';
-  }
+  lockBtn.textContent = c.manual_lock ? '🔓 Wyłącz manualną blokadę' : '🔒 Włącz manualną blokadę';
+  lockBtn.className = 'btn ' + (c.manual_lock ? 'btn-success' : 'btn-danger');
+  if (activeTab() === 'settings') fillChildSettings(false);
 }
+
+function lastSeen(local) {
+  const today = new Date().toLocaleDateString('sv-SE');  // YYYY-MM-DD
+  return local.slice(0, 10) === today ? 'dziś ' + local.slice(11) : local.slice(8, 10) + '.' + local.slice(5, 7) + ' ' + local.slice(11);
+}
+
+function renderChildrenList(s) {
+  document.getElementById('childrenList').innerHTML = s.children.map(c =>
+    `<li><span class="sdot ${c.lock_reason || ''}" style="width:10px;height:10px"></span><div class="grow"><p class="nm">${esc(c.name)}</p></div>` +
+    `<span class="mins">${c.devices_total === 1 ? '1 komputer' : c.devices_total + ' komputery'}</span></li>`).join('')
+    || '<li><p class="st">Brak dzieci.</p></li>';
+}
+
+const childUrl = path => '/admin/api/children/' + status.child.id + path;
 
 async function grantTime(minutes) {
   await guarded(async () => {
     try {
-      await api('/admin/api/grant', {method: 'POST', body: {minutes, mode: 'limit'}});
+      await api(childUrl('/grant'), {method: 'POST', body: {minutes, mode: 'limit'}});
       notice('Dodano +' + minutes + ' min', 'success');
       loadStatus();
     } catch (e) { notice('Błąd: ' + e.message, 'error'); }
@@ -711,7 +883,7 @@ async function grantTime(minutes) {
 async function grantNight(minutes) {
   await guarded(async () => {
     try {
-      await api('/admin/api/grant', {method: 'POST', body: {minutes, mode: 'night'}});
+      await api(childUrl('/grant'), {method: 'POST', body: {minutes, mode: 'night'}});
       notice('Cisza nocna +' + minutes + ' min', 'success');
       loadStatus();
     } catch (e) { notice('Błąd: ' + e.message, 'error'); }
@@ -721,10 +893,9 @@ async function grantNight(minutes) {
 async function toggleManualLock() {
   await guarded(async () => {
     try {
-      const s = await api('/admin/api/status');
-      const newVal = !s.manual_lock;
-      await api('/admin/api/manual_lock', {method: 'POST', body: {locked: newVal}});
-      notice(newVal ? 'Komputer zablokowany' : 'Komputer odblokowany', 'success');
+      const newVal = !status.child.manual_lock;
+      await api(childUrl('/manual_lock'), {method: 'POST', body: {locked: newVal}});
+      notice(newVal ? 'Zablokowano' : 'Odblokowano', 'success');
       loadStatus();
     } catch (e) { notice('Błąd: ' + e.message, 'error'); }
   });
@@ -734,83 +905,83 @@ async function clearExtension() {
   if (!confirm('Wyczyścić bonusy czasu i przedłużenia ciszy nocnej?')) return;
   await guarded(async () => {
     try {
-      await api('/admin/api/clear_extension', {method: 'POST'});
+      await api(childUrl('/clear_extension'), {method: 'POST'});
       notice('Wyczyszczono bonusy i przedłużenia', 'success');
       loadStatus();
     } catch (e) { notice('Błąd: ' + e.message, 'error'); }
   });
 }
 
-let configLoaded = false;
+// === Settings of the selected child ===
+// The form is filled from the polled status only on tab open / child switch / after a save (`force`),
+// never on the 5 s poll: that would overwrite what the parent is typing. The device list always refreshes.
+let filledFor = null;
+function fillChildSettings(force) {
+  const c = status?.child;
+  if (!c) return;
+  document.getElementById('childSectionLabel').textContent = c.name;
+  const refill = force || filledFor !== c.id;
+  const set = (id, v) => { if (refill) document.getElementById(id).value = v; };
+  set('cfgLimitWeekday', c.daily_limit_weekday);
+  set('cfgLimitWeekend', c.daily_limit_weekend);
+  set('cfgNightStart', c.night_lock_start);
+  set('cfgNightEnd', c.night_lock_end);
+  set('childName', c.name);
+  filledFor = c.id;
+  document.getElementById('settingsDevices').innerHTML = c.devices.length ? c.devices.map(d =>
+    `<li><span class="dd${d.online ? ' on' : ''}"></span><div class="grow"><p class="nm">${esc(d.name)}</p>` +
+    `<p class="st">Sparowany ${esc(d.paired_local)}</p></div><div class="acts">` +
+    `<button class="btn-sm" onclick="renameDevice(${d.id})">Zmień nazwę</button>` +
+    `<button class="btn-sm" onclick="repairDevice(${d.id})">Sparuj ponownie</button>` +
+    `<button class="btn-sm danger" onclick="unpairDevice(${d.id})">Odłącz</button></div></li>`).join('')
+    : '<li><p class="st">Brak sparowanych komputerów.</p></li>';
+}
 
-async function loadConfig() {
+async function patchChild(body, okMsg) {
   try {
-    const cfg = await api('/admin/api/config');
-    // BACKEND zwraca: daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end
-    document.getElementById('cfgLimitWeekday').value = cfg.daily_limit_weekday ?? '';
-    document.getElementById('cfgLimitWeekend').value = cfg.daily_limit_weekend ?? '';
-    document.getElementById('cfgNightStart').value = cfg.night_lock_start || '21:30';
-    document.getElementById('cfgNightEnd').value = cfg.night_lock_end || '06:30';
-    configLoaded = true;
-  } catch (e) { notice('Błąd ładowania ustawień: ' + e.message, 'error'); }
+    await api(childUrl(''), {method: 'PATCH', body});
+    notice(okMsg, 'success');
+    await loadStatus();
+    fillChildSettings(true);
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }
 
 async function saveLimits() {
-  const wkdRaw = document.getElementById('cfgLimitWeekday').value;
-  const wkeRaw = document.getElementById('cfgLimitWeekend').value;
-  // Pusty input → wczesne odrzucenie z czytelnym komunikatem (parseInt('') = NaN)
-  if (wkdRaw === '' || wkeRaw === '') {
-    notice('Wpisz oba limity (Pon-Czw i Pt-Nd)', 'error');
+  const wkd = Number(document.getElementById('cfgLimitWeekday').value);
+  const wke = Number(document.getElementById('cfgLimitWeekend').value);
+  const ok = v => document.getElementById('cfgLimitWeekday').value !== '' && Number.isInteger(v) && v >= 0 && v <= 1440;
+  if (!ok(wkd) || !ok(wke) || document.getElementById('cfgLimitWeekend').value === '') {
+    notice('Limity: liczby całkowite 0–1440 minut (1440 = całą dobę)', 'error');
     return;
   }
-  // Number() zamiast parseInt: parseInt('15.5') = 15 (cicho ucina ułamek), Number('15.5') = 15.5
-  // — chcemy odrzucić ułamki, więc używamy Number + Number.isInteger.
-  const wkd = Number(wkdRaw);
-  const wke = Number(wkeRaw);
-  if (!Number.isInteger(wkd) || wkd < 0 || wkd > 1440) {
-    notice('Limit Pon-Czw: liczba całkowita 0–1440 minut (1440 = całą dobę)', 'error');
-    return;
-  }
-  if (!Number.isInteger(wke) || wke < 0 || wke > 1440) {
-    notice('Limit Pt-Nd: liczba całkowita 0–1440 minut (1440 = całą dobę)', 'error');
-    return;
-  }
-  try {
-    await api('/admin/api/config', {method: 'POST', body: {
-      daily_limit_weekday: wkd,
-      daily_limit_weekend: wke,
-    }});
-    notice('Limity zapisane', 'success');
-    loadStatus();
-  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+  await patchChild({daily_limit_weekday: wkd, daily_limit_weekend: wke}, 'Limity zapisane');
 }
 
 async function saveNight() {
   const start = document.getElementById('cfgNightStart').value;
   const end = document.getElementById('cfgNightEnd').value;
-  // Strict HH:MM 24h — identyczny regex jak server-side (_HHMM_RE w admin_api.py).
-  // <input type="time"> zwraca w tym formacie, ale walidujemy dla pewności na wypadek
-  // ręcznej edycji DOM albo starszego browsera bez wsparcia type=time.
-  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
-  if (!hhmm.test(start)) {
-    notice('Początek ciszy: niepoprawna godzina (oczekiwane HH:MM, np. 21:30)', 'error');
-    return;
-  }
-  if (!hhmm.test(end)) {
-    notice('Koniec ciszy: niepoprawna godzina (oczekiwane HH:MM, np. 06:30)', 'error');
-    return;
-  }
-  if (start === end) {
-    notice('Początek i koniec ciszy nocnej nie mogą być takie same', 'error');
-    return;
-  }
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;  // the same rule as the server
+  if (!hhmm.test(start) || !hhmm.test(end)) { notice('Godziny w formacie HH:MM, np. 21:30', 'error'); return; }
+  if (start === end) { notice('Początek i koniec ciszy nocnej nie mogą być takie same', 'error'); return; }
+  await patchChild({night_lock_start: start, night_lock_end: end}, 'Cisza nocna zapisana');
+}
+
+async function saveChildName() {
+  const name = document.getElementById('childName').value.trim();
+  if (!name) { notice('Podaj imię', 'error'); return; }
+  await patchChild({name}, 'Imię zapisane');
+}
+
+async function deleteChild() {
+  const c = status.child;
+  if (c.devices.length) { notice('Najpierw odłącz komputery dziecka', 'error'); return; }
+  if (!confirm(`Usunąć dziecko „${c.name}”? Dziennik zostaje.`)) return;
   try {
-    await api('/admin/api/config', {method: 'POST', body: {
-      night_lock_start: start,
-      night_lock_end: end,
-    }});
-    notice('Cisza nocna zapisana', 'success');
-    loadStatus();
+    await api(childUrl(''), {method: 'DELETE'});
+    selectedChild = null;
+    notice('Usunięto', 'success');
+    await loadStatus();
+    fillChildSettings(true);
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }
 
@@ -824,6 +995,91 @@ async function changePassword() {
     document.getElementById('oldPassword').value = '';
     document.getElementById('newPassword').value = '';
     notice('Hasło zmienione', 'success');
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+// === Children and devices: dialogs ===
+
+function inputModal(title, label, value, okText, onOk, extra = '') {
+  showModal(title,
+    `<div class="form-row"><label for="mInput">${esc(label)}</label>` +
+    `<input type="text" id="mInput" maxlength="40" value="${esc(value)}"></div>${extra}` +
+    `<button class="btn btn-primary" id="mOk" style="margin-top: 14px;">${esc(okText)}</button>`);
+  const input = document.getElementById('mInput');
+  input.focus();
+  const go = () => { const v = input.value.trim(); if (v) onOk(v); };
+  document.getElementById('mOk').onclick = go;
+  input.onkeydown = e => { if (e.key === 'Enter') go(); };
+}
+
+function addChild() {
+  inputModal('Dodaj dziecko', 'Imię', '', 'Dodaj', async name => {
+    try {
+      const r = await api('/admin/api/children', {method: 'POST', body: {name}});
+      closeModal();
+      selectedChild = r.id;
+      store.set('vigil.child', r.id);
+      notice('Dodano. Ustaw limity i sparuj komputer.', 'success');
+      await loadStatus();
+      fillChildSettings(true);
+    } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+  }, '<p class="muted" style="margin: 8px 0 0;">Startowe limity: 120 min (pon–czw), 240 min (pt–nd), cisza nocna 21:30–06:30. Zmienisz je w Ustawieniach.</p>');
+}
+
+function showPairingCode(r, forWhat) {
+  showModal('Kod parowania',
+    `<p class="muted" style="margin-top: 0;">${esc(forWhat)}</p>` +
+    '<p style="font-size: 2.2em; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 12px 0;">' + esc(r.code) + '</p>' +
+    '<p class="muted">Ważny do ' + esc(r.expires_local) + ', jednorazowy. Uruchom <code>Install.cmd</code> na tym komputerze jako administrator i wpisz ten kod, gdy instalator o niego poprosi.</p>' +
+    '<button class="btn btn-ghost" onclick="cancelPairing()" style="margin-top: 8px;">Anuluj kod</button>');
+  loadStatus();
+}
+
+function addDevice() {
+  const c = status.child;
+  inputModal('Dodaj komputer: ' + c.name, 'Nazwa komputera', c.devices.length ? '' : 'Komputer', 'Wygeneruj kod',
+    async device_name => {
+      try {
+        const r = await api('/admin/api/pairing_code', {method: 'POST', body: {child_id: c.id, device_name}});
+        showPairingCode(r, `Nowy komputer „${device_name}” dla: ${c.name}.`);
+      } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+    }, '<p class="muted" style="margin: 8px 0 0;">Tak będzie widoczny w Statusie i Dzienniku.</p>');
+}
+
+async function repairDevice(id) {
+  const d = status.child.devices.find(x => x.id === id);
+  if (!confirm(`Sparować ponownie „${d.name}”?\n\nUżyj po reinstalacji Vigila na tym komputerze. Obecna instalacja przestanie się łączyć, gdy kod zostanie użyty.`)) return;
+  try {
+    const r = await api('/admin/api/pairing_code', {method: 'POST', body: {device_id: id}});
+    showPairingCode(r, `Ponowne parowanie: ${d.name}.`);
+  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+async function cancelPairing() {
+  try { await api('/admin/api/pairing_code', {method: 'DELETE'}); closeModal(); loadStatus(); }
+  catch (e) { notice('Błąd: ' + e.message, 'error'); }
+}
+
+function renameDevice(id) {
+  const d = status.child.devices.find(x => x.id === id);
+  inputModal('Zmień nazwę komputera', 'Nazwa', d.name, 'Zapisz', async name => {
+    try {
+      await api('/admin/api/devices/' + id, {method: 'PATCH', body: {name}});
+      closeModal();
+      await loadStatus();
+      fillChildSettings(true);
+    } catch (e) { notice('Błąd: ' + e.message, 'error'); }
+  });
+}
+
+async function unpairDevice(id) {
+  const d = status.child.devices.find(x => x.id === id);
+  if (!confirm(`Odłączyć „${d.name}”?\n\nKomputer od razu się zablokuje (brak połączenia z serwerem). Żeby go znowu używać, trzeba go sparować na nowo.`)) return;
+  try {
+    await api('/admin/api/devices/' + id, {method: 'DELETE'});
+    notice('Odłączono', 'success');
+    await loadStatus();
+    fillChildSettings(true);
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }
 
@@ -899,45 +1155,6 @@ async function regenTotp() {
       '<p class="muted">Zeskanuj QR w aplikacji Aegis. <strong>Stary kod już nie działa.</strong></p>' +
       '<div class="qr-box"><img src="data:image/png;base64,' + r.qr_png_base64 + '" alt="QR"></div>' +
       secretRow('Secret', r.secret)
-    );
-  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
-}
-
-// === Tokens show / regen ===
-
-async function showTokens() {
-  try {
-    const r = await api('/admin/api/tokens');
-    showModal('Klucz podpisujący Vigil',
-      '<p class="muted">Ten sam klucz, który watchdog ma zapisany na PC dziecka. Skopiuj, jeśli musisz przeinstalować watchdoga.</p>' +
-      secretRow('Signing Key (klucz podpisujący)', r.signing_key)
-    );
-  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
-}
-
-async function newPairingCode() {
-  if (!confirm('Wygenerować kod parowania?\n\nPo użyciu kodu obecnie sparowany komputer przestanie się łączyć z serwerem.')) return;
-  try {
-    const r = await api('/admin/api/pairing_code', {method: 'POST', body: {}});
-    showModal('Kod parowania',
-      '<p style="font-size: 2.2em; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 12px 0;">' + r.code + '</p>' +
-      '<p class="muted">Ważny do ' + r.expires_local + ', jednorazowy. Uruchom <code>Install.cmd</code> na PC dziecka jako administrator i wpisz ten kod, gdy instalator o niego poprosi.</p>'
-    );
-    loadStatus();
-  } catch (e) { notice('Błąd: ' + e.message, 'error'); }
-}
-
-async function regenTokens() {
-  if (!confirm('Wygenerować NOWY klucz podpisujący?\n\nUWAGA: stare natychmiast przestaną działać. Po regeneracji MUSISZ uruchomić update-config na PC dziecka, inaczej watchdog się rozłączy.')) return;
-  try {
-    const r = await api('/admin/api/regen_tokens', {method: 'POST', body: {}});
-    showModal('Nowy klucz podpisujący Vigil',
-      '<p class="muted">Stary klucz już nie działa. Uruchom update-config z nowym kluczem na PC dziecka:</p>' +
-      secretRow('Signing Key (klucz podpisujący)', r.signing_key) +
-      '<p class="secret-label">Komenda update-config — w katalogu z paczką Vigil, PowerShell lub cmd jako administrator:</p>' +
-      '<div class="secret-row">' +
-      '<pre>.\\Install.cmd -Mode update-config -SigningKey:' + r.signing_key + '</pre>' +
-      '</div>'
     );
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }

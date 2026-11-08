@@ -10,9 +10,14 @@ canonical = METHOD "\\n" PATH "\\n" TIMESTAMP "\\n" NONCE "\\n" hex(sha256(body)
 PATH is the API route as the app sees it ("/v1/heartbeat"), without any reverse-proxy prefix.
 Responses are signed by HmacSigningMiddleware (signing.py) over nonce + body.
 
+Which device (D7): every paired PC has its own key (`devices.signing_key`, issued by pairing). The
+request carries no device id; the server tries the keys of all devices and the one whose HMAC matches
+is the sender. A handful of HMACs per request, and the watchdog protocol stays unchanged.
+
 Threat model: friction, not protection. The key lives in signing.dat (DPAPI LocalMachine, SYSTEM-only
 ACL), which a non-elevated process cannot read but an admin can. What it stops: forging or replaying
 requests without the key, e.g. from another device on the LAN or from the child's non-elevated session.
+A key only speaks for its own device and child.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import base64
 import hashlib
 import hmac
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
@@ -28,6 +34,15 @@ from fastapi import HTTPException, Request
 from .db import get_config_value, get_connection
 
 _MAX_FUTURE_SKEW_MS = 5000
+
+
+@dataclass(frozen=True)
+class Device:
+    """The authenticated sender of a /v1 request."""
+
+    id: int
+    child_id: int
+    name: str
 
 
 def decode_signing_key(b64: str) -> bytes:
@@ -47,8 +62,8 @@ def _reject(detail: str) -> HTTPException:
     return HTTPException(status_code=401, detail=detail)
 
 
-async def authenticate_request(request: Request) -> None:
-    """Dependency for every /v1/* endpoint.
+async def authenticate_request(request: Request) -> Device:
+    """Dependency for every /v1/* endpoint except /v1/pair; returns the sending device.
 
     Order matters: everything is checked before the nonce is stored, so a rejected request never
     burns a nonce. Uses its own short-lived connection so the write lock is held only for the INSERT.
@@ -71,13 +86,16 @@ async def authenticate_request(request: Request) -> None:
     body = await request.body()  # cached by Starlette; the endpoint reads it again
 
     with get_connection() as db:
-        key_b64 = get_config_value(db, "signing_key")
-        if not key_b64:
-            raise HTTPException(status_code=500, detail="missing_signing_key")
-        key = decode_signing_key(key_b64)
-
-        expected = sign(key, canonical_request(request.method, request.url.path, ts_header, nonce, body))
-        if not hmac.compare_digest(expected, provided):
+        message = canonical_request(request.method, request.url.path, ts_header, nonce, body)
+        device: Device | None = None
+        key = b""
+        # Every key is tried (no early exit), so timing does not tell how many devices there are
+        # or which one matched.
+        for row in db.execute("SELECT id, child_id, name, signing_key FROM devices").fetchall():
+            candidate = decode_signing_key(row["signing_key"])
+            if hmac.compare_digest(sign(candidate, message), provided) and device is None:
+                device, key = Device(row["id"], row["child_id"], row["name"]), candidate
+        if device is None:
             raise _reject("invalid_signature")
 
         now = datetime.now(timezone.utc)
@@ -99,3 +117,4 @@ async def authenticate_request(request: Request) -> None:
 
     request.state.signing_key_bytes = key
     request.state.nonce = nonce
+    return device

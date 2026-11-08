@@ -94,11 +94,11 @@
 
   <div id="err" class="error" hidden></div>
 
-  <!-- Krok 1: Nazwa urządzenia -->
+  <!-- Krok 1: Pierwsze dziecko -->
   <div class="step active" id="s1">
-    <label for="deviceName">Nazwa urządzenia</label>
-    <input type="text" id="deviceName" placeholder="np. Komputer Jasia" maxlength="64" autofocus>
-    <div class="info">Nazwa wyświetlana w nagłówku panelu — pomaga rozróżnić kilka instancji.</div>
+    <label for="childName">Imię dziecka</label>
+    <input type="text" id="childName" placeholder="np. Jaś" maxlength="40" autofocus>
+    <div class="info">Limity z dalszych kroków dotyczą tego dziecka. Kolejne dzieci i ich komputery dodasz później w panelu.</div>
     <div class="actions">
       <button class="btn btn-primary" onclick="goTo(2)">Dalej →</button>
     </div>
@@ -221,8 +221,8 @@ function showError(msg) {
 function goTo(step) {
   showError('');
   if (step === 2) {
-    const name = document.getElementById('deviceName').value.trim();
-    if (!name) { showError('Podaj nazwę urządzenia.'); return; }
+    const name = document.getElementById('childName').value.trim();
+    if (!name) { showError('Podaj imię dziecka.'); return; }
   }
   if (step === 3) {
     const p1 = document.getElementById('pass1').value;
@@ -277,7 +277,7 @@ function verifyTotp() {
 
 function buildSummary() {
   const rows = [
-    ['Nazwa urządzenia', document.getElementById('deviceName').value.trim()],
+    ['Dziecko', document.getElementById('childName').value.trim()],
     ['TOTP', totpVerified ? '✓ skonfigurowany' : '— pominięty (skonfiguruj później)'],
     ['Strefa czasowa', document.getElementById('tz').value],
     ['Limit pon–czw', document.getElementById('limWd').value + ' min'],
@@ -297,7 +297,7 @@ function finish() {
   const totpCode = totpVerified ? document.getElementById('totpCode').value.trim() : '';
 
   const payload = {
-    device_name:          document.getElementById('deviceName').value.trim(),
+    child_name:           document.getElementById('childName').value.trim(),
     password:             document.getElementById('pass1').value,
     totp_code:            totpCode,
     timezone:             document.getElementById('tz').value.trim(),

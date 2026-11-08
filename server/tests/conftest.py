@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 import app.admin_auth
 import app.db
+from app.config import week_schedule
 
 
 @pytest.fixture
@@ -35,12 +36,15 @@ def client(tmp_path, monkeypatch):
 
 
 def add_child(name: str, weekday: int = 120, weekend: int = 240, night: tuple[str, str] = ("21:30", "06:30")) -> int:
+    """A child with the pre-#48 week shape: `weekday` limit Mon–Thu, `weekend` Fri–Sun, one night window."""
     with app.db.get_connection() as conn:
-        return conn.execute(
-            "INSERT INTO children(name, daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end, "
-            "created_utc) VALUES (?, ?, ?, ?, ?, ?)",
-            (name, weekday, weekend, *night, datetime.now(UTC).isoformat()),
-        ).lastrowid
+        child_id = conn.execute("INSERT INTO children(name, created_utc) VALUES (?, ?)",
+                                (name, datetime.now(UTC).isoformat())).lastrowid
+        week = week_schedule(weekday, weekend, *night)
+        conn.executemany("INSERT INTO child_schedule VALUES (?, ?, ?, ?, ?)",
+                         [(child_id, i, d["daily_limit"], d["night_start"], d["night_end"])
+                          for i, d in enumerate(week)])
+        return child_id
 
 
 def add_device(child_id: int, name: str) -> int:
@@ -71,10 +75,12 @@ def state_for(date_iso: str, child_id: int = 1) -> dict:
         return dict(row) if row else {}
 
 
-def set_child(child_id: int = 1, **fields) -> None:
+def set_schedule(child_id: int = 1, weekdays=range(7), **fields) -> None:
+    """Sets daily_limit / night_start / night_end of the given weekdays (Monday = 0; default all)."""
     with app.db.get_connection() as conn:
-        conn.execute(f"UPDATE children SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
-                     (*fields.values(), child_id))
+        for weekday in weekdays:
+            conn.execute(f"UPDATE child_schedule SET {', '.join(f'{k} = ?' for k in fields)} "
+                         "WHERE child_id = ? AND weekday = ?", (*fields.values(), child_id, weekday))
 
 
 class Watchdog:

@@ -8,7 +8,7 @@ import time_machine
 
 from app.crypto import hash_password
 from app.db import get_connection, set_config_value
-from tests.conftest import Watchdog, add_child, add_device, config, set_child, state_for
+from tests.conftest import Watchdog, add_child, add_device, config, set_schedule, state_for
 
 TZ = ZoneInfo("Europe/Warsaw")
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)  # Wednesday
@@ -51,7 +51,7 @@ def test_two_pcs_of_one_child_add_up(client):
 
 def test_limit_of_one_child_locks_all_its_pcs_and_nobody_else(client):
     pc, laptop, kuba = _family(client)
-    set_child(1, daily_limit_weekday=1)
+    set_schedule(1, daily_limit=1)
     with time_machine.travel(NOON, tick=False) as t:
         _run(t, pc, laptop, kuba, seconds=30)  # Ola: 60 s over two PCs = her 1 min
         assert pc.heartbeat()["lock_reason"] == "limit"
@@ -72,8 +72,8 @@ def test_pause_on_one_pc_pauses_the_child(client):
 
 def test_totp_grant_goes_to_the_child_of_the_pc(client):
     pc, laptop, kuba = _family(client)
-    set_child(1, daily_limit_weekday=0)
-    set_child(2, daily_limit_weekday=0)
+    set_schedule(1, daily_limit=0)
+    set_schedule(2, daily_limit=0)
     with time_machine.travel(NOON, tick=False):
         laptop.heartbeat()
         code = pyotp.TOTP(config("totp_secret")).now()
@@ -104,16 +104,34 @@ def test_panel_status_lists_children_and_the_selected_ones_pcs(client):
 
 def test_child_settings_and_validation(client):
     _login(client)
-    r = client.post("/admin/api/children", json={"name": "Kuba", "daily_limit_weekday": 60})
+    r = client.post("/admin/api/children", json={"name": "Kuba"})
     assert r.json() == {"ok": True, "id": 2}
-    assert client.patch("/admin/api/children/2", json={"night_lock_start": "20:00", "name": " Jakub "}).json()[
-        "updated"] == ["name", "night_lock_start"]
+    week = client.get("/admin/api/status?child_id=2").json()["child"]["schedule"]
+    assert [d["daily_limit"] for d in week] == [120] * 4 + [240] * 3  # defaults: Friday as weekend
+    week[1] = {"daily_limit": 45, "night_start": "20:00", "night_end": "07:00"}
+    assert client.patch("/admin/api/children/2", json={"schedule": week, "name": " Jakub "}).json()[
+        "updated"] == ["name", "schedule"]
     child = client.get("/admin/api/status?child_id=2").json()["child"]
-    assert (child["name"], child["daily_limit_weekday"], child["night_lock_start"]) == ("Jakub", 60, "20:00")
-    for bad in ({"name": ""}, {"daily_limit_weekday": 2000}, {"daily_limit_weekday": "60"},
-                {"night_lock_start": "25:00"}, {"unknown": 1}):
+    assert (child["name"], child["schedule"][1], child["schedule"][0]["daily_limit"]) == (
+        "Jakub", {"daily_limit": 45, "night_start": "20:00", "night_end": "07:00"}, 120)
+    day = {"daily_limit": 60, "night_start": "21:00", "night_end": "07:00"}
+    for bad in ({"name": ""}, {"schedule": [day] * 6}, {"schedule": [day] * 8},
+                {"schedule": [{**day, "daily_limit": 2000}] * 7}, {"schedule": [{**day, "daily_limit": "60"}] * 7},
+                {"schedule": [{**day, "night_start": "25:00"}] * 7},
+                {"schedule": [{**day, "night_end": "21:00"}] * 7},  # empty night
+                {"schedule": [{**day, "extra": 1}] * 7}, {"unknown": 1}):
         assert client.patch("/admin/api/children/2", json=bad).status_code == 422, bad
     assert client.patch("/admin/api/children/9", json={"name": "x"}).status_code == 404
+
+
+def test_new_child_with_its_own_week(client):
+    _login(client)
+    week = [{"daily_limit": 10 * (i + 1), "night_start": "21:00", "night_end": "07:00"} for i in range(7)]
+    assert client.post("/admin/api/children", json={"name": "Kuba", "schedule": week}).json()["id"] == 2
+    assert client.get("/admin/api/status?child_id=2").json()["child"]["schedule"] == week
+    assert client.delete("/admin/api/children/2").json()["ok"] is True
+    with get_connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM child_schedule WHERE child_id = 2").fetchone()[0] == 0
 
 
 def test_journal_names_child_and_device_and_filters(client):

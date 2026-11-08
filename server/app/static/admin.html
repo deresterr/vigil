@@ -164,6 +164,17 @@
     }
     input:focus, select:focus { outline: none; border-color: #2563eb; }
     .form-row + .form-row { margin-top: 12px; }
+    .sched { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+             gap: 6px 8px; align-items: center; }
+    .sched .hd { font-size: 0.75rem; color: #888; }
+    .sched .day { color: #ccc; font-weight: 600; }
+    .sched .day.weekend { color: #60a5fa; }
+    /* Today's dot sits in the card padding, left of the label: no column moves. */
+    .sched .day { position: relative; }
+    .sched .day.today::before { content: ''; position: absolute; left: -11px; top: 50%; width: 6px; height: 6px;
+                                margin-top: -3px; border-radius: 50%; background: #4ade80; }
+    .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
+    .sched input { padding: 10px 8px; font-size: 0.95rem; min-width: 0; }
     #notice {
       position: fixed; left: 50%; bottom: 24px;
       transform: translateX(-50%) translateY(120%);
@@ -369,31 +380,13 @@
   <p class="section-label" id="childSectionLabel">Dziecko</p>
 
   <div class="card">
-    <h2>Dzienny limit</h2>
-    <p class="muted muted-block">Ile minut dziennie dziecko może korzystać z komputerów — łącznie na wszystkich swoich. Po wyczerpaniu limitu ekran się blokuje. Piątek–niedziela ma osobny limit.</p>
-    <div class="form-row">
-      <label for="cfgLimitWeekday">Pon-Czw (minuty)</label>
-      <input type="number" id="cfgLimitWeekday" min="0" max="1440" step="1" required>
+    <h2>Harmonogram tygodnia</h2>
+    <p class="muted muted-block">Limit łącznie na wszystkich komputerach dziecka. Cisza nocna od wieczoru danego dnia do rana.</p>
+    <div class="sched" id="schedule"></div>
+    <div class="action-row" style="margin-top: 14px;">
+      <button class="btn btn-ghost" onclick="copyMonday()">Pn → Wt–Pt</button>
+      <button class="btn btn-primary" onclick="saveSchedule()">Zapisz harmonogram</button>
     </div>
-    <div class="form-row">
-      <label for="cfgLimitWeekend">Pt-Nd (minuty)</label>
-      <input type="number" id="cfgLimitWeekend" min="0" max="1440" step="1" required>
-    </div>
-    <button class="btn btn-primary" onclick="saveLimits()" style="margin-top: 14px;">Zapisz limity</button>
-  </div>
-
-  <div class="card">
-    <h2>Cisza nocna</h2>
-    <p class="muted muted-block">Godziny, w których komputery dziecka są zablokowane niezależnie od limitu czasu.</p>
-    <div class="form-row">
-      <label for="cfgNightStart">Początek</label>
-      <input type="time" id="cfgNightStart" required>
-    </div>
-    <div class="form-row">
-      <label for="cfgNightEnd">Koniec</label>
-      <input type="time" id="cfgNightEnd" required>
-    </div>
-    <button class="btn btn-primary" onclick="saveNight()" style="margin-top: 14px;">Zapisz ciszę nocną</button>
   </div>
 
   <div class="card">
@@ -836,9 +829,9 @@ function renderStatus(s) {
   else if (c.minutes_remaining <= 15) remEl.classList.add('warn');
 
   let limitInfo = 'Limit: ' + fmtMinutes(c.daily_limit);
-  if (c.is_weekend) limitInfo += ' (weekend)';
   if (c.limit_override_minutes) limitInfo += ' + ' + fmtMinutes(c.limit_override_minutes) + ' bonus';
-  if (c.night_extension_until_local) limitInfo += ' • Cisza nocna do ' + c.night_extension_until_local;
+  if (c.night_extension_until_local) limitInfo += ' • Cisza nocna przedłużona do ' + c.night_extension_until_local;
+  else limitInfo += ' • Cisza nocna ' + c.night_local.map(t => t.slice(11)).join('–');
   if (c.devices.length > 1) limitInfo += ' • suma ze wszystkich komputerów';
   document.getElementById('limitInfo').textContent = limitInfo;
 
@@ -922,10 +915,7 @@ function fillChildSettings(force) {
   document.getElementById('childSectionLabel').textContent = c.name;
   const refill = force || filledFor !== c.id;
   const set = (id, v) => { if (refill) document.getElementById(id).value = v; };
-  set('cfgLimitWeekday', c.daily_limit_weekday);
-  set('cfgLimitWeekend', c.daily_limit_weekend);
-  set('cfgNightStart', c.night_lock_start);
-  set('cfgNightEnd', c.night_lock_end);
+  if (refill) renderSchedule(c.schedule, c.today_weekday);
   set('childName', c.name);
   filledFor = c.id;
   document.getElementById('settingsDevices').innerHTML = c.devices.length ? c.devices.map(d =>
@@ -946,24 +936,43 @@ async function patchChild(body, okMsg) {
   } catch (e) { notice('Błąd: ' + e.message, 'error'); }
 }
 
-async function saveLimits() {
-  const wkd = Number(document.getElementById('cfgLimitWeekday').value);
-  const wke = Number(document.getElementById('cfgLimitWeekend').value);
-  const ok = v => document.getElementById('cfgLimitWeekday').value !== '' && Number.isInteger(v) && v >= 0 && v <= 1440;
-  if (!ok(wkd) || !ok(wke) || document.getElementById('cfgLimitWeekend').value === '') {
-    notice('Limity: liczby całkowite 0–1440 minut (1440 = całą dobę)', 'error');
-    return;
-  }
-  await patchChild({daily_limit_weekday: wkd, daily_limit_weekend: wke}, 'Limity zapisane');
+// Weekly schedule (#48): one row per day, Monday first like the API.
+const DAYS = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
+const DAYS_FULL = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
+
+function renderSchedule(week, today) {
+  document.getElementById('schedule').innerHTML =
+    '<span></span><span class="hd">Limit (min)</span><span class="hd">Cisza nocna od</span><span class="hd">do</span>' +
+    week.map((d, i) => (i === 5 ? '<div class="sep"></div>' : '') +  // weekend below the line
+      `<span class="day${i >= 5 ? ' weekend' : ''}${i === today ? ' today' : ''}" title="${DAYS_FULL[i]}${i === today ? ' (dziś)' : ''}">${DAYS[i]}</span>` +
+      `<input type="number" id="sLim${i}" min="0" max="1440" step="1" value="${d.daily_limit}" aria-label="${DAYS_FULL[i]}: limit w minutach">` +
+      // Text, not type="time": with a 12-hour browser locale the narrow column cut "PM" off (21:30 read 09:30).
+      `<input type="text" inputmode="numeric" maxlength="5" placeholder="21:30" id="sFrom${i}" value="${d.night_start}" aria-label="${DAYS_FULL[i]}: początek ciszy nocnej (GG:MM)">` +
+      `<input type="text" inputmode="numeric" maxlength="5" placeholder="06:30" id="sTo${i}" value="${d.night_end}" aria-label="${DAYS_FULL[i]}: koniec ciszy nocnej (GG:MM)">`).join('');
 }
 
-async function saveNight() {
-  const start = document.getElementById('cfgNightStart').value;
-  const end = document.getElementById('cfgNightEnd').value;
-  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;  // the same rule as the server
-  if (!hhmm.test(start) || !hhmm.test(end)) { notice('Godziny w formacie HH:MM, np. 21:30', 'error'); return; }
-  if (start === end) { notice('Początek i koniec ciszy nocnej nie mogą być takie same', 'error'); return; }
-  await patchChild({night_lock_start: start, night_lock_end: end}, 'Cisza nocna zapisana');
+function copyMonday() {
+  for (let i = 1; i <= 4; i++) {
+    for (const f of ['sLim', 'sFrom', 'sTo']) document.getElementById(f + i).value = document.getElementById(f + 0).value;
+  }
+  notice('Skopiowano poniedziałek na wtorek–piątek. Zapisz, żeby zastosować.', 'success');
+}
+
+async function saveSchedule() {
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;  // the same rules as the server
+  const week = [];
+  for (let i = 0; i < 7; i++) {
+    const raw = document.getElementById('sLim' + i).value;
+    const d = {daily_limit: Number(raw), night_start: document.getElementById('sFrom' + i).value.trim(),
+               night_end: document.getElementById('sTo' + i).value.trim()};
+    const err = raw === '' || !Number.isInteger(d.daily_limit) || d.daily_limit < 0 || d.daily_limit > 1440
+      ? 'limit to liczba całkowita 0–1440 minut (1440 = całą dobę)'
+      : !hhmm.test(d.night_start) || !hhmm.test(d.night_end) ? 'godziny w formacie HH:MM, np. 21:30'
+      : d.night_start === d.night_end ? 'początek i koniec ciszy nocnej nie mogą być takie same' : null;
+    if (err) { notice(DAYS_FULL[i] + ': ' + err, 'error'); return; }
+    week.push(d);
+  }
+  await patchChild({schedule: week}, 'Harmonogram zapisany');
 }
 
 async function saveChildName() {

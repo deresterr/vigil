@@ -11,7 +11,7 @@ pokazuje pełnoekranową blokadę. Rodzic zarządza z przeglądarki i odblokowuj
 ## Co potrafi
 
 - kilkoro dzieci na jednym serwerze, każde z dowolną liczbą komputerów (czas liczony łącznie),
-- dzienny limit czasu (osobno dni robocze / weekend) i cisza nocna — osobno dla każdego dziecka,
+- harmonogram tygodnia: dzienny limit czasu i cisza nocna osobno dla każdego dnia i każdego dziecka,
 - blokada ręczna z panelu, przedłużanie czasu z panelu lub kodem TOTP wpisanym na ekranie blokady,
 - odblokowanie kodem z telefonu działa także, gdy serwer jest niedostępny,
 - pauza uruchamiana przez dziecko (czas nie leci, ekran zablokowany),

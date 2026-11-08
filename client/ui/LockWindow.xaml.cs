@@ -124,7 +124,7 @@ public partial class LockWindow : Window
         var code = _vm.TotpCode.Trim();
         if (code.Length != 6 || !code.All(char.IsAsciiDigit))
         {
-            _vm.StatusMessage = "Kod musi mieć 6 cyfr.";
+            _vm.StatusMessage = Strings.CodeNeedsSixDigits;
             return;
         }
 
@@ -136,7 +136,7 @@ public partial class LockWindow : Window
 
     private async void Retry_Click(object sender, RoutedEventArgs e)
     {
-        _vm.StatusMessage = "Ponawianie połączenia...";
+        _vm.StatusMessage = Strings.Reconnecting;
         if (IsStandaloneTestMode()) return;
 
         var ipc = ((App)System.Windows.Application.Current).IpcClient;
@@ -148,7 +148,7 @@ public partial class LockWindow : Window
         }
         catch (Exception ex)
         {
-            _vm.StatusMessage = $"Błąd: {ex.Message}";
+            _vm.StatusMessage = Strings.Error(ex.Message);
         }
     }
 
@@ -158,7 +158,7 @@ public partial class LockWindow : Window
         // The overlay goes away on the next heartbeat once lock_reason != "pause".
         if (IsStandaloneTestMode())
         {
-            _vm.StatusMessage = "Pauza zakończona (test).";
+            _vm.StatusMessage = Strings.PauseEndedTest;
             return;
         }
 
@@ -168,11 +168,11 @@ public partial class LockWindow : Window
         try
         {
             await ipc.SendAsync(new IpcResumeFromPause(), CancellationToken.None);
-            _vm.StatusMessage = "Chwileczkę...";
+            _vm.StatusMessage = Strings.OneMoment;
         }
         catch (Exception ex)
         {
-            _vm.StatusMessage = $"Błąd: {ex.Message}";
+            _vm.StatusMessage = Strings.Error(ex.Message);
         }
     }
 
@@ -185,7 +185,7 @@ public partial class LockWindow : Window
         {
             await Task.Delay(500);
             _vm.Phase = LockUiPhase.GrantApplied;
-            _vm.StatusMessage = $"Dodano {minutes} minut.";
+            _vm.StatusMessage = Strings.Granted("extend_limit", minutes, null);
             return;
         }
 
@@ -194,7 +194,7 @@ public partial class LockWindow : Window
         if (ipc is null || !ipc.IsConnected)
         {
             _vm.Phase = LockUiPhase.Locked;
-            _vm.StatusMessage = "Brak połączenia z watchdogiem.";
+            _vm.StatusMessage = Strings.NoWatchdog;
             return;
         }
 
@@ -205,7 +205,7 @@ public partial class LockWindow : Window
             if (resp.Ok)
             {
                 _vm.Phase = LockUiPhase.GrantApplied;
-                _vm.StatusMessage = resp.Applied ?? $"Dodano {minutes} minut.";
+                _vm.StatusMessage = Strings.Granted(resp.Mode, resp.Minutes ?? minutes, resp.UntilLocal);
                 // The overlay stays until the watchdog sends IpcUnlock (on its next heartbeat).
             }
             else
@@ -213,25 +213,18 @@ public partial class LockWindow : Window
                 // Wracamy do Locked, czyścimy TOTP, pokazujemy błąd
                 _vm.Phase = LockUiPhase.Locked;
                 _vm.TotpCode = "";
-                _vm.StatusMessage = resp.Reason switch
-                {
-                    "invalid_code" => "Nieprawidłowy kod. Spróbuj ponownie.",
-                    "offline_not_configured" => "Odblokowanie bez serwera jeszcze niedostępne — komputer nie pobrał kodu rodzica.",
-                    "network_error" => "Brak połączenia z serwerem. Spróbuj ponownie za chwilę.",
-                    "lockout" => $"Zbyt wiele prób. Poczekaj {resp.LockoutSecondsRemaining ?? 0}s.",
-                    _ => $"Błąd: {resp.Reason ?? "nieznany"}",
-                };
+                _vm.StatusMessage = Strings.CodeRejected(resp.Reason, resp.LockoutSecondsRemaining);
             }
         }
         catch (TimeoutException)
         {
             _vm.Phase = LockUiPhase.Locked;
-            _vm.StatusMessage = "Timeout — watchdog nie odpowiedział.";
+            _vm.StatusMessage = Strings.WatchdogTimeout;
         }
         catch (Exception ex)
         {
             _vm.Phase = LockUiPhase.Locked;
-            _vm.StatusMessage = $"Błąd komunikacji: {ex.Message}";
+            _vm.StatusMessage = Strings.Error(ex.Message);
         }
     }
 
@@ -240,8 +233,8 @@ public partial class LockWindow : Window
     private void Shutdown_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
-            "Czy na pewno chcesz wyłączyć komputer?",
-            "Wyłączanie",
+            Strings.ShutDownConfirm,
+            Strings.ShutDownTitle,
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,
             MessageBoxResult.No);
@@ -262,7 +255,7 @@ public partial class LockWindow : Window
         }
         catch (Exception ex)
         {
-            _vm.StatusMessage = $"Nie udało się wyłączyć: {ex.Message}";
+            _vm.StatusMessage = Strings.ShutDownFailed(ex.Message);
         }
     }
 

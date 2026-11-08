@@ -177,7 +177,6 @@ public sealed class UiManager : IUiManager, IDisposable
         _lockState = new IpcSetState
         {
             LockReason = state.Reason,
-            MainMessage = state.MainMessage,
             ShowTotpField = state.ShowTotpField,
             ShowResumeButton = state.ShowResumeButton,
             ShowRetryButton = state.ShowRetryButton,
@@ -289,7 +288,8 @@ public sealed class UiManager : IUiManager, IDisposable
                     {
                         Ok = result.Ok,
                         Mode = result.Mode,
-                        Applied = result.Applied,
+                        Minutes = result.Minutes,
+                        UntilLocal = result.UntilLocal,
                         Reason = result.Reason,
                         LockoutSecondsRemaining = result.LockoutSecondsRemaining,
                     }, CancellationToken.None).ConfigureAwait(false);

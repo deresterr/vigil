@@ -18,7 +18,8 @@ namespace Vigil.Ui;
 ///   exit       → quit (service stopping)
 /// Without the watchdog it quits: on a failed connect at once, after a lost pipe within 30 s
 /// (a restarted watchdog kills it anyway and spawns a fresh one).
-/// --standalone-test (or VIGIL_LOCKSCREEN_STANDALONE=1) shows the overlay without a watchdog, for UI work.
+/// --standalone-test (or VIGIL_LOCKSCREEN_STANDALONE=1) shows the overlay without a watchdog, for UI work;
+/// there --mode=night|limit|manual|pause|server_unreachable and --lang=en|pl (instead of the Windows language).
 /// </summary>
 [SupportedOSPlatform("windows")]
 public partial class App : Application
@@ -232,6 +233,9 @@ public partial class App : Application
         foreach (var a in args)
         {
             if (a.StartsWith("--mode=", StringComparison.Ordinal)) reason = a["--mode=".Length..];
+            // Before the first use of Strings, which reads the culture once.
+            else if (a.StartsWith("--lang=", StringComparison.Ordinal))
+                System.Globalization.CultureInfo.CurrentUICulture = new System.Globalization.CultureInfo(a["--lang=".Length..]);
         }
         ShowLock(new IpcSetState
         {

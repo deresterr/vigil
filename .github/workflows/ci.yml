@@ -38,6 +38,7 @@ jobs:
               - 'client/**'
               - 'installer/**'
               - 'build-package.ps1'
+              - 'e2e/**'
               - '.github/workflows/ci.yml'
 
   server:
@@ -69,7 +70,7 @@ jobs:
         shell: powershell
         run: |
           $bad = 0
-          Get-ChildItem -Recurse -Include *.ps1 -Path installer, build-package.ps1 | ForEach-Object {
+          Get-ChildItem -Recurse -Include *.ps1 -Path installer, e2e, build-package.ps1 | ForEach-Object {
             $errs = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
             foreach ($e in $errs) { $bad++; "::error file=$($_.Name),line=$($e.Extent.StartLineNumber)::$($e.Message)" }
@@ -86,3 +87,16 @@ jobs:
           name: vigil-client-${{ github.sha }}
           path: dist/
           retention-days: 14
+      # A real install on the throwaway runner (D22): the package above against the server of this commit.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: server/requirements*.txt
+      - name: Server for the installer e2e
+        # tzdata: Windows has no IANA time zone database for zoneinfo
+        run: pip install -r server/requirements.txt tzdata
+      - name: Installer e2e
+        shell: pwsh
+        timeout-minutes: 15
+        run: ./e2e/installer-e2e.ps1 -PackageDir dist -ServerDir server

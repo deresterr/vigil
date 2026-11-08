@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Vigil.Ui.ViewModels"
+        xmlns:ui="clr-namespace:Vigil.Ui"
         WindowStyle="None"
         WindowState="Normal"
         ResizeMode="NoResize"
@@ -62,7 +63,7 @@
                 <StackPanel Orientation="Vertical"
                             HorizontalAlignment="Center"
                             Visibility="{Binding ShowTotpField, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Wpisz kod od rodzica:"
+                    <TextBlock Text="{x:Static ui:Strings.EnterCode}"
                                FontSize="22"
                                Foreground="{StaticResource MutedBrush}"
                                HorizontalAlignment="Center"
@@ -79,7 +80,7 @@
                                  PreviewKeyDown="TotpInput_PreviewKeyDown"
                                  PreviewTextInput="TotpInput_PreviewTextInput"
                                  IsVisibleChanged="TotpInput_IsVisibleChanged"/>
-                        <Button Content="Sprawdź"
+                        <Button Content="{x:Static ui:Strings.Check}"
                                 Margin="16,0,0,0"
                                 Padding="30,10"
                                 Click="CheckTotp_Click"/>
@@ -87,7 +88,7 @@
                 </StackPanel>
 
                 <!-- Retry button (warunkowo) -->
-                <Button Content="Spróbuj ponownie"
+                <Button Content="{x:Static ui:Strings.RetryConnection}"
                         Margin="0,30,0,0"
                         Padding="40,16"
                         FontSize="22"
@@ -115,7 +116,7 @@
                 </TextBlock>
 
                 <!-- Odblokuj (pauza) -->
-                <Button Content="▶  Odblokuj"
+                <Button Content="{x:Static ui:Strings.Resume}"
                         Margin="0,20,0,0"
                         Padding="50,18"
                         FontSize="26"
@@ -151,7 +152,7 @@
                         </Style.Triggers>
                     </Style>
                 </StackPanel.Style>
-                <TextBlock Text="Wysyłanie..."
+                <TextBlock Text="{x:Static ui:Strings.Sending}"
                            FontSize="36"
                            FontWeight="Light"
                            Foreground="#a8a8a8"
@@ -178,7 +179,7 @@
                            TextAlignment="Center"
                            HorizontalAlignment="Center"
                            Margin="40"/>
-                <TextBlock Text="Komputer odblokuje się za chwilę."
+                <TextBlock Text="{x:Static ui:Strings.UnlockingSoon}"
                            FontSize="22"
                            Foreground="{StaticResource MutedBrush}"
                            HorizontalAlignment="Center"
@@ -188,7 +189,7 @@
         </Grid>
 
         <!-- Wyłącz komputer — prawy dolny róg, dyskretnie -->
-        <Button Content="Wyłącz komputer"
+        <Button Content="{x:Static ui:Strings.ShutDown}"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Bottom"
                 Margin="0,0,40,40"

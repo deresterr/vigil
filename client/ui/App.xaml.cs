@@ -119,7 +119,6 @@ public partial class App : Application
         ViewModel.State = new UiState
         {
             Reason = reason,
-            MainMessage = s.MainMessage,
             ShowTotpField = s.ShowTotpField,
             ShowResumeButton = s.ShowResumeButton,
             ShowRetryButton = s.ShowRetryButton,
@@ -158,7 +157,7 @@ public partial class App : Application
     {
         UiLog.Write("pipe to the watchdog lost");
         _tray?.ShowDisconnected();
-        ViewModel.StatusMessage = "Utracono połączenie z watchdogiem.";
+        ViewModel.StatusMessage = Strings.WatchdogLost;
         // The overlay stays meanwhile (fail-closed); a restarted watchdog replaces this process.
         _pipeLossTimer = new DispatcherTimer { Interval = PipeLossExit };
         _pipeLossTimer.Tick += (_, _) => Shutdown(0);
@@ -230,16 +229,13 @@ public partial class App : Application
     private void ApplyArgvStandalone(string[] args)
     {
         var reason = "limit";
-        string? message = null;
         foreach (var a in args)
         {
             if (a.StartsWith("--mode=", StringComparison.Ordinal)) reason = a["--mode=".Length..];
-            else if (a.StartsWith("--message=", StringComparison.Ordinal)) message = a["--message=".Length..];
         }
         ShowLock(new IpcSetState
         {
             LockReason = reason,
-            MainMessage = message,
             ShowTotpField = true,
             ShowRetryButton = reason == "server_unreachable",
             ShowShutdownButton = true,

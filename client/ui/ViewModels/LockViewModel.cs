@@ -44,7 +44,7 @@ public sealed class LockViewModel : INotifyPropertyChanged
         }
     }
 
-    public string MainMessage        => _state.MainMessage ?? DefaultMessages.ForReason(_state.Reason);
+    public string MainMessage        => Strings.LockMessage(_state.Reason, _state.ShowTotpField);
     public bool ShowTotpField        => _phase == LockUiPhase.Locked && _state.ShowTotpField;
     public bool ShowResumeButton     => _phase == LockUiPhase.Locked && _state.ShowResumeButton;
     public bool ShowRetryButton      => _phase == LockUiPhase.Locked && _state.ShowRetryButton;
@@ -55,7 +55,7 @@ public sealed class LockViewModel : INotifyPropertyChanged
     /// </summary>
     public string MinutesRemainingText =>
         _state.ShowResumeButton && _state.MinutesRemaining > 0
-            ? $"Pozostało: {FormatTime(_state.MinutesRemaining)}"
+            ? Strings.Remaining(_state.MinutesRemaining)
             : "";
 
     private string _totpCode = "";
@@ -78,13 +78,6 @@ public sealed class LockViewModel : INotifyPropertyChanged
     {
         get => _currentTime;
         set => SetField(ref _currentTime, value);
-    }
-
-    private static string FormatTime(int minutes)
-    {
-        if (minutes < 60) return $"{minutes} min";
-        int h = minutes / 60, m = minutes % 60;
-        return m > 0 ? $"{h} h {m} min" : $"{h} h";
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)

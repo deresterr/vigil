@@ -24,8 +24,8 @@ przez `CreateProcessAsUser`.
 ## Protokół IPC (line-delimited JSON, bidirectional)
 
 **Watchdog → Lockscreen:**
-- `set_state` — pełen stan UI (lock_reason, main_message, show_totp_field, etc.)
-- `totp_response` — odpowiedź na totp_attempt (ok, mode, applied, reason, lockout_seconds)
+- `set_state` — pełen stan UI (lock_reason, show_totp_field, etc.); tekst komunikatu składa `vigil_ui` (`Strings`, D21)
+- `totp_response` — odpowiedź na totp_attempt (ok, mode, minutes, until_local, reason, lockout_seconds)
 - `exit` — lockscreen zamknij się
 
 **Lockscreen → Watchdog:**
@@ -72,7 +72,7 @@ Skopiuj `vigil_lockscreen.exe` do `C:\ProgramData\Vigil\` (installer robi to aut
    | HeartbeatClient.SendTotpAttemptAsync                           |
    | (POST /v1/totp_attempt)                                        |
    | resp.ok=true                                                   |
-   |─ IpcTotpResponse {ok, mode, applied} ────────────────────────> | TCS.SetResult
+   |─ IpcTotpResponse {ok, mode, minutes} ────────────────────────> | TCS.SetResult
    |                                                                | Phase = GrantApplied
    |                                                                | "Dodano 60 minut."
    |                                                                |

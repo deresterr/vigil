@@ -542,11 +542,11 @@ function Step-RegisterService {
         }
     }
 
-    # Format sc.exe: "key= value" ze spacją PO znaku =, bez przed.
-    & sc.exe create $ServiceName binPath= "`"$watchdogExe`"" start= auto displayname= "Vigil Watchdog" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "sc create failed (exit $LASTEXITCODE)" }
-
-    & sc.exe description $ServiceName "Service for parental time control" | Out-Null
+    # New-Service, not sc.exe create: PS 5.1 hands binPath= "`"...`"" to sc.exe as "...", the quotes
+    # are eaten by argv parsing and the service ends up with an unquoted path (with a space in
+    # $InstallDir, the classic unquoted-service-path hole). New-Service calls CreateService directly.
+    New-Service -Name $ServiceName -BinaryPathName "`"$watchdogExe`"" -DisplayName "Vigil Watchdog" `
+        -Description "Service for parental time control" -StartupType Automatic | Out-Null
     # Recovery: restart×3 z 60s opóźnieniem, BEZ reboota komputera — bug w agencie
     # (np. crash przy starcie) nie powinien prowadzić do reboot loopa. Po 3 fails zostaw
     # failed state, administrator zdiagnozuje przez Event Log.
@@ -813,7 +813,7 @@ function Stop-VigilService {
     try {
         Invoke-ScAsSystem "stop $ServiceName"
         if (Wait-ServiceStatus 'Stopped' 15) {
-            Write-OK "Zatrzymany (stop jako SYSTEM, watchdog wysłał pożegnanie)"
+            Write-OK "Zatrzymany (zwykły stop jako SYSTEM)"
             return $true
         }
     } catch { Write-Host "    stop jako SYSTEM: $_" -ForegroundColor DarkGray }
@@ -1172,8 +1172,9 @@ function Test-AclRules {
     $diff = @()
     foreach ($r in $rules) {
         $sid = $r.IdentityReference.Value
-        $want = if ($Want.ContainsKey($sid)) { [int][System.Security.AccessControl.FileSystemRights]$Want[$sid] -band -bnot $sync } else { $null }
-        if ($null -eq $want -or $r.AccessControlType -ne 'Allow' -or ([int]$r.FileSystemRights -band -bnot $sync) -ne $want) {
+        # Not $want: PowerShell names are case-insensitive, that would overwrite the $Want parameter.
+        $expected = if ($Want.ContainsKey($sid)) { [int][System.Security.AccessControl.FileSystemRights]$Want[$sid] -band -bnot $sync } else { $null }
+        if ($null -eq $expected -or $r.AccessControlType -ne 'Allow' -or ([int]$r.FileSystemRights -band -bnot $sync) -ne $expected) {
             $diff += "$sid=$($r.AccessControlType):$($r.FileSystemRights)"
         }
     }
@@ -1223,15 +1224,17 @@ function Unprotect-LocalMachine {
         $Data, $Entropy, [System.Security.Cryptography.DataProtectionScope]::LocalMachine)
 }
 
-function Invoke-VerifyInstalled {
-    Write-Step "Usługa $ServiceName"
+function Test-VerifyService {
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     Test-Check ([bool]$svc) "Zarejestrowana"
     if ($svc) {
         Test-Check ($svc.Status -eq 'Running') "Stan: $($svc.Status)"
         Test-Check ($svc.StartType -eq 'Automatic') "Start: $($svc.StartType)"
         $cim = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
-        Test-Check ($cim -and $cim.PathName -eq "`"$watchdogExe`"") "Ścieżka: $($cim.PathName)"
+        # Quoted since #47; older installs have it unquoted, which only matters with a space in the path.
+        $path = if ($cim) { $cim.PathName } else { '' }
+        Test-Check ($path.Trim('"') -eq $watchdogExe -and ($path.StartsWith('"') -or $watchdogExe -notmatch ' ')) `
+            "Ścieżka: $path$(if ($path -and -not $path.StartsWith('"')) { ' (bez cudzysłowów — zainstalowane przed #47, bez spacji nieszkodliwe)' })"
         $actions = @(Read-FailureActions)
         $nonCrash = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName" -Name FailureActionsOnNonCrashFailures -ErrorAction SilentlyContinue).FailureActionsOnNonCrashFailures
         Test-Check ($actions.Count -eq 3 -and @($actions | Where-Object { $_.Type -ne 1 }).Count -eq 0 -and $nonCrash -eq 1) `
@@ -1242,7 +1245,9 @@ function Invoke-VerifyInstalled {
         Test-Check ($ba -and $ba -notmatch 'WP' -and $ba -notmatch 'SD') "DACL: Admin bez stop i delete$(if (-not $ba) { ' — brak wpisu BA' } elseif ($ba -match 'WP|SD') { " — BA=$ba" })"
     }
 
-    Write-Step "Pliki w $InstallDir"
+}
+
+function Test-VerifyFiles {
     $files = @($watchdogExe, $uiExe, $guardianPs1, $vigilToml, $signingDat, $guardianDat, (Join-Path $backupDir 'vigil_watchdog.exe'))
     $missing = @($files | Where-Object { -not (Test-Path $_) })
     Test-Check ($missing.Count -eq 0) "Komplet plików$(if ($missing.Count) { ' — brak: ' + (($missing | ForEach-Object { Split-Path $_ -Leaf }) -join ', ') })"
@@ -1279,16 +1284,17 @@ function Invoke-VerifyInstalled {
             [Array]::Clear($key, 0, $key.Length)
         } catch { Write-Check 'Fail' "signing.dat nie odszyfrowuje się: $($_.Exception.Message)" }
     }
-    $serverUrl = $null
     if (Test-Path $vigilToml) {
         $toml = Get-Content $vigilToml -Raw
-        if ($toml -match 'server_url\s*=\s*"([^"]+)"') { $serverUrl = $matches[1] }
-        Test-Check ([bool]$serverUrl) "vigil.toml: server_url = $serverUrl"
+        if ($toml -match 'server_url\s*=\s*"([^"]+)"') { $script:VerifyServerUrl = $matches[1] }
+        Test-Check ([bool]$script:VerifyServerUrl) "vigil.toml: server_url = $script:VerifyServerUrl"
         Test-Check ($toml -notmatch 'bearer_token') "vigil.toml: bez bearer_token (protokół v1)"
     }
     if (Test-Path $InstallDir) { Test-ExpectedAcl }
 
-    Write-Step "Zadania i rozruch"
+}
+
+function Test-VerifyTasks {
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Test-Check ([bool]$task) "Zadanie '$TaskName'"
     if ($task) {
@@ -1312,7 +1318,9 @@ function Invoke-VerifyInstalled {
     $bootMenu = (& bcdedit.exe /enum '{current}') | Where-Object { $_ -match '^bootmenupolicy\s+(\S+)' } | ForEach-Object { $matches[1] }
     Test-Check ($bootMenu -eq 'Standard') "Menu F8 wyłączone (bootmenupolicy $bootMenu)" -Otherwise 'Warn'
 
-    Write-Step "Policy użytkownika"
+}
+
+function Test-VerifyPolicies {
     Resolve-ChildAccount
     if ($script:ChildAccount) {
         Test-UserPolicies -Label "Konto $($script:ChildAccount.Name)" -Sid $script:ChildAccount.Sid `
@@ -1322,19 +1330,37 @@ function Invoke-VerifyInstalled {
     }
     Test-UserPolicies -Label 'Default profile' -HiveFile "$env:SystemDrive\Users\Default\NTUSER.DAT"
 
-    Write-Step "Działanie"
+}
+
+function Test-VerifyRuntime {
     # Someone is logged on (explorer runs) ⇒ the watchdog must have started vigil_ui in that session.
     if (Get-Process -Name explorer -ErrorAction SilentlyContinue) {
         Test-Check ([bool](Get-Process -Name vigil_ui -ErrorAction SilentlyContinue)) "vigil_ui działa w sesji użytkownika"
     } else {
         Write-Skip "Nikt nie jest zalogowany — vigil_ui nie musi działać"
     }
-    if ($serverUrl) { Test-Check (Test-ServerReachable $serverUrl) "Serwer odpowiada: $serverUrl/health" }
+    if ($script:VerifyServerUrl) { Test-Check (Test-ServerReachable $script:VerifyServerUrl) "Serwer odpowiada: $script:VerifyServerUrl/health" }
     try {
         $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Vigil Watchdog'
                                                      Level = 1, 2, 3; StartTime = (Get-Date).AddMinutes(-15) } -ErrorAction Stop)
     } catch { $events = @() }  # no matching events also throws
     Test-Check ($events.Count -eq 0) "Event Log watchdoga: $($events.Count) ostrzeżeń/błędów w 15 min$(if ($events.Count) { ' — ostatni: ' + ($events[0].Message -split "`n")[0] })" -Otherwise 'Warn'
+}
+
+function Invoke-VerifyInstalled {
+    # Each section on its own: an unexpected error is one failed check, not the end of the report.
+    $script:VerifyServerUrl = $null
+    foreach ($section in @(
+        @{ Title = "Usługa $ServiceName";   Run = { Test-VerifyService } }
+        @{ Title = "Pliki w $InstallDir";   Run = { Test-VerifyFiles } }
+        @{ Title = 'Zadania i rozruch';     Run = { Test-VerifyTasks } }
+        @{ Title = 'Policy użytkownika';    Run = { Test-VerifyPolicies } }
+        @{ Title = 'Działanie';             Run = { Test-VerifyRuntime } }
+    )) {
+        Write-Step $section.Title
+        try { & $section.Run }
+        catch { Write-Check 'Fail' "Błąd sprawdzania: $($_.Exception.Message) (linia $($_.InvocationInfo.ScriptLineNumber))" }
+    }
 }
 
 function Invoke-VerifyRemoved {

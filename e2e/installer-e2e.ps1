@@ -17,6 +17,9 @@
     through this script unchanged. Only for a disposable machine: it installs the service, sets the
     per-user policies on -ChildUsername and changes the boot menu policy.
 
+.PARAMETER ChildUsername
+    Local account created as the child's (administrator, profile without a logon).
+
 .PARAMETER PackageDir
     The dist\ package (build-package.ps1). Default: ..\dist next to this script.
 
@@ -29,7 +32,7 @@ param(
     [string] $PackageDir = '',
     [string] $ServerDir = '',
     [int] $Port = 8089,
-    [string] $ChildUsername = $env:USERNAME
+    [string] $ChildUsername = 'vigilchild'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,6 +110,28 @@ function Get-ServiceStopCount {
     @($days | ForEach-Object { $_.entries } | Where-Object { $_.type -eq 'tamper_service_stopped' }).Count
 }
 
+function New-ChildAccount([string]$Name) {
+    # The runner's own account is the built-in Administrator (RID 500), which the installer skips by design.
+    # A local administrator like the child's (D12), with a profile created without a logon (CreateProfile):
+    # NTUSER.DAT on disk, not loaded, so the installer takes the offline-hive path.
+    if (-not (Get-LocalUser -Name $Name -ErrorAction SilentlyContinue)) {
+        $password = ConvertTo-SecureString "E2e-$([guid]::NewGuid().ToString('N'))" -AsPlainText -Force
+        New-LocalUser -Name $Name -Password $password -AccountNeverExpires | Out-Null
+        Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $Name
+    }
+    $sid = (Get-LocalUser -Name $Name).SID.Value
+    Add-Type -Namespace E2e -Name UserEnv -MemberDefinition @'
+[DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+public static extern int CreateProfile(string sid, string userName, System.Text.StringBuilder path, uint size);
+'@
+    $path = New-Object System.Text.StringBuilder 260
+    $hr = [E2e.UserEnv]::CreateProfile($sid, $Name, $path, 260)
+    # 0x800700B7 = ERROR_ALREADY_EXISTS (a rerun on the same machine)
+    if ($hr -ne 0 -and $hr -ne -2147024713) { throw ('CreateProfile failed: 0x{0:X8}' -f $hr) }
+    $profilePath = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid").ProfileImagePath
+    Assert-That (Test-Path (Join-Path $profilePath 'NTUSER.DAT')) "child account '$Name' with a profile ($profilePath)"
+}
+
 function Write-Diagnostics {
     Write-Section 'Diagnostics'
     foreach ($log in $ServerLog, "$ServerLog.err") {
@@ -135,6 +160,7 @@ try {
     Assert-That ((Invoke-Admin Get 'status').children.Count -eq 1) 'setup wizard completed, one child'
 
     Write-Section "Install (child account: $ChildUsername)"
+    New-ChildAccount $ChildUsername
     $code = New-PairingCode @{ child_id = 1; device_name = 'CI runner' }
     $rc = Invoke-Installer -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
     Assert-That ($rc -eq 0) "install exit code 0 (got $rc)"

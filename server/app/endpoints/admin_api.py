@@ -280,8 +280,7 @@ async def grant(child_id: int, body: GrantBody, db: sqlite3.Connection = Depends
         new_override = ensure_child_day(db, child_id, today)["limit_override_minutes"]
         log_event(db, "grant_applied", {"mode": "extend_limit", "minutes": body.minutes, "via": "admin_ui"},
                   child_id=child_id)
-        return {"ok": True, "applied": f"Dodano {body.minutes} minut do limitu dziennego.",
-                "new_override": new_override}
+        return {"ok": True, "mode": "extend_limit", "minutes": body.minutes, "new_override": new_override}
 
     # Night: grants stack onto the end of a still-running extension.
     current_ext = None
@@ -295,7 +294,7 @@ async def grant(child_id: int, body: GrantBody, db: sqlite3.Connection = Depends
     until = ext_local.strftime("%Y-%m-%d %H:%M")
     log_event(db, "grant_applied", {"mode": "extend_night", "minutes": body.minutes, "via": "admin_ui",
                                     "until_local": until}, child_id=child_id)
-    return {"ok": True, "applied": f"Dziecko może grać do {ext_local.strftime('%H:%M')}.", "until_local": until}
+    return {"ok": True, "mode": "extend_night", "minutes": body.minutes, "until_local": until}
 
 
 class ManualLockBody(_Body):

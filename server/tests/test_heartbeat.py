@@ -169,3 +169,13 @@ def test_settings_change_applies_on_the_next_heartbeat(watchdog):
         assert watchdog.heartbeat()["lock_required"] is False
         set_schedule(daily_limit=0)
         assert watchdog.heartbeat()["lock_reason"] == "limit"
+
+
+def test_server_sends_codes_not_sentences(watchdog):
+    """i18n (#52): vigil_ui words the lock screen in the child's Windows language; the server sends codes."""
+    with time_machine.travel(datetime(2026, 11, 4, 23, 0, tzinfo=TZ), tick=False):
+        hb = watchdog.heartbeat()
+        assert hb["lock_reason"] == "night" and "main_message" not in hb["ui_state"]
+        code = pyotp.TOTP(config("totp_secret")).now()
+        r = watchdog.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": 30})
+        assert r.json() == {"ok": True, "mode": "extend_night", "minutes": 30, "until_local": "2026-11-04 23:30"}

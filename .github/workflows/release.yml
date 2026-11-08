@@ -59,13 +59,12 @@ jobs:
       - name: Build package
         shell: pwsh
         run: ./build-package.ps1 -Configuration Release
-      - name: Zip
-        shell: pwsh
-        run: Compress-Archive -Path dist/* -DestinationPath "vigil-client-${{ github.ref_name }}.zip"
+      # The artifact is dist/ itself: downloaded from the Actions run it is the same as the release asset
+      # (the zip is made in the release job). A zipped artifact downloaded as a zip inside a zip.
       - uses: actions/upload-artifact@v4
         with:
-          name: client-zip
-          path: vigil-client-${{ github.ref_name }}.zip
+          name: vigil-client-${{ github.ref_name }}
+          path: dist/
 
   release:
     needs: [server-image, client-package]
@@ -75,7 +74,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: client-zip
+          name: vigil-client-${{ github.ref_name }}
+          path: dist
+      - name: Zip
+        run: cd dist && zip -qr "../vigil-client-${{ github.ref_name }}.zip" .
       - name: Create or update the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,7 +85,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          notes="Serwer: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (w \`server/.env\`: \`VIGIL_IMAGE=\`). Klient: \`vigil-client-${TAG}.zip\` (zawartość \`dist\\\`, uruchom \`Install.cmd\` jako administrator)."
+          notes="Server: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (in \`server/.env\`: \`VIGIL_IMAGE=\`). Client: \`vigil-client-${TAG}.zip\` (the \`dist\\\` package; run \`Install.cmd\` as administrator)."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "vigil-client-${TAG}.zip" --clobber
           else

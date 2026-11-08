@@ -26,23 +26,14 @@ PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_
 ```powershell
 # Skopiuj na docelowy PC: zawartość dist\ na PC dziecka
 
-# Signing key z panelu rodzica (Bezpieczeństwo → Klucz podpisujący)
+# Kod parowania z panelu rodzica (Ustawienia → „Dodaj komputer”)
 Install.cmd -Mode install `
     -ServerUrl 'http://192.168.0.2:8088' `
-    -SigningKey 'XyZ123abc...' `
-    -ChildUsername 'jasiek' `
-    -DisableWinRE
+    -PairingCode '1234 5678'
 ```
 
-### Minimalny install (bez per-user policies — tylko Default profile)
-
-```powershell
-Install.cmd -Mode install `
-    -ServerUrl 'http://192.168.0.2:8088' `
-    -SigningKey 'XyZ123abc...'
-```
-
-W tym wariancie policies idą tylko do Default User profile (skutek dla nowo utworzonych kont).
+Konto dziecka installer znajduje sam (jedyne konto z profilem, D12). Przy kilku kontach pyta
+(interaktywnie) albo trzeba podać `-ChildUsername`; bez tego policies idą tylko do Default User profile.
 
 ### Uninstall
 
@@ -50,32 +41,34 @@ W tym wariancie policies idą tylko do Default User profile (skutek dla nowo utw
 Cleanup.cmd
 ```
 
-### Zmiana adresu servera (np. po zmianie static IP)
+### Zmiana adresu servera (np. po zmianie static IP) albo ponowne parowanie
 
 ```powershell
 Install.cmd -Mode update-config -ServerUrl 'http://192.168.0.5:8088'
+Install.cmd -Mode update-config -PairingCode '1234 5678'   # panel: „Sparuj ponownie” przy komputerze
 ```
 
 ### Pełny reset (uninstall + install)
 
 ```powershell
-Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
+Install.cmd -Mode reinstall -ServerUrl '...' -PairingCode '...'
 ```
 
 ## Parametry
 
-### Wymagane dla `install`
+### Wymagane dla `install` bez pytań (inaczej tryb interaktywny)
 - `-ServerUrl http://...` — adres FastAPI servera w LAN
-- `-SigningKey ...` — z admin UI (zakładka „Bezpieczeństwo" → klucz podpisujący); zwykle niepotrzebny
-- `-PairingCode 12345678` — jednorazowy kod z panelu (ważny 10 min); bez `-SigningKey` installer paruje się nim z serwerem i dostaje nowy klucz (w trybie interaktywnym pyta o kod)
+- `-PairingCode 12345678` — jednorazowy kod z panelu (ważny 10 min). Serwer wydaje za niego klucz tego
+  komputera; innej drogi do klucza nie ma (panel go nie pokazuje).
 
 ### Opcjonalne
 - `-SourceDir <path>` — gdzie szukać binarek, default `$PSScriptRoot`
 - `-InstallDir 'C:\ProgramData\Vigil'` — default
-- `-ChildUsername 'jasiek'` — nazwa konta dziecka. Bez tego policies (DisableTaskMgr,
-  DisableChangePassword, sticky keys, touchpad gestures) trafiają **tylko do Default User profile** — czyli nowo tworzonych kont.
-  Z `-ChildUsername`: installer rezolwuje SID i pisze policies wprost do hive'u tego użytkownika
-  (live `HKEY_USERS\<SID>` jeśli zalogowany, `reg load` jego `NTUSER.DAT` jeśli nie).
+- `-ChildUsername 'jasiek'` — tylko gdy na PC jest kilka kont. Domyślnie installer bierze jedyne konto
+  z profilem: `ProfileList` (`S-1-5-21-*`, bez wbudowanych RID 500/501/503/504 — po SID, nie po nazwie, bo
+  „Gość” i konta Microsoft). Policies (DisableTaskMgr, DisableChangePassword, sticky keys, touchpad gestures)
+  idą wprost do hive'u tego konta (live `HKEY_USERS\<SID>`, inaczej `reg load` jego `NTUSER.DAT` ze ścieżki
+  profilu z `ProfileList`). Deinstalacja czyści policies ze wszystkich kont z profilem.
 - `-DisableWinRE` — wyłącz Windows Recovery Environment (`reagentc /disable`). Opt-in, bo
   to nie do końca odwracalne (uninstall NIE robi `reagentc /enable`)
 - `-NoUserPolicies` — pomiń aplikację policies w ogóle (ani Default profile, ani named user).
@@ -139,7 +132,8 @@ Install.cmd -Mode reinstall -ServerUrl '...' -SigningKey '...'
    bierze poprzedni)
 3. Zatrzymuje service (jeśli running)
 4. Nadpisuje `vigil.toml`
-5. Jeśli `-SigningKey` podany, też nadpisuje `signing.dat` (DPAPI)
+5. Jeśli `-PairingCode` podany: paruje się (przed zatrzymaniem usługi — zły kod niczego nie psuje)
+   i nadpisuje `signing.dat` (DPAPI)
 6. Restart service
 
 Można podać tylko jeden parametr (np. tylko `-ServerUrl`), reszta zostaje.

@@ -21,7 +21,9 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   that package is what Mateusz runs on the Windows VM for runtime tests.
 - **One PR with client changes per VM test session.** VM tests are expensive for Mateusz: batch every client
   change waiting for a runtime test into one PR (merge the issue branches into it, as #29 did for #9 + #10)
-  and hand over one test checklist with the CI artifact. He runs the server from the same PR branch.
+  and hand over one test checklist with the CI artifact. He runs the server from the same PR branch in the
+  test stack (`docs/test-server.md`). Production (v0.4, container `vigil`, image `vigil:local`, port 8088) runs on
+  the same host: test instructions must never reuse its container or image name.
   Server-only changes still go one issue per PR. No stacked PRs: every PR targets `main`.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 
@@ -46,6 +48,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   `Stop-Service` always fails with ACCESS_DENIED.
 
 ## Gotchas that already cost time
+- Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. Mateusz creates
+  releases/tags and deletes merged branches in the GitHub UI; open PRs with `gh api` (REST).
 - PowerShell 5.1: `.ps1` must be UTF-8 **with BOM** + CRLF (see `.editorconfig`), otherwise Polish text breaks.
 - PowerShell: `$PSScriptRoot` is empty inside `param()` defaults — compute it in the body.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.

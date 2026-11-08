@@ -168,7 +168,10 @@
              gap: 6px 8px; align-items: center; }
     .sched .hd { font-size: 0.75rem; color: #888; }
     .sched .day { color: #ccc; font-weight: 600; }
-    .sched .day.today { color: #60a5fa; }
+    .sched .day.weekend { color: #60a5fa; }
+    .sched .day.today::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 4px;
+                               border-radius: 50%; background: #4ade80; vertical-align: middle; }
+    .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
     .sched input { padding: 10px 8px; font-size: 0.95rem; min-width: 0; }
     #notice {
       position: fixed; left: 50%; bottom: 24px;
@@ -376,7 +379,7 @@
 
   <div class="card">
     <h2>Harmonogram tygodnia</h2>
-    <p class="muted muted-block">Dla każdego dnia: ile minut łącznie na wszystkich komputerach dziecka i cisza nocna, w której ekran jest zablokowany niezależnie od limitu. Cisza nocna należy do wieczoru swojego dnia: piątek 23:00–09:00 to noc z piątku na sobotę. Początek przed 12:00 oznacza po północy.</p>
+    <p class="muted muted-block">Limit łącznie na wszystkich komputerach dziecka. Cisza nocna od wieczoru danego dnia do rana.</p>
     <div class="sched" id="schedule"></div>
     <div class="action-row" style="margin-top: 14px;">
       <button class="btn btn-ghost" onclick="copyMonday()">Pn → Wt–Pt</button>
@@ -937,8 +940,9 @@ const DAYS_FULL = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', '
 
 function renderSchedule(week, today) {
   document.getElementById('schedule').innerHTML =
-    '<span></span><span class="hd">Limit (min)</span><span class="hd">Cisza od</span><span class="hd">do</span>' +
-    week.map((d, i) => `<span class="day${i === today ? ' today' : ''}" title="${DAYS_FULL[i]}">${DAYS[i]}</span>` +
+    '<span></span><span class="hd">Limit (min)</span><span class="hd">Cisza nocna od</span><span class="hd">do</span>' +
+    week.map((d, i) => (i === 5 ? '<div class="sep"></div>' : '') +  // weekend below the line
+      `<span class="day${i >= 5 ? ' weekend' : ''}${i === today ? ' today' : ''}" title="${DAYS_FULL[i]}${i === today ? ' (dziś)' : ''}">${DAYS[i]}</span>` +
       `<input type="number" id="sLim${i}" min="0" max="1440" step="1" value="${d.daily_limit}" aria-label="${DAYS_FULL[i]}: limit w minutach">` +
       // Text, not type="time": with a 12-hour browser locale the narrow column cut "PM" off (21:30 read 09:30).
       `<input type="text" inputmode="numeric" maxlength="5" placeholder="21:30" id="sFrom${i}" value="${d.night_start}" aria-label="${DAYS_FULL[i]}: początek ciszy nocnej (GG:MM)">` +

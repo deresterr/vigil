@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from ..auth import Device, authenticate_request
 from ..crypto import match_totp_step
 from ..db import get_child, get_config_value, get_db, log_event, set_config_value, update_child_day
-from ..lock_logic import child_today, parse_hhmm, parse_iso_utc
+from ..lock_logic import child_today, current_or_next_night_start, parse_iso_utc
 from ..models import TotpAttemptRequest
 
 router = APIRouter()
@@ -113,34 +113,26 @@ def _compute_night_extension_until(
     lock_cfg: dict,
     current_extension_utc: datetime | None = None,
 ) -> tuple[datetime, datetime]:
-    """Bonus = "ile minut grania PODCZAS ciszy nocnej". Pierwszy grant liczy się od
-    night_lock_start. Kolejne granty (gdy istnieje aktywne extension) DODAJĄ się do
-    końca poprzedniego extension — wielokrotne klikanie "+60 min" akumuluje się
+    """Bonus = "ile minut grania PODCZAS ciszy nocnej". Pierwszy grant liczy się od początku
+    ciszy nocnej (trwającej albo najbliższej). Kolejne granty (gdy istnieje aktywne extension) DODAJĄ
+    się do końca poprzedniego extension — wielokrotne klikanie "+60 min" akumuluje się
     (3 × +60 = 3h przedłużenia, nie 1h).
 
-    Cross-midnight handling: jeśli wołane już po północy ale przed night_end,
-    night_lock_start odnosi się do wczorajszej daty.
+    Which night: the one in progress or the next (lock_logic.current_or_next_night_start), so after
+    midnight it is the night of the previous evening (#48).
 
     Returns: (extension_utc, extension_local_for_display)
     """
-    night_start = parse_hhmm(lock_cfg["night_lock_start"])
-    night_end = parse_hhmm(lock_cfg["night_lock_end"])
     now_local = now_utc.astimezone(tz)
 
     # Baza do dopisania bonusu: aktualny extension jeśli istnieje i jest w przyszłości,
-    # inaczej max(teraz, dzisiejszy night_lock_start).
+    # inaczej max(teraz, początek nocy).
     # max() chroni przed ustawieniem extension w przeszłości — gdy poprzedni extension
-    # wygasł (np. był do 22:30, teraz 22:35), base = teraz, nie night_start.
+    # wygasł (np. był do 22:30, teraz 22:35), base = teraz, nie początek nocy.
     if current_extension_utc is not None and current_extension_utc > now_utc:
         base_local = current_extension_utc.astimezone(tz)
     else:
-        # Cross-midnight detection: window 21:30→06:30, jesteśmy o 02:00 → night zaczął się wczoraj
-        if night_start > night_end and now_local.time() < night_end:
-            night_start_date = now_local.date() - timedelta(days=1)
-        else:
-            night_start_date = now_local.date()
-        night_start_dt = datetime.combine(night_start_date, night_start, tzinfo=tz)
-        # Jeśli cisza nocna już trwa, liczymy grant od teraz (nie od dawno minionego startu)
+        night_start_dt = current_or_next_night_start(lock_cfg, now_local).replace(tzinfo=tz)
         base_local = max(now_local, night_start_dt)
 
     extension_local = base_local + timedelta(minutes=minutes_to_grant)

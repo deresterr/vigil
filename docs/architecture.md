@@ -51,9 +51,8 @@ Request bodies are Pydantic models in `app/models.py` (strict types, unknown fie
 
 ## Children, devices and time accounting (`heartbeat.py`, D7)
 
-One server, many children, each with any number of PCs. Settings (`daily_limit_weekday/_weekend`,
-`night_lock_start/_end`) and all locks (limit, night, manual, pause) are **per child**: a lock or pause applies
-to every PC of the child. Time is the **sum over the child's devices** (two PCs at once count twice).
+One server, many children, each with any number of PCs. The weekly schedule (`child_schedule`, #48) and all
+locks (limit, night, manual, pause) are **per child**: a lock or pause applies to every PC of the child. Time is the **sum over the child's devices** (two PCs at once count twice).
 
 Per heartbeat of a device:
 1. `delta = now − devices.last_heartbeat_utc`, clamped to `0..heartbeat_delta_max` (15 s).
@@ -64,11 +63,16 @@ Per heartbeat of a device:
 5. Lock reason recomputed with the new total. Priority `manual > night > limit > pause` (`lock_logic.py`).
    `lock_started` is logged once per child (`children.last_lock_reason`), not once per device.
 
-Tables: `children` (settings, `last_lock_reason`), `devices` (`child_id`, name, `signing_key`, last heartbeat /
+Tables: `children` (name, `last_lock_reason`), `child_schedule` (one row per child and weekday, Monday = 0:
+`daily_limit, night_start, night_end`), `devices` (`child_id`, name, `signing_key`, last heartbeat /
 activity, `seconds_today`, tamper baseline `wd_*`), `child_daily` (one row per child and local date:
 `seconds_used, limit_override_minutes, night_extension_until_utc, manual_lock, pause_active`). A new day's row
-inherits `manual_lock` and a still-active `night_extension_until_utc` from the child's previous row. Weekend
-limit applies Fri–Sun (`is_weekend`). `user_active` is just `session_active` (no idle detection, D16).
+inherits `manual_lock` and a still-active `night_extension_until_utc` from the child's previous row. The limit
+is the schedule row of the local date's weekday. A night **belongs to the evening of its day** (D19): it starts
+at that day's `night_start` — on the next day when `night_start` is before 12:00 (after midnight) — and ends at
+the first `night_end` after that, so "Friday 23:00–09:00" covers Friday 23:00 to Saturday 09:00
+(`lock_logic.night_window`). A night grant counts from the start of the night in progress or the next one.
+`user_active` is just `session_active` (no idle detection, D16).
 One TOTP secret for all children (one `totp_lockout` row, one `totp_last_step`).
 
 Schema changes only through `migrations.py` (`PRAGMA user_version` = migrations applied, one transaction

@@ -54,6 +54,9 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - PowerShell 5.1: `.ps1` must be UTF-8 **with BOM** + CRLF (see `.editorconfig`), otherwise Polish text breaks.
 - PowerShell: `$PSScriptRoot` is empty inside `param()` defaults — compute it in the body.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.
+- PowerShell 5.1: embedded quotes in native arguments are lost (`sc.exe create binPath= "`"$exe`""` registered an
+  unquoted path). Use the cmdlet/API (`New-Service`) or `\"` escaping. Variable names are case-insensitive:
+  a local `$want` overwrites a `[hashtable]$Want` parameter.
 - PowerShell/icacls: use SIDs (`*S-1-5-32-544`), never group names — Polish Windows localizes them.
 - PowerShell 5.1 + `$ErrorActionPreference='Stop'`: `& native.exe 2>&1` turns stderr into a terminating error
   (fatal in `finally`). Call `reg.exe` only via `Invoke-RegExe` in `vigil_install.ps1`.

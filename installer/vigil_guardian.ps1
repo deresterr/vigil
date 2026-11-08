@@ -115,7 +115,7 @@ function Test-IfeoClean {
 }
 
 function Test-StartAutomatic {
-    # Start: 2 = automatic (installer: sc.exe create start= auto)
+    # Start: 2 = automatic (installer: New-Service -StartupType Automatic)
     return ((Get-ItemProperty -Path $serviceKey -Name 'Start' -ErrorAction SilentlyContinue).Start -eq 2)
 }
 

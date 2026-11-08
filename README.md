@@ -1,129 +1,134 @@
 # Vigil
 
-Samodzielnie hostowana kontrola czasu dziecka przy komputerze z Windows 10/11.
-Serwer w Dockerze w domowej sieci liczy czas i decyduje o blokadzie; usługa na PC dziecka
-pokazuje pełnoekranową blokadę. Rodzic zarządza z przeglądarki i odblokowuje kodem TOTP z telefonu.
+**English** · [Polski](README.pl.md)
 
-> **Status: v0.7, przed wydaniem 1.0.** Działa w codziennym użyciu. Dziecko z uprawnieniami administratora
-> jest w stanie Vigila obejść — Vigil ma to utrudnić i pokazać rodzicowi, nie uniemożliwić
-> (patrz [Model zagrożeń](#model-zagrożeń)). Plan dalszych prac: [`docs/review-2026-11.md`](docs/review-2026-11.md).
+Self-hosted screen-time control for a child's Windows 10/11 PC.
+A server in Docker on your home network counts the time and decides when to lock; a service on the child's PC
+shows a full-screen lock. The parent manages everything from a browser and unlocks with a TOTP code from their phone.
 
-## Co potrafi
+> **Status: v0.7, before 1.0.** In daily use. A child with administrator rights can get around Vigil — Vigil
+> makes that harder and shows it to the parent, it does not make it impossible (see [Threat model](#threat-model)).
+> Roadmap and decisions (in Polish): [`docs/review-2026-11.md`](docs/review-2026-11.md).
 
-- kilkoro dzieci na jednym serwerze, każde z dowolną liczbą komputerów (czas liczony łącznie),
-- harmonogram tygodnia: dzienny limit czasu i cisza nocna osobno dla każdego dnia i każdego dziecka,
-- blokada ręczna z panelu, przedłużanie czasu z panelu lub kodem TOTP wpisanym na ekranie blokady,
-- odblokowanie kodem z telefonu działa także, gdy serwer jest niedostępny,
-- pauza uruchamiana przez dziecko (czas nie leci, ekran zablokowany),
-- fail-closed: brak połączenia z serwerem = blokada,
-- dziennik zdarzeń w panelu rodzica z alertami o próbach obejścia.
+## What it does
 
-## Model zagrożeń
+- several children on one server, each with any number of PCs (time counted across all of them),
+- a weekly schedule: daily time limit and night time for each day of the week and each child,
+- manual lock from the panel, extra time from the panel or with a TOTP code typed on the lock screen,
+- unlocking with the phone code also works when the server is unreachable,
+- a pause the child starts (time is not counted, the screen is locked),
+- fail-closed: no connection to the server = locked,
+- a journal in the parent panel with alerts about attempts to get around it,
+- panel and lock screen in English or Polish, following the browser and Windows language
+  (the installer is Polish only for now).
 
-Zakładamy, że dziecko **może mieć konto administratora** — tak korzysta z komputera większość rodzin.
-Administrator może uruchomić kod jako SYSTEM, odczytać każdy plik i wyłączyć każdą usługę, więc na samym
-PC nic nie jest odporne na manipulację. Każdy mechanizm Vigila należy do jednej z trzech grup:
+## Threat model
 
-**Chroni** — działa także przeciw administratorowi, bo stan jest na serwerze:
-- limity, cisza nocna, blokada ręczna i licznik czasu są na serwerze; z PC nie da się ich zmienić,
-  można najwyżej podsunąć fałszywe dane (patrz „Nie wykrywa”),
-- parowanie PC jednorazowym kodem z panelu; każde parowanie wydaje nowy klucz, poprzedni PC traci dostęp,
-- kod TOTP działa tylko raz; po błędnych kodach blokada na minuty, więc dziecko nie zablokuje rodzicowi
-  odblokowania na dłużej,
-- limit prób logowania do panelu rodzica.
+We assume the child **may have an administrator account** — that is how most families use their PCs.
+An administrator can run code as SYSTEM, read any file and disable any service, so nothing on the PC itself is
+tamper-proof. Every mechanism in Vigil belongs to one of three groups:
 
-**Utrudnia** — zatrzymuje proces bez uprawnień administratora i przypadkowe próby; administrator to obejdzie:
-- żądania do serwera podpisane kluczem z pliku dostępnego tylko dla SYSTEM i administratorów,
-- brak połączenia z serwerem = blokada (fail-closed),
-- usługa, której administrator nie zatrzyma zwykłym poleceniem; strażnik (guardian) co 5 minut cofa
-  wyłączenie usługi, podmianę jej pliku i inne zmiany w instalacji; usługa działa też w trybie awaryjnym,
-- ekran blokady na wszystkich monitorach, zablokowane skróty (Win, Alt+Tab, Alt+F4), wyłączony
-  menedżer zadań i zmiana hasła konta — te dwie polityki działają też na rodzica, bo to to samo konto,
-- procesu Vigila w sesji dziecka nie da się zamknąć bez uprawnień administratora; zamykany
-  wielokrotnie (np. z podniesionego PowerShella) kończy się wylogowaniem,
-- odblokowanie offline kodem TOTP: sekret jest na dysku PC, administrator może go odczytać.
+**Protects** — holds even against an administrator, because the state lives on the server:
+- limits, night time, the manual lock and the time counter are on the server; the PC cannot change them,
+  at most feed it false data (see "Does not detect"),
+- PCs are paired with a one-time code from the panel; every pairing issues a new key and the previous PC
+  loses access,
+- a TOTP code works only once; after wrong codes unlocking pauses for minutes, so the child cannot lock
+  the parent out for long,
+- a limit on login attempts to the parent panel.
 
-**Wykrywa** — pokazuje w zakładce Dziennik jako alert do potwierdzenia:
-- zatrzymanie usługi Vigil, ponowne uruchomienie Vigila bez restartu systemu,
-- Vigil zamrożony lub wstrzymany, choć komputer działał,
-- wielokrotne zamykanie ekranu blokady,
-- każdą naprawę strażnika (np. wyłączona usługa, podmieniony plik),
-- serie błędnych kodów TOTP, nieudane logowania do panelu, unieważniony kod parowania.
+**Impedes** — stops a process without administrator rights and casual attempts; an administrator gets past it:
+- requests to the server are signed with a key in a file readable only by SYSTEM and administrators,
+- no connection to the server = locked (fail-closed),
+- a service an administrator cannot stop with a plain command; a guardian undoes disabling the service,
+  replacing its file and other changes to the installation every 5 minutes; the service also runs in Safe Mode,
+- the lock screen covers every monitor, shortcuts are blocked (Win, Alt+Tab, Alt+F4), Task Manager and
+  changing the account password are disabled — these two policies apply to the parent too, as it is the same account,
+- Vigil's process in the child's session cannot be closed without administrator rights; closing it
+  repeatedly (e.g. from an elevated PowerShell) logs the user off,
+- offline unlocking with the TOTP code: the secret is on the PC's disk and an administrator can read it.
 
-Odblokowania offline i okresy bez połączenia trafiają do Dziennika jako zwykłe wpisy.
+**Detects** — shows an alert to confirm in the Journal tab:
+- the Vigil service stopped, Vigil restarted without a system restart,
+- Vigil frozen or suspended while the computer was running,
+- the lock screen closed repeatedly,
+- every repair by the guardian (e.g. a disabled service, a replaced file),
+- runs of wrong TOTP codes, failed panel logins, an invalidated pairing code.
 
-**Nie wykrywa:** usługi zatrzymanej na stałe (panel pokazuje tylko, że PC jest offline), innego systemu
-uruchomionego z pendrive'a (też tylko offline) ani sfałszowanych żądań wysłanych przez administratora,
-który odczytał klucz z dysku.
+Offline unlocks and periods without a connection show in the Journal as ordinary entries.
 
-## Wymagania
+**Does not detect:** a service stopped for good (the panel only shows the PC as offline), another system booted
+from a USB stick (offline as well), or forged requests sent by an administrator who read the key from the disk.
 
-- serwer: dowolny Linux z Dockerem w tej samej sieci co PC dziecka (lub osiągalny przez VPN),
-- PC dziecka: Windows 10/11 x64, Home lub Pro; konto dziecka jest jedynym kontem użytkownika
-  i może mieć uprawnienia administratora (rodzic serwisuje PC z tego samego konta),
-- telefon rodzica z aplikacją TOTP (Aegis, Google Authenticator, …),
-- do budowania klienta: Windows z .NET 8 SDK (albo gotowa paczka z wydania lub z GitHub Actions).
+## Requirements
 
-## Szybki start
+- server: any Linux with Docker on the same network as the child's PC (or reachable over a VPN),
+- child's PC: Windows 10/11 x64, Home or Pro; the child's account is the only user account
+  and may have administrator rights (the parent maintains the PC from that same account),
+- the parent's phone with a TOTP app (Aegis, Google Authenticator, …),
+- to build the client: Windows with the .NET 8 SDK (or a ready package from a release or GitHub Actions).
 
-Gotowe paczki są przy każdym wydaniu (zakładka **Releases**): obraz serwera
-`ghcr.io/deresterr/vigil-server:<wersja>` i `vigil-client-v<wersja>.zip` z paczką dla PC dziecka. Z nimi
-nie budujesz niczego: w kroku 1 ustaw w `server/.env` `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<wersja>`
-i uruchom `docker compose pull && docker compose up -d`, a krok 2 zastępuje rozpakowany zip.
+## Quick start
 
-**1. Serwer**
+Every release (the **Releases** tab) has ready packages: the server image
+`ghcr.io/deresterr/vigil-server:<version>` and `vigil-client-v<version>.zip` for the child's PC. With them you
+build nothing: in step 1 set `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<version>` in `server/.env` and run
+`docker compose pull && docker compose up -d`; the unpacked zip replaces step 2.
+
+**1. Server**
 
 ```bash
 cd server
-cp .env.example .env          # nazwa instancji, port, opcjonalnie gotowy obraz
+cp .env.example .env          # instance name, port, optionally a ready image
 docker compose up -d
 ```
 
-Otwórz `http://<ip-serwera>:8088/setup` i przejdź kreator (hasło rodzica, TOTP, limity, adres serwera).
-Limity i ciszę nocną dla każdego dnia tygodnia ustawisz potem w panelu (Ustawienia → Harmonogram tygodnia).
-Kreator jest dostępny bez logowania do momentu ukończenia — zrób to od razu po uruchomieniu.
+Open `http://<server-ip>:8088/setup` and go through the wizard (parent password, TOTP, limits, server address).
+Set the limit and night time for each day of the week later in the panel (Settings → Weekly schedule).
+The wizard is open without a login until it is completed — do it right after starting the server.
 
-**2. Paczka dla PC dziecka** (na Windows, w katalogu repo)
+**2. Package for the child's PC** (on Windows, in the repo folder)
 
-Potrzebny .NET 8 SDK — tylko na maszynie, która buduje; paczka jest self-contained, PC dziecka go nie potrzebuje:
+You need the .NET 8 SDK — only on the machine that builds; the package is self-contained, the child's PC does
+not need it:
 
 ```
 winget install Microsoft.DotNet.SDK.8
 ```
 
-Potem (w nowym oknie, żeby `dotnet` był w PATH):
+Then (in a new window, so that `dotnet` is on the PATH):
 
 ```
 Build.cmd            → dist\
 ```
 
-Zamiast budować lokalnie możesz pobrać gotowe `dist\` z artefaktu `vigil-client-…` ostatniego przebiegu CI
-(zakładka Actions).
+Instead of building locally you can download a ready `dist\` from the `vigil-client-…` artifact of the latest CI run
+(Actions tab).
 
-**3. Instalacja na PC dziecka** — w panelu rodzica: Ustawienia → „Dodaj komputer”, skopiuj `dist\`
-na PC dziecka i uruchom jako administrator:
+**3. Install on the child's PC** — in the parent panel: Settings → "Add computer", copy `dist\` to the child's PC
+and run as administrator:
 
 ```
-Install.cmd          (tryb interaktywny: adres serwera i kod parowania; konto dziecka wykrywa sam)
-Install.cmd -Mode verify    (sprawdza instalację: usługa, pliki, uprawnienia, polityki, połączenie z serwerem)
+Install.cmd                 (interactive: server address and pairing code; finds the child's account itself)
+Install.cmd -Mode verify    (checks the installation: service, files, permissions, policies, server connection)
 ```
 
-Odinstalowanie: `Install.cmd -Mode uninstall` albo `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE,
-gdy system nie startuje). `Install.cmd -Mode verify` po deinstalacji sprawdza, czy nic nie zostało.
+Uninstall: `Install.cmd -Mode uninstall` or `Cleanup.cmd` (or `vigil-cleanup-offline.cmd` from WinRE when Windows
+does not start). `Install.cmd -Mode verify` after uninstalling checks that nothing was left behind.
 
-## Struktura repo
+## Repository layout
 
-| Katalog | Zawartość |
+| Folder | Contents |
 |---|---|
-| `server/` | FastAPI + SQLite, panel rodzica, testy |
-| `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`) |
-| `installer/` | skrypty instalacji, deinstalacji i strażnika integralności |
-| `docs/` | architektura, przegląd i roadmapa |
+| `server/` | FastAPI + SQLite, parent panel, tests |
+| `client/` | Windows service (`watchdog`), lock screen with a tray icon (`ui`) |
+| `installer/` | install, uninstall and integrity guardian scripts |
+| `docs/` | architecture, review and roadmap |
 
-## Bezpieczeństwo
+## Security
 
-Podatności zgłaszaj prywatnie — zasady i to, co mieści się w modelu zagrożeń, opisuje [`SECURITY.md`](SECURITY.md).
+Report vulnerabilities privately — how, and what falls within the threat model: [`SECURITY.md`](SECURITY.md).
 
-## Licencja
+## License
 
-MIT — zobacz [`LICENSE`](LICENSE).
+MIT — see [`LICENSE`](LICENSE).

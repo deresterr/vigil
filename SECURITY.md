@@ -1,34 +1,34 @@
-# Bezpieczeństwo
+# Security
 
-*English: reports in English are welcome — use the private report described below.*
+**English** · [Polski](SECURITY.pl.md)
 
-## Jak zgłosić podatność
+## Reporting a vulnerability
 
-Nie zakładaj publicznego issue. Użyj prywatnego zgłoszenia na GitHubie: zakładka **Security** →
-**Report a vulnerability**. Zgłoszenie widzi tylko opiekun repo.
+Do not open a public issue. Use a private report on GitHub: the **Security** tab → **Report a vulnerability**.
+Only the maintainer sees it.
 
-Przydadzą się: wersja (tag wydania albo commit), czego dotyczy (serwer, usługa na PC, instalator),
-kroki do odtworzenia i jakie uprawnienia na PC dziecka są potrzebne (konto standardowe czy administrator).
+Helpful details: the version (release tag or commit), what it affects (server, the service on the PC, installer),
+steps to reproduce, and what rights on the child's PC it needs (standard account or administrator).
 
-To projekt utrzymywany po godzinach: odpowiedź zwykle w ciągu kilku dni, poprawka w kolejnym wydaniu.
-Wspierana jest tylko najnowsza wersja z zakładki **Releases**.
+This is a spare-time project: expect an answer within a few days and a fix in the next release.
+Only the latest version on the **Releases** tab is supported.
 
-## Co jest podatnością
+## What counts as a vulnerability
 
-Vigil zakłada, że dziecko **może mieć konto administratora** ([Model zagrożeń](README.md#model-zagrożeń)).
-Na samym PC nic nie jest odporne na administratora, więc o tym, czy coś jest błędem, decyduje grupa, do której
-należy mechanizm:
+Vigil assumes the child **may have an administrator account** ([Threat model](README.md#threat-model)).
+Nothing on the PC itself withstands an administrator, so whether something is a bug depends on the group its
+mechanism belongs to:
 
-| Grupa | Przykład | Zgłoś, jeśli… |
+| Group | Examples | Report it if… |
 |---|---|---|
-| **Chroni** (stan na serwerze) | limity, harmonogram, blokada ręczna, parowanie, TOTP, logowanie do panelu | da się to obejść **nawet z PC administratora** — np. zmienić limit, przejąć panel, użyć kodu TOTP dwa razy, sparować komputer bez kodu |
-| **Utrudnia** | podpisane żądania, fail-closed, DACL usługi i procesu UI, polityki rejestru | da się to obejść **bez uprawnień administratora** (proces niepodniesiony, konto standardowe) |
-| **Wykrywa** | alerty w Dzienniku | administrator wyłącza Vigila tak, że w panelu **nie pojawia się alert**, a README nie wymienia tego w „Nie wykrywa” |
+| **Protects** (state on the server) | limits, schedule, manual lock, pairing, TOTP, panel login | it can be bypassed **even from an administrator's PC** — e.g. change a limit, take over the panel, use a TOTP code twice, pair a computer without a code |
+| **Impedes** | signed requests, fail-closed, service and UI process DACLs, registry policies | it can be bypassed **without administrator rights** (non-elevated process, standard account) |
+| **Detects** | alerts in the Journal | an administrator disables Vigil so that **no alert appears** in the panel, and the README does not list it under "Does not detect" |
 
-Podatnością jest też wszystko, co pozwala osobie w tej samej sieci (bez dostępu do PC dziecka) wpłynąć na
-serwer: odczytać sekrety, zmienić ustawienia, podszyć się pod komputer dziecka.
+Also a vulnerability: anything that lets someone on the same network (without access to the child's PC) affect the
+server — read secrets, change settings, impersonate the child's computer.
 
-**Nie są podatnością** (opisane w README jako znane ograniczenia): obejście przez administratora mechanizmu
-z grupy „Utrudnia”, odczyt przez administratora sekretów z dysku PC (klucz podpisujący, sekret TOTP do
-odblokowania offline), uruchomienie innego systemu z pendrive'a, trwałe zatrzymanie usługi widoczne w panelu
-jako komputer offline.
+**Not vulnerabilities** (listed in the README as known limits): an administrator getting past an "Impedes"
+mechanism, an administrator reading secrets from the PC's disk (the signing key, the TOTP secret for offline
+unlocking), booting another system from a USB stick, a service stopped for good, which shows in the panel as an
+offline computer.

@@ -8,7 +8,7 @@ Describes the system as it is. Planned changes live in `review-2026-11.md`.
  ┌────────────▼─────────────┐   HTTP, LAN/VPN     ┌─────────────────────────────────────────────┐
  │ server (Docker)          │◄───────────────────►│ vigil_watchdog  (Windows Service, SYSTEM)   │
  │ FastAPI + SQLite (WAL)   │  /v1/* every 1–60 s │   │ \\.\pipe\VigilUI                          │
- │ 1 container = 1 child PC │                     │   ▼                                         │
+ │ children + their PCs (D7)│                     │   ▼                                         │
  └──────────────────────────┘                     │ vigil_ui (WPF, child's session): tray icon   │
                                                   │   always, lock overlay on demand; started    │
                                                   │   and kept alive by the watchdog             │
@@ -26,6 +26,10 @@ bad signature, age > `max_request_age_seconds` (60), > 5 s in the future, reused
 pruned after `nonce_cache_seconds`). A rejected request never stores its nonce. No bearer token (removed in v2).
 Against an admin child this is friction: the key is in `signing.dat`, readable by an elevated process.
 
+Which device (D7): every paired PC has its own key (`devices.signing_key`). Requests carry no device id; the
+server checks the HMAC with every device's key (all of them, no early exit) and the match is the sender
+(`auth.Device`: id, child_id). A key speaks only for its own device and child.
+
 Response header `X-Signature = base64(HMAC-SHA256(signing_key, nonce_ascii + body))`, added by
 `HmacSigningMiddleware` only after `authenticate_request` succeeded. The watchdog treats a missing/invalid
 signature like "server unreachable".
@@ -36,37 +40,50 @@ signature like "server unreachable".
 | `POST /v1/goodbye` | `instance_id, reason` (`service_stop`\|`shutdown`) | sent from the service's StopAsync; see Tamper detection |
 | `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`. every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` | refused while a higher-priority lock is active |
-| `POST /v1/pair` | `code` | **unauthenticated**; one-time 8-digit code from the panel (10 min, 5 attempts) → new `signing_key` + `server_url`. Every pairing rotates the key |
+| `POST /v1/pair` | `code` | **unauthenticated**; one-time 8-digit code from the panel (10 min, 5 attempts) → new `signing_key` + `server_url`. The code is made for a new device of a child, or for re-pairing a device (its key is replaced) |
+| `POST /v1/tamper_event` | `type` `lockscreen_killed` \| `guardian_repaired` | see Tamper detection |
+
+Request bodies are Pydantic models in `app/models.py` (strict types, unknown fields ignored) — a contract with
+`HeartbeatModels.cs`.
 
 `ui_state` (only when locked): `main_message` (Polish, from server), `show_totp_field`, `show_resume_button`,
 `show_retry_button`, `show_shutdown_button`, `current_time_display`.
 
-## Time accounting (`heartbeat.py`)
+## Children, devices and time accounting (`heartbeat.py`, D7)
 
-1. `delta = now − last_heartbeat_utc`, clamped to `0..heartbeat_delta_max` (15 s).
-2. Counted only if this request has `session_active && user_active` **and** the previous active heartbeat
-   was ≤ `gap_detection_threshold` (30 s) ago (sleep/hibernate ⇒ nothing counted).
-3. If a lock is already active (pre-lock check) nothing is counted.
-4. Lock reason recomputed with the new total. Priority `manual > night > limit > pause` (`lock_logic.py`).
+One server, many children, each with any number of PCs. Settings (`daily_limit_weekday/_weekend`,
+`night_lock_start/_end`) and all locks (limit, night, manual, pause) are **per child**: a lock or pause applies
+to every PC of the child. Time is the **sum over the child's devices** (two PCs at once count twice).
 
-State is one row per local date in `daily_state`: `seconds_used, limit_override_minutes,
-night_extension_until_utc, manual_lock, pause_active, last_heartbeat_utc, last_session_active_utc`.
-A new day's row inherits `manual_lock` and a still-active `night_extension_until_utc` from the previous row. Weekend limit applies Fri–Sun (`is_weekend`).
-`user_active` is currently just `session_active` (no idle detection).
+Per heartbeat of a device:
+1. `delta = now − devices.last_heartbeat_utc`, clamped to `0..heartbeat_delta_max` (15 s).
+2. Counted only if this request has `session_active && user_active` **and** the device's previous active
+   heartbeat (`devices.last_active_utc`) was ≤ `gap_detection_threshold` (30 s) ago.
+3. If the child is already locked (pre-lock check) nothing is counted.
+4. The seconds go to the child's `child_daily.seconds_used` (atomic increment) and the device's `seconds_today`.
+5. Lock reason recomputed with the new total. Priority `manual > night > limit > pause` (`lock_logic.py`).
+   `lock_started` is logged once per child (`children.last_lock_reason`), not once per device.
+
+Tables: `children` (settings, `last_lock_reason`), `devices` (`child_id`, name, `signing_key`, last heartbeat /
+activity, `seconds_today`, tamper baseline `wd_*`), `child_daily` (one row per child and local date:
+`seconds_used, limit_override_minutes, night_extension_until_utc, manual_lock, pause_active`). A new day's row
+inherits `manual_lock` and a still-active `night_extension_until_utc` from the child's previous row. Weekend
+limit applies Fri–Sun (`is_weekend`). `user_active` is just `session_active` (no idle detection, D16).
+One TOTP secret for all children (one `totp_lockout` row, one `totp_last_step`).
 
 Schema changes only through `migrations.py` (`PRAGMA user_version` = migrations applied, one transaction
 each; a database newer than the code is refused). Config is read from SQLite on every request, no cache;
 missing keys fall back to `CONFIG_DEFAULTS`.
 
-Other tables: `config` (key/value incl. secrets: `signing_key`, `totp_secret`,
+Other tables: `config` (server-wide key/value incl. secrets: `totp_secret`,
 `admin_session_key`, `parent_password_hash`), `events` (audit log, pruned after `events_retention_days`),
-`totp_lockout` (single row), `used_nonces`.
+`totp_lockout` (single row), `used_nonces`. `events.child_id`/`device_id` say whom an event concerns.
 
 ## Tamper detection (`tamper.py`)
 
 Heartbeats also carry `instance_id` (new per watchdog process), `awake_ms` (QueryUnbiasedInterruptTime:
 system time without sleep/hibernate, restarts near 0 on boot), `awake_ms_at_start`, `failed_attempts`.
-Compared with the previous heartbeat (`wd_*` config keys, reset on pairing):
+Compared with the same device's previous heartbeat (`devices.wd_*`, reset when it is re-paired):
 
 | Situation | Event |
 |---|---|
@@ -85,13 +102,17 @@ Compared with the previous heartbeat (`wd_*` config keys, reset on pairing):
 ## Server lifecycle
 
 First start: `bootstrap.py` generates secrets; `setup_complete=0` ⇒ `setup_guard` middleware redirects
-everything to `/setup` (unauthenticated wizard: device name, parent password, TOTP, limits, server URL).
-After setup the parent generates a pairing code in the panel (`/admin/api/pairing_code`, only its hash is
-stored: `pairing_code_hash`, `pairing_expires_utc`, `pairing_attempts`); `Install.cmd` sends it to `/v1/pair`
-and stores the returned key in `signing.dat`. Pairing again (reinstall, new PC) rotates the key, so the
-previously paired PC fails closed.
+everything to `/setup` (unauthenticated wizard: first child's name and limits, parent password, TOTP, server URL).
+In the panel the parent pairs PCs: a code for "new PC of child X named Y" or "re-pair device Z" (only its
+hash is stored, with its target: `pairing_*` config keys); `Install.cmd` sends it to `/v1/pair` and stores the
+returned key in `signing.dat`. Re-pairing replaces that device's key (the old install fails closed); "Odłącz"
+deletes the device row, so its key stops working. There is no way to read a device key in the panel.
 
-Journal tab (`endpoints/journal.py`, `GET /admin/api/journal?days=&before=`): per local day, newest first
+Migration from a single-PC database (v0.4/v0.5, `migrations._m002_children_devices`): it becomes child 1
+(named after its `device_name`) with device 1 (its old key, if the PC ever connected); production needs a
+re-pair anyway, because v0.4 speaks protocol v1.
+
+Journal tab (`endpoints/journal.py`, `GET /admin/api/journal?days=&before=&child_id=`): per local day, newest first
 by `ts_utc` (not insertion order: `watchdog_offline` and `offline_unlock` arrive on reconnect and carry the
 time they happened) —
 PC on/off (`watchdog_*`), lock starts (`lock_started`, logged by the heartbeat when `last_lock_reason` changes

@@ -1,0 +1,143 @@
+"""D7 (#40): several children, each with several PCs. Time and locks are per child."""
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import pyotp
+import time_machine
+
+from app.crypto import hash_password
+from app.db import get_connection, set_config_value
+from tests.conftest import Watchdog, add_child, add_device, config, set_child, state_for
+
+TZ = ZoneInfo("Europe/Warsaw")
+NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)  # Wednesday
+DAY = "2026-11-04"
+PASSWORD = "haslo-rodzica"
+
+
+def _login(client):
+    with get_connection() as conn:
+        set_config_value(conn, "parent_password_hash", hash_password(PASSWORD))
+    assert client.post("/admin/login", data={"password": PASSWORD}).status_code == 200
+
+
+def _family(client):
+    """Ola (child 1) with PC (device 1) and Laptop (2); Kuba (child 2) with his PC (3)."""
+    add_device(1, "Laptop")
+    add_child("Kuba")
+    add_device(2, "PC Kuby")
+    return Watchdog(client, 1), Watchdog(client, 2), Watchdog(client, 3)
+
+
+def _run(t, *watchdogs, seconds=60):
+    for w in watchdogs:
+        w.heartbeat()
+    for _ in range(seconds // 5):
+        t.shift(5)
+        for w in watchdogs:
+            w.heartbeat()
+
+
+def test_two_pcs_of_one_child_add_up(client):
+    pc, laptop, kuba = _family(client)
+    with time_machine.travel(NOON, tick=False) as t:
+        _run(t, pc, laptop)
+    assert state_for(DAY, 1)["seconds_used"] == 120  # decision: time = sum over devices
+    assert state_for(DAY, 2) == {}
+    with get_connection() as conn:
+        assert [r[0] for r in conn.execute("SELECT seconds_today FROM devices ORDER BY id")] == [60, 60, 0]
+
+
+def test_limit_of_one_child_locks_all_its_pcs_and_nobody_else(client):
+    pc, laptop, kuba = _family(client)
+    set_child(1, daily_limit_weekday=1)
+    with time_machine.travel(NOON, tick=False) as t:
+        _run(t, pc, laptop, kuba, seconds=30)  # Ola: 60 s over two PCs = her 1 min
+        assert pc.heartbeat()["lock_reason"] == "limit"
+        assert laptop.heartbeat()["lock_reason"] == "limit"
+        assert kuba.heartbeat()["lock_required"] is False
+    with get_connection() as conn:
+        rows = conn.execute("SELECT child_id FROM events WHERE event_type = 'lock_started'").fetchall()
+    assert [r[0] for r in rows] == [1]  # once per child, not once per PC
+
+
+def test_pause_on_one_pc_pauses_the_child(client):
+    pc, laptop, kuba = _family(client)
+    with time_machine.travel(NOON, tick=False):
+        assert pc.post("/v1/pause_toggle", {}).json() == {"ok": True, "paused": True}
+        assert laptop.heartbeat()["lock_reason"] == "pause"
+        assert kuba.heartbeat()["lock_required"] is False
+
+
+def test_totp_grant_goes_to_the_child_of_the_pc(client):
+    pc, laptop, kuba = _family(client)
+    set_child(1, daily_limit_weekday=0)
+    set_child(2, daily_limit_weekday=0)
+    with time_machine.travel(NOON, tick=False):
+        laptop.heartbeat()
+        code = pyotp.TOTP(config("totp_secret")).now()
+        r = laptop.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": 30}).json()
+        assert r["mode"] == "extend_limit"
+        assert pc.heartbeat()["lock_required"] is False
+        assert kuba.heartbeat()["lock_reason"] == "limit"
+    assert state_for(DAY, 1)["limit_override_minutes"] == 30
+    assert state_for(DAY, 2)["limit_override_minutes"] == 0
+
+
+def test_panel_status_lists_children_and_the_selected_ones_pcs(client):
+    pc, laptop, kuba = _family(client)
+    with time_machine.travel(NOON, tick=False) as t:
+        _login(client)  # inside: a session cookie from the future would be rejected
+        _run(t, pc, kuba)
+        assert client.post("/admin/api/children/2/manual_lock", json={"locked": True}).json()["ok"]
+        s = client.get("/admin/api/status?child_id=1").json()
+        kuba_status = client.get("/admin/api/status?child_id=2").json()["child"]
+        assert client.get("/admin/api/status?child_id=9").status_code == 404
+    assert [(c["id"], c["name"], c["lock_reason"], c["devices_online"], c["devices_total"])
+            for c in s["children"]] == [(1, "Ola", None, 1, 2), (2, "Kuba", "manual", 1, 1)]
+    assert (s["devices_online"], s["devices_total"]) == (2, 3)
+    assert [(d["name"], d["online"], d["minutes_today"]) for d in s["child"]["devices"]] == [
+        ("PC", True, 1), ("Laptop", False, 0)]
+    assert kuba_status["lock_reason"] == "manual"
+
+
+def test_child_settings_and_validation(client):
+    _login(client)
+    r = client.post("/admin/api/children", json={"name": "Kuba", "daily_limit_weekday": 60})
+    assert r.json() == {"ok": True, "id": 2}
+    assert client.patch("/admin/api/children/2", json={"night_lock_start": "20:00", "name": " Jakub "}).json()[
+        "updated"] == ["name", "night_lock_start"]
+    child = client.get("/admin/api/status?child_id=2").json()["child"]
+    assert (child["name"], child["daily_limit_weekday"], child["night_lock_start"]) == ("Jakub", 60, "20:00")
+    for bad in ({"name": ""}, {"daily_limit_weekday": 2000}, {"daily_limit_weekday": "60"},
+                {"night_lock_start": "25:00"}, {"unknown": 1}):
+        assert client.patch("/admin/api/children/2", json=bad).status_code == 422, bad
+    assert client.patch("/admin/api/children/9", json={"name": "x"}).status_code == 404
+
+
+def test_journal_names_child_and_device_and_filters(client):
+    pc, laptop, kuba = _family(client)
+    with time_machine.travel(NOON, tick=False):
+        _login(client)
+        laptop.post("/v1/pause_toggle", {})
+        kuba.post("/v1/pause_toggle", {})
+        client.post("/admin/api/children/1/grant", json={"minutes": 15, "mode": "limit"})
+        everyone = client.get("/admin/api/journal?days=1").json()["days"][0]
+        ola = client.get("/admin/api/journal?days=1&child_id=1").json()["days"][0]
+    assert [(e["type"], e["child_name"], e["device_name"]) for e in everyone["entries"]] == [
+        ("grant_applied", "Ola", None), ("pause", "Kuba", "PC Kuby"), ("pause", "Ola", "Laptop")]
+    assert [e["child_name"] for e in ola["entries"]] == ["Ola", "Ola"]
+    assert [(c["name"], c["limit_minutes"]) for c in everyone["children"]] == [("Ola", 135), ("Kuba", 120)]
+    assert [c["name"] for c in ola["children"]] == ["Ola"]
+
+
+def test_removed_child_and_device_keep_their_names_in_the_journal(client):
+    with time_machine.travel(NOON, tick=False):
+        _login(client)
+        add_child("Kuba")
+        client.delete("/admin/api/devices/1")
+        client.delete("/admin/api/children/2")
+        entries = client.get("/admin/api/journal?days=1").json()["days"][0]["entries"]
+    assert [(e["type"], e["child_name"], e["device_name"]) for e in entries] == [
+        ("child_removed", "Kuba", None), ("device_unpaired", "Ola", "PC")]

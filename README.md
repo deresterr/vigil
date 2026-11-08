@@ -4,13 +4,14 @@ Samodzielnie hostowana kontrola czasu dziecka przy komputerze z Windows 10/11.
 Serwer w Dockerze w domowej sieci liczy czas i decyduje o blokadzie; usługa na PC dziecka
 pokazuje pełnoekranową blokadę. Rodzic zarządza z przeglądarki i odblokowuje kodem TOTP z telefonu.
 
-> **Status: v0.6, przed wydaniem 1.0.** Działa w codziennym użyciu. Dziecko z uprawnieniami administratora
+> **Status: v0.7, przed wydaniem 1.0.** Działa w codziennym użyciu. Dziecko z uprawnieniami administratora
 > jest w stanie Vigila obejść — Vigil ma to utrudnić i pokazać rodzicowi, nie uniemożliwić
 > (patrz [Model zagrożeń](#model-zagrożeń)). Plan dalszych prac: [`docs/review-2026-11.md`](docs/review-2026-11.md).
 
 ## Co potrafi
 
-- dzienny limit czasu (osobno dni robocze / weekend) i cisza nocna,
+- kilkoro dzieci na jednym serwerze, każde z dowolną liczbą komputerów (czas liczony łącznie),
+- dzienny limit czasu (osobno dni robocze / weekend) i cisza nocna — osobno dla każdego dziecka,
 - blokada ręczna z panelu, przedłużanie czasu z panelu lub kodem TOTP wpisanym na ekranie blokady,
 - odblokowanie kodem z telefonu działa także, gdy serwer jest niedostępny,
 - pauza uruchamiana przez dziecko (czas nie leci, ekran zablokowany),
@@ -98,7 +99,7 @@ Build.cmd            → dist\
 Zamiast budować lokalnie możesz pobrać gotowe `dist\` z artefaktu `vigil-client-…` ostatniego przebiegu CI
 (zakładka Actions).
 
-**3. Instalacja na PC dziecka** — w panelu rodzica kliknij „Wygeneruj kod parowania”, skopiuj `dist\`
+**3. Instalacja na PC dziecka** — w panelu rodzica: Ustawienia → „Dodaj komputer”, skopiuj `dist\`
 na PC dziecka i uruchom jako administrator:
 
 ```

@@ -4,13 +4,13 @@ Self-hosted parental screen-time control for Windows. Owner: Mateusz. **Talk to 
 he knows the stack deeply — be direct, skip basics, fix root causes, apply a fix everywhere it applies.
 
 ## Layout
-- `server/` — FastAPI + SQLite, one Docker container per child PC. Entry `app/main.py`,
+- `server/` — FastAPI + SQLite, one server for many children and their PCs (D7). Entry `app/main.py`,
   time/lock rules `app/lock_logic.py` + `app/endpoints/heartbeat.py`. Admin UI = static HTML in `app/static/`.
 - `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
   child's session, started and kept alive by the watchdog), `shared/IpcMessages.cs` (linked into both).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D17), roadmap (M1–M2 done, M3, M4.1).
+- `docs/review-2026-11.md` — known defects, decisions (D1–D18), roadmap (M1–M2 done, M3, M4.1).
   Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"
@@ -28,7 +28,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 ## Invariants (changing any of these is a design decision — ask first)
 - **Fail-closed**: server unreachable > grace (30 s; 90 s after service start) ⇒ lock. Never fail-open.
 - **uvicorn `--workers 1`**: time accounting relies on a single process + `asyncio.Lock` in `get_db()`.
-- **Time is server-side**: delta between heartbeats, clamped to `heartbeat_delta_max`, zero after a gap.
+- **Time is server-side**: delta between a device's heartbeats, clamped to `heartbeat_delta_max`, zero after a gap,
+  added to its child (D7: time = sum over the child's devices; locks and settings are per child).
   No time accrues while a lock is active (pre-lock check happens before adding the delta).
 - Lock priority: `manual > night > limit > pause`. `manual_lock` carries over midnight.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
@@ -69,7 +70,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 ## Conventions
 - New code, comments, commit messages: English. Existing Polish comments: leave unless touching the code.
   User-facing strings (UI, installer output): Polish for now.
-- Python: plain `sqlite3` via `get_db()`; config through `get_config_value()`/`get_config_values()`, defaults in
+- Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;
+  panel bodies next to their endpoints); config through `get_config_value()`/`get_config_values()`, defaults in
   `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`
   (never edit an applied one) + a test that migrates an older database.
 - C#: async I/O, `ILogger<T>`, P/Invoke in `Native/`.

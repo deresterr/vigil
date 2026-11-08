@@ -16,36 +16,36 @@ LISTEN_PORT: int = int(os.environ.get("LISTEN_PORT", "8088"))
 # Po inicjalizacji DB nadrzędne są wartości z bazy (modyfikowalne przez wizard i admin UI).
 
 CONFIG_DEFAULTS: dict[str, str] = {
-    # Ustawiane przez wizard — puste domyślnie
+    # Set by the wizard
     "setup_complete":        "0",
-    "device_name":           "",
-    "watchdog_server_url":  "",
-    # Limity i harmonogram — wizard ustawia wartości, tu są fallbacki
-    "daily_limit_weekday":   "120",
-    "daily_limit_weekend":   "240",
-    "night_lock_start":      "21:30",
-    "night_lock_end":        "06:30",
+    "watchdog_server_url":   "",
     "timezone":              "Europe/Warsaw",
-    # Parametry techniczne — niewidoczne w wizard, edytowalne w admin UI
-    # heartbeat_grace_seconds: tylko admin UI ("watchdog online"); watchdog ma własny, hardkodowany grace (30s)
+    # Technical parameters — not in the wizard
+    # heartbeat_grace_seconds: admin UI only ("online"); the watchdog has its own hard-coded grace (30 s)
     "heartbeat_grace_seconds":    "30",
     "heartbeat_delta_max":        "15",
     "gap_detection_threshold":    "30",
     "nonce_cache_seconds":        "120",
     "max_request_age_seconds":    "60",
     "events_retention_days":      "90",
-    # Last watchdog telemetry seen (tamper.py). Not editable.
-    "wd_instance_id":             "",
-    "wd_awake_ms":                "-1",
-    "wd_goodbye":                 "",
-    # One-time pairing code (endpoints/pairing.py). Only the hash is stored.
+    # One-time pairing code (endpoints/pairing.py). Only the hash is stored. The code either adds a new
+    # device (pairing_child_id + pairing_device_name) or re-pairs an existing one (pairing_device_id).
     "pairing_code_hash":          "",
     "pairing_expires_utc":        "",
     "pairing_attempts":           "0",
-    # Last accepted TOTP time step (replay protection). Not editable.
+    "pairing_child_id":           "",
+    "pairing_device_id":          "",
+    "pairing_device_name":        "",
+    # Last accepted TOTP time step (replay protection; one TOTP secret for all children). Not editable.
     "totp_last_step":             "0",
-    # Last lock reason seen by the heartbeat; lock_started events are logged on change. Not editable.
-    "last_lock_reason":           "",
+}
+
+# Settings of a new child (wizard, "Dodaj dziecko"); each child has its own row in `children`.
+CHILD_DEFAULTS: dict[str, object] = {
+    "daily_limit_weekday": 120,
+    "daily_limit_weekend": 240,
+    "night_lock_start":    "21:30",
+    "night_lock_end":      "06:30",
 }
 
 # === Stałe nieprzechowywane w DB ===

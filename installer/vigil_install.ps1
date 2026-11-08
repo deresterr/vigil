@@ -227,6 +227,9 @@ function Get-InteractiveAccounts {
         $sid = $key.PSChildName
         if ($sid -notmatch '^S-1-5-21-[\d-]+-(\d+)$') { continue }
         if ([int]$matches[1] -in 500, 501, 503, 504) { continue }
+        # A disabled local account (e.g. a leftover defaultuser0 from Windows setup) is nobody's.
+        $local = Get-LocalUser -SID $sid -ErrorAction SilentlyContinue
+        if ($local -and -not $local.Enabled) { continue }
         $profilePath = (Get-ItemProperty -Path $key.PSPath -Name ProfileImagePath -ErrorAction SilentlyContinue).ProfileImagePath
         if (-not $profilePath -or -not (Test-Path (Join-Path $profilePath 'NTUSER.DAT'))) { continue }
         $name = try {

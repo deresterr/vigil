@@ -1,0 +1,91 @@
+name: release
+
+# A tag v* (e.g. v0.7.0) publishes:
+#   - the server image to GHCR: ghcr.io/<owner>/vigil-server:<version> and :latest
+#   - the client package (dist/ zipped) as an asset of a GitHub release for that tag
+# Tags are pushed from a terminal or created in the GitHub UI (Releases -> Draft a new release ->
+# choose a tag): the workflow then attaches the zip to that release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  server-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tests before publishing
+        working-directory: server
+        run: |
+          pip install -r requirements-dev.txt
+          ruff check .
+          pytest -q
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner}/vigil-server"
+          version="${GITHUB_REF_NAME#v}"
+          docker build -t "${image}:${version}" -t "${image}:latest" \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.version=${version}" server
+          docker push "${image}:${version}"
+          docker push "${image}:latest"
+
+  client-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build package
+        shell: pwsh
+        run: ./build-package.ps1 -Configuration Release
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/* -DestinationPath "vigil-client-${{ github.ref_name }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-zip
+          path: vigil-client-${{ github.ref_name }}.zip
+
+  release:
+    needs: [server-image, client-package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-zip
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          notes="Serwer: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (w \`server/.env\`: \`VIGIL_IMAGE=\`). Klient: \`vigil-client-${TAG}.zip\` (zawartość \`dist\\\`, uruchom \`Install.cmd\` jako administrator)."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "vigil-client-${TAG}.zip" --clobber
+          else
+            gh release create "$TAG" "vigil-client-${TAG}.zip" --title "Vigil ${TAG}" --notes "$notes" --generate-notes
+          fi

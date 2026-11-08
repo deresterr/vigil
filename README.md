@@ -61,15 +61,20 @@ który odczytał klucz z dysku.
 - PC dziecka: Windows 10/11 x64, Home lub Pro; konto dziecka jest jedynym kontem użytkownika
   i może mieć uprawnienia administratora (rodzic serwisuje PC z tego samego konta),
 - telefon rodzica z aplikacją TOTP (Aegis, Google Authenticator, …),
-- do budowania klienta: Windows z .NET 8 SDK (lub paczka z GitHub Actions).
+- do budowania klienta: Windows z .NET 8 SDK (albo gotowa paczka z wydania lub z GitHub Actions).
 
 ## Szybki start
+
+Gotowe paczki są przy każdym wydaniu (zakładka **Releases**): obraz serwera
+`ghcr.io/deresterr/vigil-server:<wersja>` i `vigil-client-v<wersja>.zip` z paczką dla PC dziecka. Z nimi
+nie budujesz niczego: w kroku 1 ustaw w `server/.env` `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<wersja>`
+i uruchom `docker compose pull && docker compose up -d`, a krok 2 zastępuje rozpakowany zip.
 
 **1. Serwer**
 
 ```bash
 cd server
-cp .env.example .env          # nazwa instancji i port
+cp .env.example .env          # nazwa instancji, port, opcjonalnie gotowy obraz
 docker compose up -d
 ```
 
@@ -97,7 +102,7 @@ Zamiast budować lokalnie możesz pobrać gotowe `dist\` z artefaktu `vigil-clie
 na PC dziecka i uruchom jako administrator:
 
 ```
-Install.cmd          (tryb interaktywny: adres serwera, kod parowania, konto dziecka)
+Install.cmd          (tryb interaktywny: adres serwera i kod parowania; konto dziecka wykrywa sam)
 ```
 
 Odinstalowanie: `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE, gdy system nie startuje).

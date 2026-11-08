@@ -53,3 +53,16 @@ def test_successful_login_clears_failures(client):
     assert _login(client, PASSWORD).headers["location"] == "/admin"
     for _ in range(4):
         assert _login(client, "zle").headers["location"] == "/admin/login?error=1"
+
+
+def test_wrong_current_password_keeps_the_session(client):
+    """A typo in the current password is a 403: a 401 sent the panel to the login page (logged out)."""
+    _set_password()
+    assert _login(client, PASSWORD).status_code == 303
+    r = client.post("/admin/api/change_password", json={"current": "zle-haslo", "new": "nowe-haslo-1"})
+    assert (r.status_code, r.json()["detail"]) == (403, "wrong_current_password")
+    assert client.get("/admin/api/status").status_code == 200
+    r = client.post("/admin/api/change_password", json={"current": PASSWORD, "new": "nowe-haslo-1"})
+    assert r.json() == {"ok": True}
+    client.post("/admin/logout")
+    assert _login(client, "nowe-haslo-1").status_code == 303

@@ -493,7 +493,12 @@ async function api(path, opts = {}) {
   const txt = await r.text();
   let data;
   try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
-  if (!r.ok) throw new Error(typeof data === 'string' ? data : (data?.detail || ('http_' + r.status)));
+  // The message is the server's code (callers compare it, e.g. child_not_found); errText words it.
+  // A list detail is Pydantic validation (422).
+  if (!r.ok) {
+    const d = data?.detail;
+    throw new Error(typeof data === 'string' ? data : Array.isArray(d) ? 'validation' : d || ('http_' + r.status));
+  }
   return data;
 }
 
@@ -516,8 +521,18 @@ async function guarded(fn) {
   }
 }
 
-// Server errors are codes (e.g. child_has_devices); shown as they are.
-const fail = e => notice(t('Błąd: {e}', {e: e.message}), 'error');
+// Server error codes the parent can run into; any other shows as "Error: <code>".
+const ERRORS = {
+  wrong_current_password: t('Obecne hasło jest nieprawidłowe.'),
+  child_has_devices: t('Najpierw odłącz komputery dziecka.'),
+  child_not_found: t('Tego dziecka już nie ma — odśwież panel.'),
+  device_not_found: t('Tego komputera już nie ma — odśwież panel.'),
+  no_active_pairing_code: t('Nie ma aktywnego kodu parowania.'),
+  totp_not_configured: t('Kod TOTP nie jest jeszcze ustawiony.'),
+  validation: t('Nieprawidłowe dane — sprawdź pola.'),
+};
+const errText = e => ERRORS[e.message] || t('Błąd: {e}', {e: e.message});
+const fail = e => notice(errText(e), 'error');
 const pcsText = n => tn(n, '{n} komputer|{n} komputery|{n} komputerów');
 
 function notice(msg, type = '') {
@@ -756,7 +771,7 @@ async function loadJournal(older) {
     journalDays = older ? journalDays.concat(r.days) : r.days;
     journalHasMore = r.has_more;
     renderJournal();
-  } catch (e) { notice(t('Błąd dziennika: {e}', {e: e.message}), 'error'); }
+  } catch (e) { notice(t('Błąd dziennika: {e}', {e: errText(e)}), 'error'); }
 }
 
 document.querySelectorAll('#journalChips .chip').forEach(chip => chip.addEventListener('click', () => {
@@ -1000,7 +1015,7 @@ async function saveChildName() {
 
 async function deleteChild() {
   const c = status.child;
-  if (c.devices.length) { notice(t('Najpierw odłącz komputery dziecka'), 'error'); return; }
+  if (c.devices.length) { notice(t('Najpierw odłącz komputery dziecka.'), 'error'); return; }
   if (!confirm(t('Usunąć dziecko „{name}”? Dziennik zostaje.', {name: c.name}))) return;
   try {
     await api(childUrl(''), {method: 'DELETE'});

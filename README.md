@@ -80,6 +80,7 @@ docker compose up -d
 ```
 
 Otwórz `http://<ip-serwera>:8088/setup` i przejdź kreator (hasło rodzica, TOTP, limity, adres serwera).
+Limity i ciszę nocną dla każdego dnia tygodnia ustawisz potem w panelu (Ustawienia → Harmonogram tygodnia).
 Kreator jest dostępny bez logowania do momentu ukończenia — zrób to od razu po uruchomieniu.
 
 **2. Paczka dla PC dziecka** (na Windows, w katalogu repo)
@@ -104,9 +105,11 @@ na PC dziecka i uruchom jako administrator:
 
 ```
 Install.cmd          (tryb interaktywny: adres serwera i kod parowania; konto dziecka wykrywa sam)
+Install.cmd -Mode verify    (sprawdza instalację: usługa, pliki, uprawnienia, polityki, połączenie z serwerem)
 ```
 
-Odinstalowanie: `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE, gdy system nie startuje).
+Odinstalowanie: `Install.cmd -Mode uninstall` albo `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE,
+gdy system nie startuje). `Install.cmd -Mode verify` po deinstalacji sprawdza, czy nic nie zostało.
 
 ## Struktura repo
 
@@ -116,6 +119,10 @@ Odinstalowanie: `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE, gdy syst
 | `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`) |
 | `installer/` | skrypty instalacji, deinstalacji i strażnika integralności |
 | `docs/` | architektura, przegląd i roadmapa |
+
+## Bezpieczeństwo
+
+Podatności zgłaszaj prywatnie — zasady i to, co mieści się w modelu zagrożeń, opisuje [`SECURITY.md`](SECURITY.md).
 
 ## Licencja
 

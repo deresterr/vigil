@@ -18,12 +18,17 @@ namespace Vigil.Ui;
 ///   exit       → quit (service stopping)
 /// Without the watchdog it quits: on a failed connect at once, after a lost pipe within 30 s
 /// (a restarted watchdog kills it anyway and spawns a fresh one).
-/// --standalone-test (or VIGIL_LOCKSCREEN_STANDALONE=1) shows the overlay without a watchdog, for UI work.
+/// --standalone-test (or VIGIL_LOCKSCREEN_STANDALONE=1) shows the overlay without a watchdog, for UI work;
+/// there --mode=night|limit|manual|pause|server_unreachable, --lang=en|pl (instead of the Windows language) and
+/// --exit-after=SECONDS (closes itself and restores the taskbar; a killed process cannot).
 /// </summary>
 [SupportedOSPlatform("windows")]
 public partial class App : Application
 {
     private static readonly TimeSpan PipeLossExit = TimeSpan.FromSeconds(30);
+    // The grant message lives on the overlay, which goes as soon as the watchdog sends unlock (its next
+    // heartbeat, 0-5 s later): keep it readable. Only the unlock waits, so fail-closed is unaffected.
+    private static readonly TimeSpan GrantMessageMin = TimeSpan.FromSeconds(4);
 
     public LockViewModel ViewModel { get; } = new();
     public NamedPipeIpcClient? IpcClient { get; private set; }
@@ -34,6 +39,7 @@ public partial class App : Application
     private bool _useKeyboardBlocker = true;
     private DispatcherTimer? _clockTimer;
     private DispatcherTimer? _pipeLossTimer;
+    private DispatcherTimer? _deferredUnlock;
     private TrayIcon? _tray;
     private bool _locked;
 
@@ -86,7 +92,7 @@ public partial class App : Application
                 ShowLock(s);
                 break;
             case IpcUnlock:
-                HideLock();
+                Unlock();
                 break;
             case IpcTrayState t:
                 _tray?.ShowState(t);
@@ -99,6 +105,12 @@ public partial class App : Application
 
     private void ShowLock(IpcSetState s)
     {
+        // set_state comes with every locked heartbeat. After unlock (deferred, see Unlock) it is a real new
+        // lock; before it, within GrantMessageMin of the grant, it is the reply to a heartbeat sent before
+        // the grant and must not take the grant message away.
+        var relockAfterUnlock = _deferredUnlock is not null;
+        _deferredUnlock?.Stop();
+        _deferredUnlock = null;
         LockReason reason;
         try { reason = LockReasonExtensions.FromWireFormat(s.LockReason); }
         catch (ArgumentOutOfRangeException) { reason = LockReason.Limit; }
@@ -110,7 +122,8 @@ public partial class App : Application
             ViewModel.TotpCode = "";
             ViewModel.StatusMessage = "";
         }
-        else if (ViewModel.Phase == LockUiPhase.GrantApplied)
+        else if (ViewModel.Phase == LockUiPhase.GrantApplied
+                 && (relockAfterUnlock || DateTime.UtcNow - ViewModel.GrantAppliedAtUtc >= GrantMessageMin))
         {
             // Still locked after a grant (e.g. another lock reason applies): back to the code field.
             ViewModel.Phase = LockUiPhase.Locked;
@@ -119,7 +132,6 @@ public partial class App : Application
         ViewModel.State = new UiState
         {
             Reason = reason,
-            MainMessage = s.MainMessage,
             ShowTotpField = s.ShowTotpField,
             ShowResumeButton = s.ShowResumeButton,
             ShowRetryButton = s.ShowRetryButton,
@@ -141,8 +153,24 @@ public partial class App : Application
         CreateWindowsForAllScreens();
     }
 
+    private void Unlock()
+    {
+        var left = GrantMessageMin - (DateTime.UtcNow - ViewModel.GrantAppliedAtUtc);
+        if (ViewModel.Phase != LockUiPhase.GrantApplied || left <= TimeSpan.Zero)
+        {
+            HideLock();
+            return;
+        }
+        if (_deferredUnlock is not null) return;  // already waiting
+        _deferredUnlock = new DispatcherTimer { Interval = left };
+        _deferredUnlock.Tick += (_, _) => HideLock();
+        _deferredUnlock.Start();
+    }
+
     private void HideLock()
     {
+        _deferredUnlock?.Stop();
+        _deferredUnlock = null;
         if (!_locked) return;
         _locked = false;
         UiLog.Write("unlock");
@@ -158,7 +186,7 @@ public partial class App : Application
     {
         UiLog.Write("pipe to the watchdog lost");
         _tray?.ShowDisconnected();
-        ViewModel.StatusMessage = "Utracono połączenie z watchdogiem.";
+        ViewModel.StatusMessage = Strings.WatchdogLost;
         // The overlay stays meanwhile (fail-closed); a restarted watchdog replaces this process.
         _pipeLossTimer = new DispatcherTimer { Interval = PipeLossExit };
         _pipeLossTimer.Tick += (_, _) => Shutdown(0);
@@ -230,19 +258,27 @@ public partial class App : Application
     private void ApplyArgvStandalone(string[] args)
     {
         var reason = "limit";
-        string? message = null;
+        var exitAfter = 0;
         foreach (var a in args)
         {
-            if (a.StartsWith("--mode=", StringComparison.Ordinal)) reason = a["--mode=".Length..];
-            else if (a.StartsWith("--message=", StringComparison.Ordinal)) message = a["--message=".Length..];
+            if (a.StartsWith("--exit-after=", StringComparison.Ordinal)) int.TryParse(a["--exit-after=".Length..], out exitAfter);
+            else if (a.StartsWith("--mode=", StringComparison.Ordinal)) reason = a["--mode=".Length..];
+            // Before the first use of Strings, which reads the culture once.
+            else if (a.StartsWith("--lang=", StringComparison.Ordinal))
+                System.Globalization.CultureInfo.CurrentUICulture = new System.Globalization.CultureInfo(a["--lang=".Length..]);
         }
         ShowLock(new IpcSetState
         {
             LockReason = reason,
-            MainMessage = message,
             ShowTotpField = true,
             ShowRetryButton = reason == "server_unreachable",
             ShowShutdownButton = true,
         });
+        if (exitAfter > 0)
+        {
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(exitAfter) };
+            timer.Tick += (_, _) => { timer.Stop(); HideLock(); Shutdown(0); };
+            timer.Start();
+        }
     }
 }

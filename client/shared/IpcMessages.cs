@@ -7,6 +7,7 @@ namespace Vigil.Ipc;
 // Pipe \\.\pipe\VigilUI between vigil_watchdog (server, SYSTEM) and vigil_ui (client, child's session).
 // JSON, one message per line, "type" is the discriminator. This one file is compiled into both
 // projects (<Compile Include Link>), so the two sides cannot drift apart.
+// No sentences cross the pipe (i18n, D21): vigil_ui words reasons and results in the child's language.
 
 // === Watchdog → UI ===
 
@@ -15,7 +16,6 @@ public sealed record IpcSetState
 {
     [JsonPropertyName("type")] public string Type => "set_state";
     [JsonPropertyName("lock_reason")] public string LockReason { get; init; } = "limit";
-    [JsonPropertyName("main_message")] public string? MainMessage { get; init; }
     [JsonPropertyName("show_totp_field")] public bool ShowTotpField { get; init; }
     [JsonPropertyName("show_resume_button")] public bool ShowResumeButton { get; init; }
     [JsonPropertyName("show_retry_button")] public bool ShowRetryButton { get; init; }
@@ -50,7 +50,9 @@ public sealed record IpcTotpResponse
     [JsonPropertyName("type")] public string Type => "totp_response";
     [JsonPropertyName("ok")] public bool Ok { get; init; }
     [JsonPropertyName("mode")] public string? Mode { get; init; }
-    [JsonPropertyName("applied")] public string? Applied { get; init; }
+    [JsonPropertyName("minutes")] public int? Minutes { get; init; }
+    /// <summary>extend_night: end of the extension, local "yyyy-MM-dd HH:mm".</summary>
+    [JsonPropertyName("until_local")] public string? UntilLocal { get; init; }
     [JsonPropertyName("reason")] public string? Reason { get; init; }
     [JsonPropertyName("lockout_seconds_remaining")] public int? LockoutSecondsRemaining { get; init; }
 }

@@ -1305,8 +1305,12 @@ function Test-VerifyTasks {
         Test-Check ($boot -ge 1 -and $every5 -ge 1) "  wyzwalacze: przy starcie + co 5 min"
         Test-Check ("$($task.Actions[0].Arguments)" -like "*$guardianPs1*") "  uruchamia $guardianPs1"
         $info = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue
-        # 0x41303 = has not run yet (right after install)
-        if ($info) { Test-Check ($info.LastTaskResult -in 0, 0x41303) "  ostatni wynik: 0x$('{0:X}' -f $info.LastTaskResult) ($($info.LastRunTime))" -Otherwise 'Warn' }
+        # 0x41303 = has not run yet (right after install); LastRunTime is then a placeholder date (1999)
+        if ($info -and $info.LastTaskResult -eq 0x41303) {
+            Write-Check 'Pass' "  jeszcze nie uruchomione (pierwsze uruchomienie w ciągu 5 min)"
+        } elseif ($info) {
+            Test-Check ($info.LastTaskResult -eq 0) "  ostatni wynik: 0x$('{0:X}' -f $info.LastTaskResult) ($($info.LastRunTime))" -Otherwise 'Warn'
+        }
     }
     Test-Check (-not (Get-ScheduledTask -TaskName 'Vigil Tray' -ErrorAction SilentlyContinue)) "Brak starego zadania 'Vigil Tray'"
     $left = Get-VigilLeftoverTasks

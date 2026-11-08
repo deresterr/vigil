@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Vigil.Shared;
 using Vigil.Watchdog.Server;
 
 namespace Vigil.Watchdog.Guardian;
@@ -22,19 +23,11 @@ public sealed class GuardianReporter : BackgroundService
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan FirstRun = TimeSpan.FromSeconds(30);
 
-    // Contract with installer/vigil_guardian.ps1 and server GUARDIAN_CHECKS.
-    private static readonly Dictionary<int, string> Checks = new()
-    {
-        [7001] = "service_not_running",
-        [7002] = "service_disabled",
-        [7003] = "binary_replaced",
-        [7004] = "ifeo_debugger",
-        [7005] = "safeboot_missing",
-        [7006] = "recovery_missing",
-    };
+    // Contract with the guardian and server GUARDIAN_CHECKS: VigilLayout.GuardianChecks (7001–7006).
+    private static readonly IReadOnlyDictionary<int, string> Checks = VigilLayout.GuardianChecks;
 
     private const string Query =
-        "*[System[Provider[@Name='Vigil Guardian'] and (EventID>=7001 and EventID<=7006) " +
+        "*[System[Provider[@Name='" + VigilLayout.GuardianEventSource + "'] and (EventID>=7001 and EventID<=7006) " +
         "and TimeCreated[timediff(@SystemTime) <= 86400000]]]";
 
     private const byte LevelWarning = 3;

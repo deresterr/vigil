@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using System.Text;
+using Vigil.Shared;
 
 namespace Vigil.Watchdog.Configuration;
 
@@ -27,7 +28,7 @@ public sealed class DpapiKeyStore
     // Optional entropy = "salt" dla DPAPI. Daje dodatkową ochronę gdyby ktoś próbował zaimportować
     // signing.dat na innej maszynie (DPAPI LocalMachine i tak nie pozwoli, ale defense in depth).
     private static readonly byte[] _dpapiEntropy =
-        System.Text.Encoding.UTF8.GetBytes("Vigil-SigningKey-v1");
+        System.Text.Encoding.UTF8.GetBytes(VigilLayout.SigningKeyEntropy);
 
     public DpapiKeyStore(string filePath, ILogger<DpapiKeyStore> logger)
     {
@@ -147,29 +148,14 @@ public sealed class DpapiKeyStore
         return Convert.FromBase64String(padded);
     }
 
-    /// <summary>SYSTEM full, Administrators read, no inheritance. Shared with TotpSecretStore.</summary>
+    /// <summary>SYSTEM full, Administrators read, no inheritance (FileAcls.SecretRules, the same table the
+    /// installer and verify use). Shared with TotpSecretStore.</summary>
     internal static void RestrictFileAcl(string path, ILogger logger)
     {
-        // ACL setting na Windowsie — jeśli się nie powiedzie (nietypowy filesystem) tylko logujemy,
-        // nie crashujemy. Plik DPAPI i tak jest bezużyteczny poza maszyną.
+        // A failure (unusual file system) is only logged: the DPAPI file is useless off this machine anyway.
         try
         {
-            var fi = new FileInfo(path);
-            var sec = fi.GetAccessControl();
-            sec.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-            // SYSTEM full
-            sec.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
-                new System.Security.Principal.SecurityIdentifier(
-                    System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
-                System.Security.AccessControl.FileSystemRights.FullControl,
-                System.Security.AccessControl.AccessControlType.Allow));
-            // Administrators read
-            sec.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
-                new System.Security.Principal.SecurityIdentifier(
-                    System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null),
-                System.Security.AccessControl.FileSystemRights.Read,
-                System.Security.AccessControl.AccessControlType.Allow));
-            fi.SetAccessControl(sec);
+            FileAcls.ProtectSecret(path);
         }
         catch (Exception ex)
         {

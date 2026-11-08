@@ -2,6 +2,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Vigil.Shared;
 
 namespace Vigil.Watchdog.Configuration;
 
@@ -14,7 +15,7 @@ namespace Vigil.Watchdog.Configuration;
 [SupportedOSPlatform("windows")]
 public sealed class TotpSecretStore
 {
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("Vigil-Totp-v1");
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes(VigilLayout.TotpEntropy);
 
     private readonly string _path;
     private readonly ILogger<TotpSecretStore> _logger;

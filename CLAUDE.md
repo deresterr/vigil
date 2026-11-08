@@ -7,7 +7,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - `server/` — FastAPI + SQLite, one server for many children and their PCs (D7). Entry `app/main.py`,
   time/lock rules `app/lock_logic.py` + `app/endpoints/heartbeat.py`. Admin UI = static HTML in `app/static/`.
 - `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
-  child's session, started and kept alive by the watchdog), `shared/IpcMessages.cs` (linked into both).
+  child's session, started and kept alive by the watchdog), `setup` (`vigil_setup.exe`, the C# installer of D22:
+  console, trimmed, `requireAdministrator`; core in `Core/` never touches the console, `IReport` gets the output),
+  `shared/` linked into the projects that need it: `IpcMessages.cs` (watchdog + ui), `VigilLayout.cs` (paths,
+  file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
   (server of the same commit on localhost, real install → verify → re-pair → uninstall → verify). Never on a real PC.
@@ -43,7 +46,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - Weekly schedule (D19): limit and night per weekday (`child_schedule`). A night belongs to the evening of its day
   (`night_start` before 12:00 = after midnight); `lock_logic.night_window` is the only place that resolves it.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
-  names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs.
+  names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs. They live in
+  `client/shared/VigilLayout.cs` (the PowerShell installer still has its own copy until #66).
 - **Threat model**: the child MAY have an administrator account. Against an admin nothing on the PC is
   tamper-proof, so every mechanism is one of: protection (holds even against admin, e.g. server-side state),
   friction (stops a non-elevated process / casual attempt), or detection (reports tampering to the parent panel).
@@ -75,6 +79,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   `TaskCanceledException` and slipped past the fail-closed check (#31). Filter on the caller's token:
   `when (!ct.IsCancellationRequested)`.
 - XAML `x:Class` must match the code-behind namespace (`Vigil.Ui.*`).
+- `vigil_setup` reads only language-independent output (Polish Windows localizes tool output): registry values,
+  APIs, task XML, CSV columns by position, exit codes. The SCM keeps its own copy of a service's config until a
+  reboot: a `Start` edited in the registry is not what `Get-Service` shows.
+- `vigil_setup` is trimmed: no built-in COM (Task Scheduler goes through `schtasks.exe`), no `dynamic`.
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using
   removed: it clashes with WPF (`Application`, `KeyEventArgs`). Alias what you need (`using Forms = …`).
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via

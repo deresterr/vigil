@@ -8,12 +8,14 @@
         -Mode uninstall      — remove all (service, task, folder, policies)
         -Mode update-config  — zmiana adresu serwera (vigil.toml) i/lub ponowne parowanie kodem
         -Mode reinstall      — uninstall + install
+        -Mode verify         — sprawdza instalację (PASS/FAIL, kod wyjścia 1 przy błędzie); bez instalacji
+                               sprawdza, czy deinstalacja nic nie zostawiła. Niczego nie zmienia.
 
     Wymaga uruchomienia jako Administrator. Zaprojektowany jako idempotentny:
     `install` na już zainstalowanym systemie nadpisuje config i restartuje service.
 
 .PARAMETER Mode
-    install | uninstall | update-config | reinstall
+    install | uninstall | update-config | reinstall | verify
 
 .PARAMETER SourceDir
     Default: bieżący katalog skryptu.
@@ -54,7 +56,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('install','uninstall','update-config','reinstall')]
+    [ValidateSet('install','uninstall','update-config','reinstall','verify')]
     [string] $Mode = 'install',
 
     [string] $SourceDir = '',
@@ -84,6 +86,41 @@ $vigilToml     = Join-Path $InstallDir "vigil.toml"
 $signingDat    = Join-Path $InstallDir "signing.dat"
 $guardianDat   = Join-Path $InstallDir "guardian.dat"
 $backupDir     = Join-Path $InstallDir "backup"
+
+# DPAPI secrets: own ACL, see Set-InstallFileAcls (totp.dat is written by the watchdog)
+$SecretFiles   = @('signing.dat', 'totp.dat')
+
+# Service DACL, see Step-SetServiceDacl
+$ServiceSddl   = "D:(A;;CCLCSWRPLOCRRC;;;BA)(A;;CCLCSWRPLOCRRC;;;IU)(A;;CCLCSWRPLOCRRC;;;SU)(A;;GA;;;SY)"
+
+# Per-user registry values: set on install, checked by -Mode verify, reset on uninstall.
+# Key is relative to the hive root; Reset is the uninstall value ($null = remove the value).
+# Only what closes a way out of the lock screen (#37). The parent maintains the PC through the same
+# account (D12), so each of these hits the parent too; against an elevated child they are friction only.
+$UserPolicyValues = @(
+    # Ctrl+Alt+Del -> Task Manager would run programs over the overlay
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\Policies\System'; Name = 'DisableTaskMgr';        Type = 'DWord'; Value = 1; Reset = $null }
+    # the child must not change the password of the shared account
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\Policies\System'; Name = 'DisableChangePassword'; Type = 'DWord'; Value = 1; Reset = $null }
+    # Activation shortcuts of Sticky/Filter/Toggle/Mouse Keys (5x Shift, 8 s Shift...) open dialogs that
+    # can cover the lock screen or take focus. Only the shortcuts; the features stay in Control Panel.
+    @{ Key = 'Control Panel\Accessibility\StickyKeys';        Name = 'Flags'; Type = 'String'; Value = '506'; Reset = '510' }
+    @{ Key = 'Control Panel\Accessibility\Keyboard Response'; Name = 'Flags'; Type = 'String'; Value = '122'; Reset = '126' }
+    @{ Key = 'Control Panel\Accessibility\ToggleKeys';        Name = 'Flags'; Type = 'String'; Value = '58';  Reset = '62' }
+    @{ Key = 'Control Panel\Accessibility\MouseKeys';         Name = 'Flags'; Type = 'String'; Value = '58';  Reset = '62' }
+    # Precision touchpad gestures (Task View, Action Center) bypass the keyboard hook
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad'; Name = 'ThreeFingerSlideEnabled'; Type = 'DWord'; Value = 0; Reset = 1 }
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad'; Name = 'FourFingerSlideEnabled';  Type = 'DWord'; Value = 0; Reset = 1 }
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad'; Name = 'ThreeFingerTapEnabled';   Type = 'DWord'; Value = 0; Reset = 1 }
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad'; Name = 'FourFingerTapEnabled';    Type = 'DWord'; Value = 0; Reset = 1 }
+)
+# Set by versions before v0.6, dropped in #37 (no escape from the overlay, only a nuisance for the
+# parent): removed on install and uninstall. DisableRegistryTools comes first: it blocks reg.exe.
+$LegacyUserPolicies = @(
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\Policies\System';   Name = 'DisableRegistryTools' }
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\Policies\System';   Name = 'DisableLockWorkstation' }
+    @{ Key = 'Software\Microsoft\Windows\CurrentVersion\Policies\Explorer'; Name = 'NoLogoff' }
+)
 
 # Source files
 $srcFiles = @{
@@ -375,9 +412,36 @@ function Step-LockDownPermissions {
         $acl.AddAccessRule($rule)
 
         Set-Acl -Path $InstallDir -AclObject $acl
-        Write-OK "ACL ustawione (SYSTEM full, Admin modify, AuthUsers r+x)"
+        Set-InstallFileAcls
+        Write-OK "ACL ustawione (SYSTEM full, Admin modify, AuthUsers r+x; sekrety: SYSTEM full, Admin read)"
     } catch {
         Write-Warn "Nie udało się ustawić ACL: $_ — kontynuuję z default"
+    }
+}
+
+function Set-InstallFileAcls {
+    # Everything below $InstallDir: inherited ACEs only — Step-UnlockPermissions (update-config) granted
+    # Admin Full on every file explicitly, and Set-Acl on the folder does not touch that. Except the
+    # DPAPI secrets ($SecretFiles): LocalMachine DPAPI is decryptable by any local account, so the file
+    # ACL is what keeps them from a non-elevated process — SYSTEM full, Administrators read, as the
+    # watchdog's RestrictFileAcl writes them. Friction: an elevated admin can still read them.
+    $system = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+    $admins = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    foreach ($item in @(Get-ChildItem -Path $InstallDir -Recurse -Force)) {
+        $acl = Get-Acl $item.FullName
+        foreach ($rule in @($acl.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier]))) {
+            $acl.RemoveAccessRuleSpecific($rule)
+        }
+        if (-not $item.PSIsContainer -and $item.Name -in $SecretFiles) {
+            $acl.SetAccessRuleProtection($true, $false)
+            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($system,
+                [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow)))
+            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($admins,
+                [System.Security.AccessControl.FileSystemRights]::Read, [System.Security.AccessControl.AccessControlType]::Allow)))
+        } else {
+            $acl.SetAccessRuleProtection($false, $false)
+        }
+        Set-Acl -Path $item.FullName -AclObject $acl
     }
 }
 
@@ -472,19 +536,10 @@ function Step-RegisterService {
     # Idempotencja: jeśli istnieje, delete najpierw
     $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($existing) {
-        # Stop przez multi-strategy — Stop-Service zawodzi gdy SDDL jest już ustawiony
         $null = Stop-VigilService
-        # sc.exe delete też może wymagać SYSTEM (SDDL nie daje Admin SD) — przy błędzie logujemy
-        & sc.exe delete $ServiceName 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            # Próba przez SYSTEM task
-            $delTask = "_pc_del_$(Get-Random)"
-            & schtasks.exe /Create /TN $delTask /SC ONCE /ST 23:59 /RU SYSTEM /TR "sc.exe delete $ServiceName" /F 2>&1 | Out-Null
-            & schtasks.exe /Run /TN $delTask 2>&1 | Out-Null
-            Start-Sleep -Seconds 3
-            & schtasks.exe /Delete /TN $delTask /F 2>&1 | Out-Null
+        if (-not (Remove-VigilServiceEntry)) {
+            throw "Nie udało się usunąć istniejącego service $ServiceName — reboot i ponów instalację."
         }
-        Start-Sleep -Seconds 1
     }
 
     # Format sc.exe: "key= value" ze spacją PO znaku =, bez przed.
@@ -503,19 +558,12 @@ function Step-RegisterService {
 }
 
 function Step-SetServiceDacl {
-    Write-Step "Ograniczam DACL service'u (Admin: query/start/stop, no delete)"
-    # SDDL z spec'a:
-    #   D: = Discretionary ACL
-    #   (A;;CCLCSWRPLOCRRC;;;BA)      — Admin: Query, Start, Stop, Read (no Delete, no Modify config)
-    #   (A;;CCLCSWRPLOCRRC;;;IU)      — Interactive User: Query, Start, Stop, Read
-    #   (A;;CCLCSWRPLOCRRC;;;SU)      — Service: Query, Start, Stop, Read
-    #   (A;;GA;;;SY)                  — SYSTEM: Generic All
-    # Admin musi mieć Stop, inaczej maintenance/update-config niemożliwy. Dziecko bez admin
-    # praw i tak nie ma dostępu do "Interactive User" w tym kontekście (UAC blokuje).
-    # Brak Delete i ChangeConfig oznacza że nawet z admin ktoś nie skasuje service'u
-    # bez explicit takeown — trzymamy minimalny security gain.
-    $sd = "D:(A;;CCLCSWRPLOCRRC;;;BA)(A;;CCLCSWRPLOCRRC;;;IU)(A;;CCLCSWRPLOCRRC;;;SU)(A;;GA;;;SY)"
-    & sc.exe sdset $ServiceName $sd | Out-Null
+    Write-Step "Ograniczam DACL service'u (Admin: query/start, bez stop i delete)"
+    # $ServiceSddl: BA, IU, SU get CC LC SW RP LO CR RC = query config/status, enumerate dependents,
+    # start, interrogate, user control, read. No WP (stop), DT (pause), DC (change config), SD (delete),
+    # WD/WO. SYSTEM: GenericAll. Friction only: an admin can kill the process or act as SYSTEM, which is
+    # exactly what this installer does (Invoke-ScAsSystem). Detection is the server's job (tamper.py).
+    & sc.exe sdset $ServiceName $ServiceSddl | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "sc sdset failed (exit $LASTEXITCODE) — service działa, ale Admin nadal może go zatrzymać"
     } else {
@@ -634,47 +682,16 @@ function Set-PoliciesForRegistryHive {
         [string]$Label      # tylko do logowania
     )
 
-    # Only policies that close a way out of the lock screen (#37). The parent maintains the PC through
-    # the same account (D12), so each of these hits the parent too; against an elevated child they are
-    # friction only.
-    #   DisableTaskMgr        — Ctrl+Alt+Del → Task Manager would run programs over the overlay
-    #   DisableChangePassword — the child must not change the password of the shared account
-    $policiesSystem = "$BasePath\Software\Microsoft\Windows\CurrentVersion\Policies\System"
-    if (-not (Test-Path $policiesSystem)) { New-Item -Path $policiesSystem -Force | Out-Null }
-    Set-ItemProperty -Path $policiesSystem -Name 'DisableTaskMgr'        -Value 1 -Type DWord -Force
-    Set-ItemProperty -Path $policiesSystem -Name 'DisableChangePassword' -Value 1 -Type DWord -Force
-
-    # Set by versions before v0.6, dropped in #37 — no escape from the overlay, only a nuisance for the
-    # parent: DisableRegistryTools (regedit/reg.exe), DisableLockWorkstation (Win+L), NoLogoff.
-    Remove-ItemProperty -Path $policiesSystem -Name 'DisableRegistryTools', 'DisableLockWorkstation' -ErrorAction SilentlyContinue
-    $policiesExplorer = "$BasePath\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-    if (Test-Path $policiesExplorer) {
-        Remove-ItemProperty -Path $policiesExplorer -Name 'NoLogoff' -ErrorAction SilentlyContinue
+    # Values and reasons: $UserPolicyValues / $LegacyUserPolicies at the top.
+    foreach ($p in $UserPolicyValues) {
+        $path = "$BasePath\$($p.Key)"
+        if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+        Set-ItemProperty -Path $path -Name $p.Name -Value $p.Value -Type $p.Type -Force
     }
-
-    # Wyłącz Sticky Keys / Filter Keys / Toggle Keys / Mouse Keys ACTIVATION SHORTCUTS.
-    # Bez tego: 5×Shift = sticky keys dialog, 8s Shift hold = filter keys dialog, mogą zasłonić lockscreen
-    # albo skierować focus do dialogu. Wyłącza tylko skróty aktywacyjne — sama funkcja accessibility
-    # nadal może być włączona ręcznie z Control Panel.
-    foreach ($accKey in @(
-        @{Path="$BasePath\Control Panel\Accessibility\StickyKeys";       Value=506},
-        @{Path="$BasePath\Control Panel\Accessibility\Keyboard Response"; Value=122},
-        @{Path="$BasePath\Control Panel\Accessibility\ToggleKeys";        Value=58},
-        @{Path="$BasePath\Control Panel\Accessibility\MouseKeys";         Value=58}
-    )) {
-        if (-not (Test-Path $accKey.Path)) { New-Item -Path $accKey.Path -Force | Out-Null }
-        # "Flags" = 506: sticky on=2, available=512 wyłączone, hot-key off — kombinacja konkretnych bitów
-        Set-ItemProperty -Path $accKey.Path -Name 'Flags' -Value $accKey.Value -Type String -Force
+    foreach ($p in $LegacyUserPolicies) {
+        $path = "$BasePath\$($p.Key)"
+        if (Test-Path $path) { Remove-ItemProperty -Path $path -Name $p.Name -ErrorAction SilentlyContinue }
     }
-
-    # Precision touchpad multi-finger gestures: 3-finger swipe up = Task View, 4-finger = Action Center.
-    # KeyboardBlocker nie łapie tych (idą przez touch input subsystem). Wyłączamy w registry per-user.
-    $touchpadPath = "$BasePath\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad"
-    if (-not (Test-Path $touchpadPath)) { New-Item -Path $touchpadPath -Force | Out-Null }
-    Set-ItemProperty -Path $touchpadPath -Name 'ThreeFingerSlideEnabled' -Value 0 -Type DWord -Force
-    Set-ItemProperty -Path $touchpadPath -Name 'FourFingerSlideEnabled'  -Value 0 -Type DWord -Force
-    Set-ItemProperty -Path $touchpadPath -Name 'ThreeFingerTapEnabled'   -Value 0 -Type DWord -Force
-    Set-ItemProperty -Path $touchpadPath -Name 'FourFingerTapEnabled'    -Value 0 -Type DWord -Force
 
     Write-OK "${Label}: DisableTaskMgr, DisableChangePassword, skróty sticky/filter keys off, gesty touchpada off"
 }
@@ -740,12 +757,44 @@ function Step-ApplyUserPolicies {
     }
 }
 
-# === Multi-strategy service control helpers ===
+# === Service control helpers ===
 #
-# Restrykcyjny SDDL na service (Step-SetServiceDacl) potrafi blokować Admin'a mimo że
-# teoretycznie zezwala. Każda metoda stop/start może niezależnie zawieść (PS native, sc.exe,
-# Stop-Process, PPL/AV). Fallback: SYSTEM Scheduled Task (DACL daje SY: GenericAll).
-# Strategie próbujemy po kolei — każda kolejna mocniejsza, używamy pierwszej która zadziała.
+# The service DACL ($ServiceSddl) gives administrators query/start only: no stop (WP), no delete (SD).
+# Stop and delete therefore go through a one-off SYSTEM task (SY: GenericAll). That is a normal SCM
+# stop, so the watchdog says goodbye ("service_stop") and the server logs tamper_service_stopped
+# instead of tamper_watchdog_restarted; killing the process is only the fallback.
+
+function Wait-ServiceStatus {
+    param([string]$Status, [int]$Seconds)
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    do {
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        $current = if ($svc) { [string]$svc.Status } else { 'Missing' }
+        if ($current -eq $Status) { return $true }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    return $false
+}
+
+function Invoke-ScAsSystem {
+    # Runs "sc.exe <ScArgs>" as SYSTEM through a one-off scheduled task and removes the task.
+    # Returns when the task has finished (sc.exe itself returns at once; callers wait for the state).
+    param([string]$ScArgs)
+    $name = "_vigil_sc_$(Get-Random)"
+    $action = New-ScheduledTaskAction -Execute 'sc.exe' -Argument $ScArgs
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    # Default task settings refuse to start on battery power: a laptop would fall through to kill.
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $name
+        $deadline = (Get-Date).AddSeconds(10)
+        do { Start-Sleep -Milliseconds 300 }
+        while ((Get-ScheduledTask -TaskName $name).State -eq 'Running' -and (Get-Date) -lt $deadline)
+    } finally {
+        Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+    }
+}
 
 function Stop-VigilService {
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -758,57 +807,33 @@ function Stop-VigilService {
         return $true
     }
 
-    Write-Step "Zatrzymuję service $ServiceName (multi-strategy)"
+    Write-Step "Zatrzymuję service $ServiceName"
 
-    # 1. sc.exe stop + polling (max 12s).
-    # Stop-Service (PS native) celowo pominięty: z naszym SDDL zawsze dostaje ACCESS_DENIED
-    # (PS wymaga więcej praw niż samo SERVICE_STOP). sc.exe używa tej samej maski co SDDL.
-    # Dajemy 12s bo vigil_watchdog ma shutdown handler (graceful disconnect od lockscreen, IPC cleanup).
+    # 1. Normal stop as SYSTEM. 15 s: the watchdog's goodbye waits up to 3 s for the server.
     try {
-        & sc.exe stop $ServiceName 2>&1 | Out-Null
-        $deadline = (Get-Date).AddSeconds(12)
-        do {
-            Start-Sleep -Milliseconds 500
-            $status = (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status
-        } while ($status -ne 'Stopped' -and (Get-Date) -lt $deadline)
-        if ($status -eq 'Stopped') {
-            Write-OK "Stopped via sc.exe stop"
+        Invoke-ScAsSystem "stop $ServiceName"
+        if (Wait-ServiceStatus 'Stopped' 15) {
+            Write-OK "Zatrzymany (stop jako SYSTEM, watchdog wysłał pożegnanie)"
             return $true
         }
-    } catch { Write-Host "    sc.exe stop: $_" -ForegroundColor DarkGray }
+    } catch { Write-Host "    stop jako SYSTEM: $_" -ForegroundColor DarkGray }
 
-    # 2. Kill process bezpośrednio (Admin może z SeDebugPrivilege)
+    # 2. Kill (no goodbye: the server sees a restart without one). Admins may kill a SYSTEM process.
     try {
-        $proc = Get-Process -Name vigil_watchdog -ErrorAction SilentlyContinue
-        if ($proc) {
-            Stop-Process -Id $proc.Id -Force -ErrorAction Stop
-            # SCM potrzebuje chwili żeby zarejestrować śmierć procesu
-            $deadline = (Get-Date).AddSeconds(8)
-            do { Start-Sleep -Milliseconds 500 }
-            while ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status -ne 'Stopped' -and (Get-Date) -lt $deadline)
-            if ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status -eq 'Stopped') {
-                Write-OK "Stopped via Stop-Process (kill)"
-                return $true
-            }
+        Get-Process -Name vigil_watchdog -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction Stop
+        if (Wait-ServiceStatus 'Stopped' 8) {
+            Write-Warn "Zatrzymany przez kill procesu (stop jako SYSTEM nie zadziałał)"
+            return $true
         }
     } catch { Write-Host "    Stop-Process: $_" -ForegroundColor DarkGray }
 
-    # 3. SYSTEM scheduled task — omija wszystkie DACL (ostatnia deska ratunku)
-    try {
-        $taskName = "_pc_stop_$(Get-Random)"
-        & schtasks.exe /Create /TN $taskName /SC ONCE /ST 23:59 /RU SYSTEM /TR "sc.exe stop $ServiceName" /F 2>&1 | Out-Null
-        & schtasks.exe /Run /TN $taskName 2>&1 | Out-Null
-        $deadline = (Get-Date).AddSeconds(10)
-        do { Start-Sleep -Milliseconds 500 }
-        while ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status -ne 'Stopped' -and (Get-Date) -lt $deadline)
-        & schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
-        if ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status -eq 'Stopped') {
-            Write-OK "Stopped via SYSTEM scheduled task"
-            return $true
-        }
-    } catch { Write-Host "    SYSTEM task: $_" -ForegroundColor DarkGray }
+    throw "Nie udało się zatrzymać $ServiceName. Manual: reboot komputera."
+}
 
-    throw "Nie udało się zatrzymać $ServiceName (próbowano 3 strategie). Manual: reboot komputera."
+function Remove-VigilServiceEntry {
+    # sc.exe delete as SYSTEM (admins lack SD). True when the service is gone.
+    try { Invoke-ScAsSystem "delete $ServiceName" } catch { Write-Host "    delete jako SYSTEM: $_" -ForegroundColor DarkGray }
+    return (Wait-ServiceStatus 'Missing' 10)
 }
 
 function Start-VigilService {
@@ -840,14 +865,8 @@ function Start-VigilService {
 
     # 3. SYSTEM scheduled task
     try {
-        $taskName = "_pc_start_$(Get-Random)"
-        & schtasks.exe /Create /TN $taskName /SC ONCE /ST 23:59 /RU SYSTEM /TR "sc.exe start $ServiceName" /F 2>&1 | Out-Null
-        & schtasks.exe /Run /TN $taskName 2>&1 | Out-Null
-        $deadline = (Get-Date).AddSeconds(12)
-        do { Start-Sleep -Milliseconds 500 }
-        while ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status -ne 'Running' -and (Get-Date) -lt $deadline)
-        & schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
-        if ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status -eq 'Running') {
+        Invoke-ScAsSystem "start $ServiceName"
+        if (Wait-ServiceStatus 'Running' 12) {
             Write-OK "Started via SYSTEM scheduled task"
             return $true
         }
@@ -918,29 +937,12 @@ function Step-StopAndRemoveService {
         return
     }
 
-    # Stop przez multi-strategy (DACL service'u może blokować klasyczny stop)
     $null = Stop-VigilService
 
     Write-Step "Usuwam service $ServiceName"
-    # sc.exe delete też może blokować przez DACL — fallback na SYSTEM task
-    & sc.exe delete $ServiceName 2>&1 | Out-Null
-    Start-Sleep -Seconds 2
-    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($svc) {
-        # SYSTEM task fallback
-        try {
-            $taskName = "_pc_del_$(Get-Random)"
-            & schtasks.exe /Create /TN $taskName /SC ONCE /ST 23:59 /RU SYSTEM /TR "sc.exe delete $ServiceName" /F 2>&1 | Out-Null
-            & schtasks.exe /Run /TN $taskName 2>&1 | Out-Null
-            Start-Sleep -Seconds 4
-            & schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
-        } catch { }
-        Start-Sleep -Seconds 2
-        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-        if ($svc) {
-            Write-Warn "Service $ServiceName dalej istnieje po próbie usunięcia — może wymagać reboota"
-            return
-        }
+    if (-not (Remove-VigilServiceEntry)) {
+        Write-Warn "Service $ServiceName dalej istnieje po próbie usunięcia — może wymagać reboota"
+        return
     }
     Write-OK "Service usunięty"
 }
@@ -1000,33 +1002,14 @@ function Step-RemoveInstallDir {
 function Clear-PoliciesFromRegistryHive {
     param([string]$BasePath)
 
-    $policiesSystem = "$BasePath\Software\Microsoft\Windows\CurrentVersion\Policies\System"
-    if (Test-Path $policiesSystem) {
-        # DisableRegistryTools NAJPIERW — żeby jego usunięcie odblokuje ewentualne dalsze operacje
-        foreach ($name in @('DisableRegistryTools','DisableTaskMgr','DisableLockWorkstation','DisableChangePassword')) {
-            Remove-ItemProperty -Path $policiesSystem -Name $name -ErrorAction SilentlyContinue
-        }
-    }
-    $policiesExplorer = "$BasePath\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-    if (Test-Path $policiesExplorer) {
-        Remove-ItemProperty -Path $policiesExplorer -Name 'NoLogoff' -ErrorAction SilentlyContinue
-    }
-    # Sticky/Filter/Toggle/Mouse keys flags — przywracamy domyślne wartości Windows
-    foreach ($accKey in @(
-        @{Path="$BasePath\Control Panel\Accessibility\StickyKeys";        Default=510},
-        @{Path="$BasePath\Control Panel\Accessibility\Keyboard Response"; Default=126},
-        @{Path="$BasePath\Control Panel\Accessibility\ToggleKeys";        Default=62},
-        @{Path="$BasePath\Control Panel\Accessibility\MouseKeys";         Default=62}
-    )) {
-        if (Test-Path $accKey.Path) {
-            Set-ItemProperty -Path $accKey.Path -Name 'Flags' -Value $accKey.Default -Type String -ErrorAction SilentlyContinue
-        }
-    }
-    # Touchpad gestures — przywracamy 1 (default Windows)
-    $touchpadPath = "$BasePath\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad"
-    if (Test-Path $touchpadPath) {
-        foreach ($name in @('ThreeFingerSlideEnabled','FourFingerSlideEnabled','ThreeFingerTapEnabled','FourFingerTapEnabled')) {
-            Set-ItemProperty -Path $touchpadPath -Name $name -Value 1 -Type DWord -ErrorAction SilentlyContinue
+    # Legacy first: DisableRegistryTools (before v0.6) blocks reg.exe for the rest of the uninstall.
+    foreach ($p in @($LegacyUserPolicies) + @($UserPolicyValues)) {
+        $path = "$BasePath\$($p.Key)"
+        if (-not (Test-Path $path)) { continue }
+        if ($null -eq $p.Reset) {
+            Remove-ItemProperty -Path $path -Name $p.Name -ErrorAction SilentlyContinue
+        } else {
+            Set-ItemProperty -Path $path -Name $p.Name -Value $p.Reset -Type $p.Type -ErrorAction SilentlyContinue
         }
     }
 }
@@ -1096,6 +1079,282 @@ function Step-ReverseUserPolicies {
             }
         }
     }
+}
+
+# === Verify (-Mode verify, #45) ===
+#
+# Reads the installed state and prints one line per check; changes nothing (a user hive that is not
+# loaded is mounted read-only for the check and unmounted). What it cannot see — the lock overlay,
+# the tray, keyboard blocking — stays a manual test. A diagnostic for the parent, not a protection.
+
+$script:VerifyCounts = @{ Fail = 0; Warn = 0; Pass = 0 }
+
+function Write-Check {
+    # Level: Pass | Fail | Warn
+    param([string]$Level, [string]$Msg)
+    $script:VerifyCounts[$Level]++
+    switch ($Level) {
+        'Pass' { Write-OK $Msg }
+        'Warn' { Write-Warn $Msg }
+        'Fail' {
+            Write-Host "    ✗ " -ForegroundColor Red -NoNewline
+            Write-Host $Msg
+        }
+    }
+}
+
+function Test-Check {
+    param([bool]$Ok, [string]$Msg, [string]$Otherwise = 'Fail')
+    Write-Check $(if ($Ok) { 'Pass' } else { $Otherwise }) $Msg
+}
+
+function Invoke-OnUserHive {
+    # Calls $Action with the registry path of a user's hive: the live one under HKU when loaded,
+    # otherwise $HiveFile mounted under HKLM for the call. Returns $null when the hive can't be read.
+    param([string]$Sid, [string]$HiveFile, [scriptblock]$Action)
+    if ($Sid -and (Test-Path "Registry::HKEY_USERS\$Sid")) {
+        return , @(& $Action "Registry::HKEY_USERS\$Sid")
+    }
+    if (-not $HiveFile -or -not (Test-Path $HiveFile)) { return $null }
+    $temp = 'HKLM\PC_VerifyHive'
+    if ((Invoke-RegExe load $temp $HiveFile) -ne 0) { return $null }
+    try {
+        return , @(& $Action 'Registry::HKEY_LOCAL_MACHINE\PC_VerifyHive')
+    } finally {
+        [gc]::Collect(); [gc]::WaitForPendingFinalizers(); Start-Sleep -Milliseconds 500
+        [void](Invoke-RegExe unload $temp)
+    }
+}
+
+function Get-UserPolicyState {
+    # One row per value: State 'set' (installer's value), 'clear' (absent or the uninstall value),
+    # 'other' (something else); legacy values: 'legacy' when present.
+    param([string]$BasePath)
+    foreach ($p in $UserPolicyValues) {
+        $v = (Get-ItemProperty -Path "$BasePath\$($p.Key)" -Name $p.Name -ErrorAction SilentlyContinue).($p.Name)
+        $state = if ($null -ne $v -and "$v" -eq "$($p.Value)") { 'set' }
+                 elseif ($null -eq $v -or "$v" -eq "$($p.Reset)") { 'clear' }
+                 else { 'other' }
+        [pscustomobject]@{ Name = "$(($p.Key -split '\\')[-1])\$($p.Name)"; State = $state; Legacy = $false }
+    }
+    foreach ($p in $LegacyUserPolicies) {
+        $v = (Get-ItemProperty -Path "$BasePath\$($p.Key)" -Name $p.Name -ErrorAction SilentlyContinue).($p.Name)
+        [pscustomobject]@{ Name = $p.Name; State = $(if ($null -ne $v) { 'legacy' } else { 'clear' }); Legacy = $true }
+    }
+}
+
+function Test-UserPolicies {
+    # Installed: every value set, no legacy one. Removed: nothing of ours left.
+    param([string]$Label, [string]$Sid, [string]$HiveFile, [switch]$Removed)
+    $rows = Invoke-OnUserHive -Sid $Sid -HiveFile $HiveFile -Action { param($base) Get-UserPolicyState $base }
+    if ($null -eq $rows) { Write-Check 'Warn' "${Label}: nie da się odczytać rejestru"; return }
+    $bad = if ($Removed) { @($rows | Where-Object { $_.State -in 'set', 'legacy' }) }
+           else { @($rows | Where-Object { ($_.Legacy -and $_.State -eq 'legacy') -or (-not $_.Legacy -and $_.State -ne 'set') }) }
+    if ($bad.Count -eq 0) {
+        Write-Check 'Pass' $(if ($Removed) { "${Label}: policy usunięte" } else { "${Label}: policy ustawione ($($UserPolicyValues.Count) wartości)" })
+    } else {
+        Write-Check 'Fail' "${Label}: $(($bad | ForEach-Object { "$($_.Name)=$($_.State)" }) -join ', ')"
+    }
+}
+
+function Get-VigilLeftoverTasks {
+    # One-off SYSTEM tasks of this installer (now and before #46) and of vigil-cleanup.ps1.
+    @(Get-ScheduledTask -ErrorAction SilentlyContinue |
+        Where-Object { $_.TaskName -like '_vigil_sc_*' -or $_.TaskName -like '_pc_*' -or $_.TaskName -like 'VigilCleanup_*' })
+}
+
+function Test-AclRules {
+    # True when $Acl's explicit rules are exactly $Want (SID -> FileSystemRights name), all Allow.
+    # Returns the differences as text in $script:AclDiff.
+    param($Acl, [hashtable]$Want)
+    $sync = [int][System.Security.AccessControl.FileSystemRights]::Synchronize
+    $rules = @($Acl.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier]))
+    $diff = @()
+    foreach ($r in $rules) {
+        $sid = $r.IdentityReference.Value
+        $want = if ($Want.ContainsKey($sid)) { [int][System.Security.AccessControl.FileSystemRights]$Want[$sid] -band -bnot $sync } else { $null }
+        if ($null -eq $want -or $r.AccessControlType -ne 'Allow' -or ([int]$r.FileSystemRights -band -bnot $sync) -ne $want) {
+            $diff += "$sid=$($r.AccessControlType):$($r.FileSystemRights)"
+        }
+    }
+    $present = @($rules | ForEach-Object { $_.IdentityReference.Value })
+    $diff += @($Want.Keys | Where-Object { $_ -notin $present } | ForEach-Object { "brak $_" })
+    $script:AclDiff = $diff -join '; '
+    return $diff.Count -eq 0
+}
+
+function Test-ExpectedAcl {
+    # The folder: protected, SYSTEM Full / Administrators Modify / Authenticated Users R+X.
+    # Below it: inherited only, except the DPAPI secrets: protected, SYSTEM Full / Administrators Read.
+    $acl = Get-Acl $InstallDir
+    $ok = $acl.AreAccessRulesProtected -and
+          (Test-AclRules $acl @{ 'S-1-5-18' = 'FullControl'; 'S-1-5-32-544' = 'Modify'; 'S-1-5-11' = 'ReadAndExecute' })
+    Test-Check $ok "ACL katalogu (SYSTEM full, Admin modify, AuthUsers r+x)$(if (-not $ok) { " — chronione=$($acl.AreAccessRulesProtected) $script:AclDiff" })"
+
+    $wrong = @()
+    foreach ($item in @(Get-ChildItem -Path $InstallDir -Recurse -Force -ErrorAction SilentlyContinue)) {
+        $a = Get-Acl $item.FullName
+        if (-not $item.PSIsContainer -and $item.Name -in $SecretFiles) {
+            if (-not ($a.AreAccessRulesProtected -and (Test-AclRules $a @{ 'S-1-5-18' = 'FullControl'; 'S-1-5-32-544' = 'Read' }))) {
+                $wrong += "$($item.Name) ($script:AclDiff)"
+            }
+        } elseif ($a.AreAccessRulesProtected -or -not (Test-AclRules $a @{})) {
+            $wrong += "$($item.Name) (jawne: $script:AclDiff)"
+        }
+    }
+    Test-Check ($wrong.Count -eq 0) "ACL plików: dziedziczone, sekrety tylko SYSTEM + odczyt Admin$(if ($wrong.Count) { ' — ' + ($wrong -join ', ') })"
+}
+
+function Read-FailureActions {
+    # SERVICE_FAILURE_ACTIONS from the service key (language-independent, unlike sc.exe qfailure):
+    # reset period, reboot msg ptr, command ptr, action count, actions ptr, then {type, delay} pairs.
+    $raw = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName" -Name FailureActions -ErrorAction SilentlyContinue).FailureActions
+    if (-not $raw -or $raw.Length -lt 20) { return @() }
+    $count = [BitConverter]::ToInt32($raw, 12)
+    for ($i = 0; $i -lt $count -and (20 + 8 * $i + 8) -le $raw.Length; $i++) {
+        [pscustomobject]@{ Type = [BitConverter]::ToInt32($raw, 20 + 8 * $i); DelayMs = [BitConverter]::ToInt32($raw, 24 + 8 * $i) }
+    }
+}
+
+function Unprotect-LocalMachine {
+    param([byte[]]$Data, [byte[]]$Entropy)
+    Add-Type -AssemblyName System.Security
+    return [System.Security.Cryptography.ProtectedData]::Unprotect(
+        $Data, $Entropy, [System.Security.Cryptography.DataProtectionScope]::LocalMachine)
+}
+
+function Invoke-VerifyInstalled {
+    Write-Step "Usługa $ServiceName"
+    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    Test-Check ([bool]$svc) "Zarejestrowana"
+    if ($svc) {
+        Test-Check ($svc.Status -eq 'Running') "Stan: $($svc.Status)"
+        Test-Check ($svc.StartType -eq 'Automatic') "Start: $($svc.StartType)"
+        $cim = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+        Test-Check ($cim -and $cim.PathName -eq "`"$watchdogExe`"") "Ścieżka: $($cim.PathName)"
+        $actions = @(Read-FailureActions)
+        $nonCrash = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName" -Name FailureActionsOnNonCrashFailures -ErrorAction SilentlyContinue).FailureActionsOnNonCrashFailures
+        Test-Check ($actions.Count -eq 3 -and @($actions | Where-Object { $_.Type -ne 1 }).Count -eq 0 -and $nonCrash -eq 1) `
+            "Recovery: restart×3$(if ($nonCrash -ne 1) { ', bez FailureActionsOnNonCrashFailures' })"
+        # DACL: what matters is that admins have no stop (WP) and no delete (SD).
+        $sddl = (& sc.exe sdshow $ServiceName) -join ''
+        $ba = if ($sddl -match '\(A;;([A-Z]+);;;BA\)') { $matches[1] } else { $null }
+        Test-Check ($ba -and $ba -notmatch 'WP' -and $ba -notmatch 'SD') "DACL: Admin bez stop i delete$(if (-not $ba) { ' — brak wpisu BA' } elseif ($ba -match 'WP|SD') { " — BA=$ba" })"
+    }
+
+    Write-Step "Pliki w $InstallDir"
+    $files = @($watchdogExe, $uiExe, $guardianPs1, $vigilToml, $signingDat, $guardianDat, (Join-Path $backupDir 'vigil_watchdog.exe'))
+    $missing = @($files | Where-Object { -not (Test-Path $_) })
+    Test-Check ($missing.Count -eq 0) "Komplet plików$(if ($missing.Count) { ' — brak: ' + (($missing | ForEach-Object { Split-Path $_ -Leaf }) -join ', ') })"
+    $legacy = @((Join-Path $InstallDir 'emergency.dat'), (Join-Path $InstallDir 'vigil_lockscreen.exe'),
+                (Join-Path $InstallDir 'vigil_tray.exe'), "$env:PUBLIC\Vigil") | Where-Object { Test-Path $_ }
+    Test-Check (@($legacy).Count -eq 0) "Brak pozostałości starszych wersji$(if (@($legacy).Count) { ': ' + ($legacy -join ', ') })"
+
+    if (Test-Path $watchdogExe) {
+        $hash = (Get-FileHash $watchdogExe -Algorithm SHA256).Hash.ToLower()
+        $backup = Join-Path $backupDir 'vigil_watchdog.exe'
+        if (Test-Path $backup) {
+            Test-Check ((Get-FileHash $backup -Algorithm SHA256).Hash.ToLower() -eq $hash) "backup\vigil_watchdog.exe = vigil_watchdog.exe"
+        }
+        if (Test-Path $guardianDat) {
+            try {
+                $ref = [System.Text.Encoding]::UTF8.GetString((Unprotect-LocalMachine ([IO.File]::ReadAllBytes($guardianDat)) $null))
+                Test-Check ($ref -eq $hash) "guardian.dat: hash zgodny z vigil_watchdog.exe"
+            } catch { Write-Check 'Fail' "guardian.dat nie odszyfrowuje się: $($_.Exception.Message)" }
+        }
+        # The package this script came from: is it the one installed?
+        $pkg = Join-Path $SourceDir 'vigil_watchdog.exe'
+        if ((Test-Path $pkg) -and ((Resolve-Path $pkg).Path -ne (Resolve-Path $watchdogExe).Path)) {
+            $same = @('vigil_watchdog.exe', 'vigil_ui.exe', 'vigil_guardian.ps1') | Where-Object {
+                (Test-Path (Join-Path $SourceDir $_)) -and (Test-Path (Join-Path $InstallDir $_)) -and
+                (Get-FileHash (Join-Path $SourceDir $_)).Hash -eq (Get-FileHash (Join-Path $InstallDir $_)).Hash
+            }
+            Test-Check (@($same).Count -eq 3) "Zainstalowane binarki = paczka w $SourceDir" -Otherwise 'Warn'
+        }
+    }
+    if (Test-Path $signingDat) {
+        try {
+            $key = Unprotect-LocalMachine ([IO.File]::ReadAllBytes($signingDat)) ([Text.Encoding]::UTF8.GetBytes('Vigil-SigningKey-v1'))
+            Test-Check ($key.Length -ge 16) "signing.dat: klucz odszyfrowany ($($key.Length) B)"
+            [Array]::Clear($key, 0, $key.Length)
+        } catch { Write-Check 'Fail' "signing.dat nie odszyfrowuje się: $($_.Exception.Message)" }
+    }
+    $serverUrl = $null
+    if (Test-Path $vigilToml) {
+        $toml = Get-Content $vigilToml -Raw
+        if ($toml -match 'server_url\s*=\s*"([^"]+)"') { $serverUrl = $matches[1] }
+        Test-Check ([bool]$serverUrl) "vigil.toml: server_url = $serverUrl"
+        Test-Check ($toml -notmatch 'bearer_token') "vigil.toml: bez bearer_token (protokół v1)"
+    }
+    if (Test-Path $InstallDir) { Test-ExpectedAcl }
+
+    Write-Step "Zadania i rozruch"
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Test-Check ([bool]$task) "Zadanie '$TaskName'"
+    if ($task) {
+        Test-Check ($task.Principal.UserId -in 'SYSTEM', 'S-1-5-18' -and $task.Principal.RunLevel -eq 'Highest') "  jako SYSTEM, najwyższe uprawnienia"
+        Test-Check ($task.State -ne 'Disabled') "  stan: $($task.State)"
+        $boot = @($task.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskBootTrigger' }).Count
+        $every5 = @($task.Triggers | Where-Object { $_.Repetition.Interval -eq 'PT5M' }).Count
+        Test-Check ($boot -ge 1 -and $every5 -ge 1) "  wyzwalacze: przy starcie + co 5 min"
+        Test-Check ("$($task.Actions[0].Arguments)" -like "*$guardianPs1*") "  uruchamia $guardianPs1"
+        $info = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue
+        # 0x41303 = has not run yet (right after install)
+        if ($info) { Test-Check ($info.LastTaskResult -in 0, 0x41303) "  ostatni wynik: 0x$('{0:X}' -f $info.LastTaskResult) ($($info.LastRunTime))" -Otherwise 'Warn' }
+    }
+    Test-Check (-not (Get-ScheduledTask -TaskName 'Vigil Tray' -ErrorAction SilentlyContinue)) "Brak starego zadania 'Vigil Tray'"
+    $left = Get-VigilLeftoverTasks
+    Test-Check ($left.Count -eq 0) "Brak tymczasowych zadań SYSTEM$(if ($left.Count) { ': ' + (($left | ForEach-Object { $_.TaskName }) -join ', ') })"
+    foreach ($mode in 'Minimal', 'Network') {
+        $key = "HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\$mode\$ServiceName"
+        Test-Check ((Test-Path $key) -and (Get-Item $key).GetValue('') -eq 'Service') "SafeBoot $mode"
+    }
+    $bootMenu = (& bcdedit.exe /enum '{current}') | Where-Object { $_ -match '^bootmenupolicy\s+(\S+)' } | ForEach-Object { $matches[1] }
+    Test-Check ($bootMenu -eq 'Standard') "Menu F8 wyłączone (bootmenupolicy $bootMenu)" -Otherwise 'Warn'
+
+    Write-Step "Policy użytkownika"
+    Resolve-ChildAccount
+    if ($script:ChildAccount) {
+        Test-UserPolicies -Label "Konto $($script:ChildAccount.Name)" -Sid $script:ChildAccount.Sid `
+            -HiveFile (Join-Path $script:ChildAccount.Profile 'NTUSER.DAT')
+    } else {
+        Write-Check 'Warn' "Nie ustalono konta dziecka — sprawdzam tylko Default profile"
+    }
+    Test-UserPolicies -Label 'Default profile' -HiveFile "$env:SystemDrive\Users\Default\NTUSER.DAT"
+
+    Write-Step "Działanie"
+    # Someone is logged on (explorer runs) ⇒ the watchdog must have started vigil_ui in that session.
+    if (Get-Process -Name explorer -ErrorAction SilentlyContinue) {
+        Test-Check ([bool](Get-Process -Name vigil_ui -ErrorAction SilentlyContinue)) "vigil_ui działa w sesji użytkownika"
+    } else {
+        Write-Skip "Nikt nie jest zalogowany — vigil_ui nie musi działać"
+    }
+    if ($serverUrl) { Test-Check (Test-ServerReachable $serverUrl) "Serwer odpowiada: $serverUrl/health" }
+    try {
+        $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Vigil Watchdog'
+                                                     Level = 1, 2, 3; StartTime = (Get-Date).AddMinutes(-15) } -ErrorAction Stop)
+    } catch { $events = @() }  # no matching events also throws
+    Test-Check ($events.Count -eq 0) "Event Log watchdoga: $($events.Count) ostrzeżeń/błędów w 15 min$(if ($events.Count) { ' — ostatni: ' + ($events[0].Message -split "`n")[0] })" -Otherwise 'Warn'
+}
+
+function Invoke-VerifyRemoved {
+    Write-Step "Vigil nie jest zainstalowany — sprawdzam, czy nic nie zostało"
+    Test-Check (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) "Brak usługi $ServiceName"
+    Test-Check (-not (Test-Path $InstallDir)) "Brak $InstallDir"
+    foreach ($t in $TaskName, 'Vigil Tray') {
+        Test-Check (-not (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue)) "Brak zadania '$t'"
+    }
+    $left = Get-VigilLeftoverTasks
+    Test-Check ($left.Count -eq 0) "Brak tymczasowych zadań SYSTEM$(if ($left.Count) { ': ' + (($left | ForEach-Object { $_.TaskName }) -join ', ') })"
+    foreach ($mode in 'Minimal', 'Network') {
+        Test-Check (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\$mode\$ServiceName")) "Brak SafeBoot $mode"
+    }
+    $procs = @(Get-Process -Name vigil_watchdog, vigil_ui, vigil_lockscreen, vigil_tray -ErrorAction SilentlyContinue)
+    Test-Check ($procs.Count -eq 0) "Brak procesów Vigila$(if ($procs.Count) { ': ' + (($procs | ForEach-Object { $_.Name }) -join ', ') })"
+    foreach ($acc in @(Get-InteractiveAccounts)) {
+        Test-UserPolicies -Label "Konto $($acc.Name)" -Sid $acc.Sid -HiveFile (Join-Path $acc.Profile 'NTUSER.DAT') -Removed
+    }
+    Test-UserPolicies -Label 'Default profile' -HiveFile "$env:SystemDrive\Users\Default\NTUSER.DAT" -Removed
 }
 
 # === Mode dispatch ===
@@ -1196,6 +1455,20 @@ function Invoke-Reinstall {
     Invoke-Install
 }
 
+function Invoke-Verify {
+    Write-Host "`n[ VERIFY ]`n" -ForegroundColor Magenta
+    Step-RequireAdmin
+    if ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) -or (Test-Path $InstallDir)) {
+        Invoke-VerifyInstalled
+    } else {
+        Invoke-VerifyRemoved
+    }
+    $c = $script:VerifyCounts
+    $color = if ($c.Fail) { 'Red' } elseif ($c.Warn) { 'Yellow' } else { 'Green' }
+    Write-Host "`n[ VERIFY: $($c.Pass) OK, $($c.Fail) błędów, $($c.Warn) ostrzeżeń ]`n" -ForegroundColor $color
+    if ($c.Fail) { exit 1 }
+}
+
 # === Main ===
 
 try {
@@ -1204,6 +1477,7 @@ try {
         'uninstall'     { Invoke-Uninstall }
         'update-config' { Invoke-UpdateConfig }
         'reinstall'     { Invoke-Reinstall }
+        'verify'        { Invoke-Verify }
     }
 } catch {
     Write-Host "`n[ FAILED ]`n" -ForegroundColor Red

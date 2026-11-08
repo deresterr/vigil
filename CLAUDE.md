@@ -44,12 +44,13 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   as a requirement); policies only as registry values, which Home honours.
 - **One account**: the child's account is the only interactive account on the PC and is an administrator.
   The parent maintains the PC through that same account, so per-user policies (HKCU) hit the parent too.
-- Service DACL (`sc sdset`) denies Admin stop/delete: use `sc.exe stop` + poll, or a SYSTEM scheduled task.
-  `Stop-Service` always fails with ACCESS_DENIED.
+- Service DACL (`sc sdset`, `$ServiceSddl`) gives admins query/start only — no stop (WP), no delete (SD).
+  Stop/delete through a one-off SYSTEM task (`Invoke-ScAsSystem`): a normal stop, so the watchdog says goodbye.
+  Admin `sc.exe stop`/`Stop-Service` always fail; killing the process skips the goodbye (server: restart alert).
 
 ## Gotchas that already cost time
 - Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. Mateusz creates
-  releases/tags and deletes merged branches in the GitHub UI; open PRs with `gh api` (REST).
+  releases/tags in the GitHub UI (merged branches are deleted automatically); open PRs with `gh api` (REST).
 - PowerShell 5.1: `.ps1` must be UTF-8 **with BOM** + CRLF (see `.editorconfig`), otherwise Polish text breaks.
 - PowerShell: `$PSScriptRoot` is empty inside `param()` defaults — compute it in the body.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.

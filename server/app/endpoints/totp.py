@@ -207,7 +207,7 @@ async def totp_attempt(
         return {
             "ok": True,
             "mode": "extend_limit",
-            "applied": f"Dodano {minutes_to_grant} minut do limitu dziennego.",
+            "minutes": minutes_to_grant,
         }
 
     if current_lock == "night":
@@ -232,7 +232,8 @@ async def totp_attempt(
         return {
             "ok": True,
             "mode": "extend_night",
-            "applied": f"Dziecko może grać do {ext_local.strftime('%H:%M')}.",
+            "minutes": minutes_to_grant,
+            "until_local": ext_local.strftime("%Y-%m-%d %H:%M"),
         }
 
     if current_lock == "manual":
@@ -243,12 +244,10 @@ async def totp_attempt(
         return {
             "ok": True,
             "mode": "manual_unlock",
-            "applied": "Manualna blokada zdjęta.",
         }
 
     # current_lock is None — TOTP bez aktywnej blokady (nie powinno się zdarzyć w normalnym flow)
     return {
         "ok": True,
         "mode": "noop",
-        "applied": "Brak aktywnej blokady — kod TOTP zignorowany.",
     }

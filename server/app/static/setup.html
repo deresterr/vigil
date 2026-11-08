@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Konfiguracja — Vigil</title>
+  <title data-i18n>Konfiguracja — Vigil</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -88,54 +88,54 @@
 </head>
 <body>
 <div class="card">
-  <h1>Konfiguracja Vigil</h1>
-  <p class="subtitle">Pierwsze uruchomienie — wypełnij poniższe kroki</p>
+  <h1 data-i18n>Konfiguracja Vigil</h1>
+  <p class="subtitle" data-i18n>Pierwsze uruchomienie — wypełnij poniższe kroki</p>
   <div class="steps" id="steps"></div>
 
   <div id="err" class="error" hidden></div>
 
   <!-- Krok 1: Pierwsze dziecko -->
   <div class="step active" id="s1">
-    <label for="childName">Imię dziecka</label>
-    <input type="text" id="childName" placeholder="np. Jaś" maxlength="40" autofocus>
-    <div class="info">Limity z dalszych kroków dotyczą tego dziecka. Kolejne dzieci i ich komputery dodasz później w panelu.</div>
+    <label for="childName" data-i18n>Imię dziecka</label>
+    <input type="text" id="childName" placeholder="np. Jaś" maxlength="40" autofocus data-i18n-attr="placeholder">
+    <div class="info" data-i18n>Limity z dalszych kroków dotyczą tego dziecka. Kolejne dzieci i ich komputery dodasz później w panelu.</div>
     <div class="actions">
-      <button class="btn btn-primary" onclick="goTo(2)">Dalej →</button>
+      <button class="btn btn-primary" onclick="goTo(2)" data-i18n>Dalej →</button>
     </div>
   </div>
 
   <!-- Krok 2: Hasło -->
   <div class="step" id="s2">
-    <label for="pass1">Hasło admina (min. 8 znaków)</label>
-    <input type="password" id="pass1" placeholder="Hasło">
-    <label for="pass2">Powtórz hasło</label>
-    <input type="password" id="pass2" placeholder="Powtórz hasło">
+    <label for="pass1" data-i18n>Hasło rodzica (min. 8 znaków)</label>
+    <input type="password" id="pass1" placeholder="Hasło" data-i18n-attr="placeholder">
+    <label for="pass2" data-i18n>Powtórz hasło</label>
+    <input type="password" id="pass2" placeholder="Powtórz hasło" data-i18n-attr="placeholder">
     <div class="actions">
-      <button class="btn btn-secondary" onclick="goTo(1)">← Wróć</button>
-      <button class="btn btn-primary" onclick="goTo(3)">Dalej →</button>
+      <button class="btn btn-secondary" onclick="goTo(1)" data-i18n>← Wróć</button>
+      <button class="btn btn-primary" onclick="goTo(3)" data-i18n>Dalej →</button>
     </div>
   </div>
 
   <!-- Krok 3: TOTP -->
   <div class="step" id="s3">
-    <div class="info">
+    <div class="info" data-i18n>
       Zeskanuj kod QR aplikacją TOTP (np. Aegis, Google Authenticator) i wpisz kod weryfikacyjny.
       Możesz pominąć ten krok — TOTP skonfiguruj później w panelu.
     </div>
-    <div class="qr-wrap" id="qrWrap"><div class="loading">Ładowanie kodu QR…</div></div>
-    <label for="totpCode">Kod weryfikacyjny (6 cyfr)</label>
+    <div class="qr-wrap" id="qrWrap"><div class="loading" data-i18n>Ładowanie kodu QR…</div></div>
+    <label for="totpCode" data-i18n>Kod weryfikacyjny (6 cyfr)</label>
     <input type="text" id="totpCode" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*">
-    <p class="totp-skip">Zostaw puste i kliknij „Pomiń" jeśli nie chcesz teraz konfigurować TOTP.</p>
+    <p class="totp-skip" data-i18n>Zostaw puste i kliknij „Pomiń”, jeśli nie chcesz teraz konfigurować TOTP.</p>
     <div class="actions">
-      <button class="btn btn-secondary" onclick="goTo(2)">← Wróć</button>
-      <button class="btn btn-secondary" onclick="skipTotp()">Pomiń</button>
-      <button class="btn btn-primary" onclick="verifyTotp()">Weryfikuj →</button>
+      <button class="btn btn-secondary" onclick="goTo(2)" data-i18n>← Wróć</button>
+      <button class="btn btn-secondary" onclick="skipTotp()" data-i18n>Pomiń</button>
+      <button class="btn btn-primary" onclick="verifyTotp()" data-i18n>Weryfikuj →</button>
     </div>
   </div>
 
   <!-- Krok 4: Ustawienia -->
   <div class="step" id="s4">
-    <label for="tz">Strefa czasowa</label>
+    <label for="tz" data-i18n>Strefa czasowa</label>
     <input type="text" id="tz" value="Europe/Warsaw" list="tzList">
     <datalist id="tzList">
       <option value="Europe/Warsaw">
@@ -150,48 +150,50 @@
     </datalist>
     <div class="row">
       <div>
-        <label for="limWd">Limit (pon–czw) [min]</label>
+        <label for="limWd" data-i18n>Limit (pon–czw) [min]</label>
         <input type="number" id="limWd" value="120" min="1" max="1440">
       </div>
       <div>
-        <label for="limWe">Limit (pią–nd) [min]</label>
+        <label for="limWe" data-i18n>Limit (pt–nd) [min]</label>
         <input type="number" id="limWe" value="240" min="1" max="1440">
       </div>
     </div>
     <div class="row">
       <div>
-        <label for="nightS">Blokada nocna od</label>
+        <label for="nightS" data-i18n>Cisza nocna od</label>
         <input type="time" id="nightS" value="21:30">
       </div>
       <div>
-        <label for="nightE">Blokada nocna do</label>
+        <label for="nightE" data-i18n>Cisza nocna do</label>
         <input type="time" id="nightE" value="06:30">
       </div>
     </div>
     <div class="actions">
-      <button class="btn btn-secondary" onclick="goTo(3)">← Wróć</button>
-      <button class="btn btn-primary" onclick="goTo(5)">Dalej →</button>
+      <button class="btn btn-secondary" onclick="goTo(3)" data-i18n>← Wróć</button>
+      <button class="btn btn-primary" onclick="goTo(5)" data-i18n>Dalej →</button>
     </div>
   </div>
 
   <!-- Krok 5: Podsumowanie + adres serwera -->
   <div class="step" id="s5">
-    <label for="srvUrl">Adres serwera Vigil</label>
+    <label for="srvUrl" data-i18n>Adres serwera Vigil</label>
     <input type="text" id="srvUrl" placeholder="http://192.168.1.5:8088">
-    <div class="info">
-      Adres który wpisujesz do <code>Install.cmd</code>. Musi być osiągalny z PC dziecka.
+    <div class="info" data-i18n>
+      Adres, który wpisujesz do <code>Install.cmd</code>. Musi być osiągalny z PC dziecka.
       Jeśli używasz DNS rewritingu w przeglądarce (np. <em>kontrola.test</em>), wpisz tu
       bezpośredni adres IP serwera.
     </div>
     <div id="summary"></div>
     <div class="actions">
-      <button class="btn btn-secondary" onclick="goTo(4)">← Wróć</button>
-      <button class="btn btn-primary" id="btnFinish" onclick="finish()">Zakończ konfigurację</button>
+      <button class="btn btn-secondary" onclick="goTo(4)" data-i18n>← Wróć</button>
+      <button class="btn btn-primary" id="btnFinish" onclick="finish()" data-i18n>Zakończ konfigurację</button>
     </div>
   </div>
 </div>
 
+<!-- i18n -->
 <script>
+applyI18n();
 const TOTAL = 5;
 let currentStep = 1;
 let totpVerified = false;
@@ -222,13 +224,13 @@ function goTo(step) {
   showError('');
   if (step === 2) {
     const name = document.getElementById('childName').value.trim();
-    if (!name) { showError('Podaj imię dziecka.'); return; }
+    if (!name) { showError(t('Podaj imię dziecka.')); return; }
   }
   if (step === 3) {
     const p1 = document.getElementById('pass1').value;
     const p2 = document.getElementById('pass2').value;
-    if (p1.length < 8) { showError('Hasło musi mieć co najmniej 8 znaków.'); return; }
-    if (p1 !== p2) { showError('Hasła nie są zgodne.'); return; }
+    if (p1.length < 8) { showError(t('Hasło musi mieć co najmniej 8 znaków.')); return; }
+    if (p1 !== p2) { showError(t('Hasła nie są zgodne.')); return; }
   }
   if (step === 5) {
     // Prefill server URL from window.location
@@ -256,7 +258,7 @@ function loadQr() {
     })
     .catch(() => {
       document.getElementById('qrWrap').innerHTML =
-        '<div class="loading">Nie udało się załadować QR. Możesz pominąć TOTP.</div>';
+        '<div class="loading">' + t('Nie udało się załadować QR. Możesz pominąć TOTP.') + '</div>';
     });
 }
 
@@ -269,7 +271,7 @@ function skipTotp() {
 function verifyTotp() {
   const code = document.getElementById('totpCode').value.trim();
   if (!code) { skipTotp(); return; }
-  if (!/^\d{6}$/.test(code)) { showError('Kod TOTP musi mieć 6 cyfr.'); return; }
+  if (!/^\d{6}$/.test(code)) { showError(t('Kod TOTP musi mieć 6 cyfr.')); return; }
   // Weryfikacja nastąpi po stronie serwera przy finalizacji
   totpVerified = true;
   goTo(4);
@@ -277,12 +279,12 @@ function verifyTotp() {
 
 function buildSummary() {
   const rows = [
-    ['Dziecko', document.getElementById('childName').value.trim()],
-    ['TOTP', totpVerified ? '✓ skonfigurowany' : '— pominięty (skonfiguruj później)'],
-    ['Strefa czasowa', document.getElementById('tz').value],
-    ['Limit pon–czw', document.getElementById('limWd').value + ' min'],
-    ['Limit pią–nd', document.getElementById('limWe').value + ' min'],
-    ['Blokada nocna', document.getElementById('nightS').value + ' – ' + document.getElementById('nightE').value],
+    [t('Dziecko'), document.getElementById('childName').value.trim()],
+    ['TOTP', totpVerified ? '✓ ' + t('skonfigurowany') : '— ' + t('pominięty (skonfiguruj później)')],
+    [t('Strefa czasowa'), document.getElementById('tz').value],
+    [t('Limit pon–czw'), document.getElementById('limWd').value + ' min'],
+    [t('Limit pt–nd'), document.getElementById('limWe').value + ' min'],
+    [t('Cisza nocna'), document.getElementById('nightS').value + ' – ' + document.getElementById('nightE').value],
   ];
   document.getElementById('summary').innerHTML = rows.map(([k, v]) =>
     '<div class="summary-row"><span class="key">' + k + '</span><span class="val">' + v + '</span></div>'
@@ -292,7 +294,7 @@ function buildSummary() {
 function finish() {
   showError('');
   const srvUrl = document.getElementById('srvUrl').value.trim();
-  if (!srvUrl.startsWith('http')) { showError('Podaj adres serwera (http://...).'); return; }
+  if (!srvUrl.startsWith('http')) { showError(t('Podaj adres serwera (http://...).')); return; }
 
   const totpCode = totpVerified ? document.getElementById('totpCode').value.trim() : '';
 
@@ -310,7 +312,7 @@ function finish() {
 
   const btn = document.getElementById('btnFinish');
   btn.disabled = true;
-  btn.textContent = 'Zapisywanie…';
+  btn.textContent = t('Zapisywanie…');
 
   fetch('/setup/complete', {
     method: 'POST',
@@ -326,15 +328,15 @@ function finish() {
       const msg = typeof detail === 'object'
         ? Object.entries(detail).map(([k, v]) => k + ': ' + v).join(', ')
         : String(detail);
-      showError('Błąd: ' + msg);
+      showError(t('Błąd: {e}', {e: msg}));
       btn.disabled = false;
-      btn.textContent = 'Zakończ konfigurację';
+      btn.textContent = t('Zakończ konfigurację');
     }
   })
   .catch(() => {
-    showError('Błąd połączenia z serwerem.');
+    showError(t('Błąd połączenia z serwerem.'));
     btn.disabled = false;
-    btn.textContent = 'Zakończ konfigurację';
+    btn.textContent = t('Zakończ konfigurację');
   });
 }
 

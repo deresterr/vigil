@@ -11,7 +11,6 @@ import io
 import re
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyotp
@@ -23,11 +22,11 @@ from ..admin_auth import issue_session_cookie, set_session_cookie
 from ..config import TOTP_ISSUER, week_schedule
 from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
+from ..pages import page
 from .admin_api import ChildCreate, DayPlan, insert_child
 
 router = APIRouter()
 
-_STATIC_DIR = Path(__file__).parent.parent / "static"
 _HHMM_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 
 
@@ -49,7 +48,7 @@ def _png_qr_base64(data: str) -> str:
 async def setup_page(db: sqlite3.Connection = Depends(get_db)) -> HTMLResponse:
     if get_config_value(db, "setup_complete") == "1":
         return RedirectResponse("/admin", status_code=302)
-    return HTMLResponse((_STATIC_DIR / "setup.html").read_text(encoding="utf-8"))
+    return HTMLResponse(page("setup.html"))
 
 
 @router.get("/setup/totp_qr")

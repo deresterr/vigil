@@ -6,7 +6,6 @@ Frontend (admin.html) jest SPA z vanilla JS — woła /admin/api/* przez fetch.
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -21,16 +20,9 @@ from ..admin_auth import (
     verify_admin_password,
 )
 from ..db import get_db, log_event
+from ..pages import page
 
 router = APIRouter()
-
-# Static HTML files trzymamy w app/static/ — embedded CSS i JS w jednym pliku.
-_STATIC_DIR = Path(__file__).parent.parent / "static"
-
-
-def _read_static(name: str) -> str:
-    return (_STATIC_DIR / name).read_text(encoding="utf-8")
-
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_panel(request: Request) -> Response:
@@ -38,12 +30,12 @@ async def admin_panel(request: Request) -> Response:
     zwróci 401, frontend przekierowuje na /admin/login. Sam /admin nie waliduje cookie
     żeby uniknąć podwójnego renderu.
     """
-    return HTMLResponse(_read_static("admin.html"))
+    return HTMLResponse(page("admin.html"))
 
 
 @router.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_form(request: Request) -> Response:
-    return HTMLResponse(_read_static("login.html"))
+    return HTMLResponse(page("login.html"))
 
 
 @router.post("/admin/login")

@@ -3,16 +3,17 @@
 Wywoływana z heartbeat, totp i admin_api — jedna implementacja zamiast kopii.
 Kolejność priorytetów (spec sekcja 6.3): manual > night > limit.
 
-Helper funkcje (parse_hhmm, is_weekend, is_in_night_window, parse_iso_utc) są tu
-zamiast w heartbeat.py żeby uniknąć circular import: heartbeat ↔ lock_logic.
+Also the weekly schedule (#48): per-day limit and the night window that belongs to each evening.
+Helpers live here rather than in heartbeat.py to avoid a heartbeat <-> lock_logic import cycle.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from .config import default_schedule
 from .db import ensure_child_day
 
 # === Datetime helpers ===
@@ -39,46 +40,64 @@ def parse_hhmm(s: str) -> time:
     return time(int(h), int(m))
 
 
-def is_weekend(d: date) -> bool:
-    """Spec sekcja 4.1: piatek liczy sie jako weekend (Pia-Nd: 240 min).
+# === Weekly schedule (#48) ===
 
-    weekday(): Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6.
-    """
-    return d.weekday() >= 4
+# A night_start before noon is after midnight: "Friday 00:30-09:00" is the night from Friday to Saturday.
+_AFTER_MIDNIGHT_BEFORE = time(12, 0)
 
 
-def is_in_night_window(now_local_time: time, night_start: time, night_end: time) -> bool:
-    """True jesli aktualna pora lokalna jest w przedziale night_start..night_end.
-
-    Obsluguje cross-midnight (typowy case: 21:30 -> 06:30).
-    """
-    if night_start < night_end:
-        return night_start <= now_local_time < night_end
-    return now_local_time >= night_start or now_local_time < night_end
-
-
-# === Lock config ===
-
-
-def load_lock_config(child: sqlite3.Row | dict) -> dict:
-    """The child's settings compute_lock_reason needs (a `children` row; read per request, no cache)."""
-    return {
-        "night_lock_start":    child["night_lock_start"],
-        "night_lock_end":      child["night_lock_end"],
-        "daily_limit_weekday": int(child["daily_limit_weekday"]),
-        "daily_limit_weekend": int(child["daily_limit_weekend"]),
-    }
+def load_lock_config(conn: sqlite3.Connection, child_id: int) -> dict:
+    """The child's week for compute_lock_reason: cfg["days"][weekday] (Monday = 0) holds daily_limit,
+    night_start, night_end. Read per request, no cache."""
+    days = default_schedule()  # only a child without schedule rows (should not exist) falls back to it
+    for row in conn.execute("SELECT weekday, daily_limit, night_start, night_end FROM child_schedule "
+                            "WHERE child_id = ?", (child_id,)):
+        days[row["weekday"]] = {"daily_limit": int(row["daily_limit"]), "night_start": row["night_start"],
+                                "night_end": row["night_end"]}
+    return {"days": days}
 
 
 def daily_limit(cfg: dict, day: date) -> int:
-    return cfg["daily_limit_weekend"] if is_weekend(day) else cfg["daily_limit_weekday"]
+    return cfg["days"][day.weekday()]["daily_limit"]
+
+
+def night_window(cfg: dict, day: date) -> tuple[datetime, datetime]:
+    """The night belonging to the evening of `day` (#48), as naive local datetimes [start, end).
+
+    It starts at that day's night_start, or on the next day when night_start is before noon (after
+    midnight), and ends at the first night_end after its start: "Fri 23:00-09:00" = Fri 23:00 to Sat 09:00.
+    """
+    entry = cfg["days"][day.weekday()]
+    start_t, end_t = parse_hhmm(entry["night_start"]), parse_hhmm(entry["night_end"])
+    start_day = day if start_t >= _AFTER_MIDNIGHT_BEFORE else day + timedelta(days=1)
+    end_day = start_day if end_t > start_t else start_day + timedelta(days=1)
+    return datetime.combine(start_day, start_t), datetime.combine(end_day, end_t)
+
+
+def _nearby_nights(cfg: dict, now_local: datetime) -> list[tuple[datetime, datetime]]:
+    # A night starts on its day or the next one and lasts under 24 h, so only these can contain or
+    # follow `now`: from the night of two days ago to tomorrow's.
+    d = now_local.date()
+    return [night_window(cfg, d + timedelta(days=i)) for i in range(-2, 2)]
+
+
+def night_window_at(cfg: dict, now_local: datetime) -> tuple[datetime, datetime] | None:
+    """The night window containing now_local (naive local time), or None."""
+    now_local = now_local.replace(tzinfo=None)
+    return next(((s, e) for s, e in _nearby_nights(cfg, now_local) if s <= now_local < e), None)
+
+
+def current_or_next_night_start(cfg: dict, now_local: datetime) -> datetime:
+    """Start of the night in progress, or of the next one (naive local time)."""
+    now_local = now_local.replace(tzinfo=None)
+    return next(s for s, e in sorted(_nearby_nights(cfg, now_local)) if e > now_local)
 
 
 def child_today(conn: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime, tz: ZoneInfo) -> dict:
     """Today's state of one child: its child_daily row, lock reason and minutes (all its devices)."""
     today = now_utc.astimezone(tz).date()
     state = dict(ensure_child_day(conn, child["id"], today))
-    cfg = load_lock_config(child)
+    cfg = load_lock_config(conn, child["id"])
     limit = daily_limit(cfg, today)
     effective = limit + state["limit_override_minutes"]
     used = state["seconds_used"] // 60
@@ -108,16 +127,12 @@ def compute_lock_reason(
 
     Zwraca: 'manual' | 'night' | 'limit' | 'pause' | None (brak blokady).
 
-    cfg musi zawierać: night_lock_start, night_lock_end,
-                       daily_limit_weekday, daily_limit_weekend.
-    Pass load_lock_config(child).
+    cfg: load_lock_config(conn, child_id).
     """
     if state["manual_lock"]:
         return "manual"
 
-    night_start = parse_hhmm(cfg["night_lock_start"])
-    night_end   = parse_hhmm(cfg["night_lock_end"])
-    in_night    = is_in_night_window(now_utc.astimezone(tz).time(), night_start, night_end)
+    in_night = night_window_at(cfg, now_utc.astimezone(tz)) is not None
 
     night_extended = False
     if state["night_extension_until_utc"]:

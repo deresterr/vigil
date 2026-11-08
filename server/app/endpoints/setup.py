@@ -20,10 +20,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from ..admin_auth import issue_session_cookie, set_session_cookie
-from ..config import TOTP_ISSUER
+from ..config import TOTP_ISSUER, week_schedule
 from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
-from .admin_api import ChildCreate, insert_child
+from .admin_api import ChildCreate, DayPlan, insert_child
 
 router = APIRouter()
 
@@ -92,6 +92,8 @@ async def setup_complete(request: Request,
         errors["night_lock_start"] = "invalid_hhmm"
     if not _HHMM_RE.match(night_end):
         errors["night_lock_end"] = "invalid_hhmm"
+    elif night_end == night_start:
+        errors["night_lock_end"] = "equals_start"
     try:
         ZoneInfo(timezone_str)
     except (ZoneInfoNotFoundError, KeyError):
@@ -124,9 +126,9 @@ async def setup_complete(request: Request,
     for key, value in settings:
         db.execute("INSERT OR REPLACE INTO config(key, value) VALUES (?, ?)", (key, value))
     # The first child (D7) gets the limits from the wizard; its PCs are paired from the panel.
-    child_id = insert_child(db, ChildCreate(
-        name=child_name, daily_limit_weekday=min(limit_weekday, 1440), daily_limit_weekend=min(limit_weekend, 1440),
-        night_lock_start=night_start, night_lock_end=night_end))
+    # The wizard asks for the week in its old shape (Mon–Thu, Fri–Sun, one night); the panel edits each day.
+    week = week_schedule(min(limit_weekday, 1440), min(limit_weekend, 1440), night_start, night_end)
+    child_id = insert_child(db, ChildCreate(name=child_name, schedule=[DayPlan(**d) for d in week]))
 
     log_event(db, "setup_completed", {"child_name": child_name}, child_id=child_id)
 

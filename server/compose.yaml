@@ -1,16 +1,18 @@
-# Vigil server. One instance per child PC (see docs/architecture.md).
+# Vigil server: one instance for all children and their PCs (D7, see docs/architecture.md).
 # Quick start:  cp .env.example .env && docker compose up -d
+#   (with VIGIL_IMAGE set to a release image: docker compose pull && docker compose up -d)
 # Then open http://<server-ip>:<VIGIL_PORT>/setup
 services:
   vigil:
     build: .
-    image: vigil-server:local
+    # A release image (ghcr.io/deresterr/vigil-server:<version>) or, by default, a local build.
+    image: ${VIGIL_IMAGE:-vigil-server:local}
     container_name: ${VIGIL_CHILD:-vigil}
     restart: unless-stopped
     ports:
       - "${VIGIL_PORT:-8088}:${VIGIL_PORT:-8088}"
     volumes:
-      # Each child gets its own data dir (separate SQLite DB).
+      # SQLite DB. The path keeps VIGIL_CHILD from the one-instance-per-PC days, so existing data stays put.
       - ./data/${VIGIL_CHILD:-vigil}:/data
     environment:
       - LISTEN_PORT=${VIGIL_PORT:-8088}

@@ -6,7 +6,7 @@
     Tryby:
         -Mode install        — fresh install (wymaga binarek; bez parametrów wchodzi w tryb interaktywny)
         -Mode uninstall      — remove all (service, task, folder, policies)
-        -Mode update-config  — zmiana server_url (vigil.toml) / signing_key (signing.dat)
+        -Mode update-config  — zmiana adresu serwera (vigil.toml) i/lub ponowne parowanie kodem
         -Mode reinstall      — uninstall + install
 
     Wymaga uruchomienia jako Administrator. Zaprojektowany jako idempotentny:
@@ -19,14 +19,11 @@
     Default: bieżący katalog skryptu.
 
 .PARAMETER ServerUrl
-    Adres servera np. http://192.168.0.2:8088. Wymagane dla install/update-config.
+    Adres servera np. http://192.168.0.2:8088. Bez niego (i bez -PairingCode) install pyta interaktywnie.
 
-
-.PARAMETER SigningKey
-    Signing key (base64 urlsafe bez paddingu) z panelu rodzica. Zwykle niepotrzebny: install
-    paruje się z serwerem kodem (-PairingCode albo pytanie w trybie interaktywnym).
 .PARAMETER PairingCode
-    Jednorazowy kod parowania z panelu rodzica (ważny 10 min). Serwer w zamian wydaje nowy klucz.
+    Jednorazowy kod parowania z panelu rodzica (ważny 10 min): Ustawienia → „Dodaj komputer” dla nowego
+    PC, „Sparuj ponownie” przy istniejącym. Serwer w zamian wydaje klucz podpisujący tego komputera.
 
 .PARAMETER DisableWinRE
     Switch — opcjonalne wyłączenie Windows Recovery Environment (`reagentc /disable`).
@@ -36,17 +33,15 @@
     Użyteczne do testów bez modyfikacji systemu globalnie.
 
 .PARAMETER ChildUsername
-    Nazwa konta dziecka na lokalnym PC (np. 'jasiek'). Jeśli podane, installer zaaplikuje
-    policy (DisableTaskMgr, DisableChangePassword, sticky-keys hot-key off, gesty touchpada)
-    DIRECT do tego konta. Bez tego parametru — tylko Default
-    profile (efekt dla NOWO tworzonych kont).
+    Nazwa konta dziecka, gdy na PC jest kilka kont. Zwykle niepotrzebna: installer sam znajduje jedyne
+    konto użytkownika z profilem (D12) i na nie nakłada policy (DisableTaskMgr, DisableChangePassword,
+    skróty ułatwień dostępu, gesty touchpada). Przy kilku kontach pyta (tryb interaktywny).
 
 .EXAMPLE
     .\vigil_install.ps1 -Mode install `
         -SourceDir 'D:\pc-build' `
         -ServerUrl 'http://192.168.0.2:8088' `
-        -SigningKey 'XyZ123...' `
-        -ChildUsername 'jasiek'
+        -PairingCode '1234 5678'
 
 .EXAMPLE
     .\vigil_install.ps1 -Mode uninstall
@@ -54,7 +49,7 @@
 .EXAMPLE
     .\vigil_install.ps1 -Mode update-config `
         -ServerUrl 'http://192.168.0.5:8088' `
-        -SigningKey 'newKey...'
+        -PairingCode '1234 5678'
 #>
 
 [CmdletBinding()]
@@ -68,7 +63,6 @@ param(
     [string] $TaskName = "Vigil Guardian",
 
     [string] $ServerUrl,
-    [string] $SigningKey,
     [string] $PairingCode,
     [string] $ChildUsername,
 
@@ -197,7 +191,7 @@ function Get-CredentialsFromServer {
     param([string]$serverUrl, [string]$code)
     if (-not $code) {
         Write-Host ""
-        Write-Host "  Kod parowania (panel rodzica -> 'Wygeneruj kod parowania'):"
+        Write-Host "  Kod parowania (panel rodzica -> Ustawienia -> 'Dodaj komputer' albo 'Sparuj ponownie'):"
         $code = (Read-Host "  >").Trim()
     }
     $digits = ($code -replace '[^0-9]', '')
@@ -215,7 +209,7 @@ function Get-CredentialsFromServer {
     } catch {
         $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
         if ($status -eq 404) {
-            throw "Brak aktywnego kodu parowania (wygasł albo został użyty).`n  Wygeneruj nowy kod parowania w panelu rodzica."
+            throw "Brak aktywnego kodu parowania (wygasł albo został użyty).`n  Wygeneruj nowy kod w panelu rodzica (Ustawienia -> 'Dodaj komputer')."
         }
         if ($status -eq 401) {
             throw "Nieprawidłowy kod parowania. Po 5 błędnych próbach kod przestaje działać."
@@ -224,43 +218,66 @@ function Get-CredentialsFromServer {
     }
 }
 
-function Select-ChildUsername {
-    Write-Step "Wybór konta dziecka"
-    # Lista lokalnych userów bez kont systemowych
-    $excluded = @('Administrator','Gość','Guest','DefaultAccount','WDAGUtilityAccount','SYSTEM')
-    $users = @(Get-LocalUser | Where-Object { $_.Name -notin $excluded -and $_.Enabled } | Select-Object -ExpandProperty Name)
-    if (-not $users) {
-        Write-Warn "Brak standardowych kont lokalnych. Wpisz nazwę konta ręcznie."
-        $script:ChildUsername = (Read-Host "  Nazwa konta").Trim()
+function Get-InteractiveAccounts {
+    # Accounts with a profile on this PC: S-1-5-21-* in ProfileList, minus the built-ins by RID (500
+    # Administrator, 501 Guest, 503 DefaultAccount, 504 WDAGUtilityAccount). By SID, never by name: Polish
+    # Windows calls Guest "Gość", and a Microsoft account's profile folder is not its user name.
+    $list = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
+    foreach ($key in @(Get-ChildItem -Path $list -ErrorAction SilentlyContinue)) {
+        $sid = $key.PSChildName
+        if ($sid -notmatch '^S-1-5-21-[\d-]+-(\d+)$') { continue }
+        if ([int]$matches[1] -in 500, 501, 503, 504) { continue }
+        $profilePath = (Get-ItemProperty -Path $key.PSPath -Name ProfileImagePath -ErrorAction SilentlyContinue).ProfileImagePath
+        if (-not $profilePath -or -not (Test-Path (Join-Path $profilePath 'NTUSER.DAT'))) { continue }
+        $name = try {
+            (New-Object System.Security.Principal.SecurityIdentifier($sid)).Translate([System.Security.Principal.NTAccount]).Value
+        } catch { $sid }
+        [pscustomobject]@{ Sid = $sid; Name = $name; Profile = $profilePath }
+    }
+}
+
+function Resolve-ChildAccount {
+    # Sets $script:ChildAccount (Sid, Name, Profile) or leaves it $null (policies then only in the
+    # Default profile). D12: the child's account is the only interactive one, so usually no question.
+    param([switch]$AllowPrompt)
+    Write-Step "Konto dziecka"
+    $accounts = @(Get-InteractiveAccounts)
+    if ($ChildUsername) {
+        $sid = Get-UserSid $ChildUsername
+        $script:ChildAccount = $accounts | Where-Object { $_.Sid -eq $sid } | Select-Object -First 1
+        if (-not $script:ChildAccount) {
+            throw "Konto '$ChildUsername' nie istnieje albo nie ma profilu na tym komputerze (zaloguj się na nie raz)."
+        }
+    } elseif ($accounts.Count -eq 1) {
+        $script:ChildAccount = $accounts[0]
+    } elseif ($accounts.Count -eq 0) {
+        Write-Warn "Nie znaleziono konta użytkownika z profilem — policy tylko w Default profile (nowe konta)."
+        return
+    } elseif ($AllowPrompt) {
+        Write-Host "  Na komputerze jest kilka kont:"
+        for ($i = 0; $i -lt $accounts.Count; $i++) { Write-Host "  [$($i+1)] $($accounts[$i].Name)" }
+        $choice = Read-Host "  Numer konta dziecka"
+        $idx = 0
+        if (-not [int]::TryParse($choice, [ref]$idx) -or $idx -lt 1 -or $idx -gt $accounts.Count) {
+            throw "Nieprawidłowy numer konta."
+        }
+        $script:ChildAccount = $accounts[$idx - 1]
+    } else {
+        Write-Warn "Kilka kont użytkowników, a nie podano -ChildUsername — policy tylko w Default profile."
         return
     }
-    Write-Host ""
-    for ($i = 0; $i -lt $users.Count; $i++) {
-        Write-Host "  [$($i+1)] $($users[$i])"
-    }
-    Write-Host ""
-    $choice = Read-Host "  Numer konta dziecka (Enter = pomiń)"
-    if ([string]::IsNullOrWhiteSpace($choice)) {
-        Write-Warn "Pominięto wybór konta — polityki zostaną zastosowane tylko dla Default User profile."
-        return
-    }
-    $idx = [int]$choice - 1
-    if ($idx -lt 0 -or $idx -ge $users.Count) { throw "Nieprawidłowy numer konta." }
-    $script:ChildUsername = $users[$idx]
-    Write-OK "Konto: $($script:ChildUsername)"
+    Write-OK "Konto dziecka: $($script:ChildAccount.Name)"
 }
 
 function Step-ValidateInstallParams {
-    # Jeśli wszystkie parametry podane z linii poleceń — klasyczna walidacja bez pytań
-    if ($ServerUrl -and $SigningKey) {
+    # Everything on the command line: no questions (the account is resolved, never asked for).
+    if ($ServerUrl -and $PairingCode) {
         $script:ServerUrl = Normalize-ServerUrl $ServerUrl
-        # Walidacja signing key
-        try {
-            $keyBytes = ConvertFrom-Base64UrlSafe $SigningKey
-            if ($keyBytes.Length -lt 16) { throw "Za krótki po dekodowaniu ($($keyBytes.Length) bajtów)" }
-        } catch {
-            throw "SigningKey nieprawidłowy: $_"
+        if (-not (Test-ServerReachable $script:ServerUrl)) {
+            throw "Nie można połączyć się z serwerem $($script:ServerUrl)."
         }
+        Get-CredentialsFromServer -serverUrl $script:ServerUrl -code $PairingCode
+        Resolve-ChildAccount
         Write-OK "Parametry OK (server=$($script:ServerUrl))"
         return
     }
@@ -289,17 +306,8 @@ function Step-ValidateInstallParams {
     }
     Write-Host " OK" -ForegroundColor Green
 
-    # Pobierz credentials z serwera (jeśli nie podane parametrami)
-    if (-not $SigningKey) {
-        Get-CredentialsFromServer -serverUrl $script:ServerUrl -code $PairingCode
-    } else {
-        $script:SigningKey = $SigningKey
-    }
-
-    # ChildUsername — interaktywnie jeśli nie podane
-    if (-not $ChildUsername) {
-        Select-ChildUsername
-    }
+    Get-CredentialsFromServer -serverUrl $script:ServerUrl -code $PairingCode
+    Resolve-ChildAccount -AllowPrompt
 
     Write-OK "Konfiguracja zebrana (server=$($script:ServerUrl))"
 }
@@ -697,48 +705,35 @@ function Step-ApplyUserPolicies {
         }
     }
 
-    # Strategia 2: jeśli podano -ChildUsername, aplikuj policy DIRECT do tego konta przez HKU\{SID}.
-    # Wymaga że user jest zalogowany ALBO mountujemy jego NTUSER.DAT. Tu prościej: jeśli zalogowany,
-    # ULOAD jest dostępny w HKEY_USERS. Jeśli nie zalogowany — mountujemy plik.
-    if ($ChildUsername) {
-        $sid = Get-UserSid $ChildUsername
-        if (-not $sid) {
-            Write-Warn "Nie udało się rozpoznać SID dla użytkownika '$ChildUsername' — pomijam direct apply"
+    # Strategia 2: the child's account (Resolve-ChildAccount) directly: its live hive when it is logged
+    # on, otherwise its NTUSER.DAT mounted from the profile folder ProfileList names.
+    if ($script:ChildAccount) {
+        $acc = $script:ChildAccount
+        $hkuPath = "Registry::HKEY_USERS\$($acc.Sid)"
+        if (Test-Path $hkuPath) {
+            try {
+                Set-PoliciesForRegistryHive -BasePath $hkuPath -Label "User '$($acc.Name)' (live HKU)"
+            } catch {
+                Write-Warn "Policy apply dla zalogowanego $($acc.Name) failed: $_"
+            }
         } else {
-            $hkuPath = "Registry::HKEY_USERS\$sid"
-            if (Test-Path $hkuPath) {
-                # User zalogowany — HKU jest live, można pisać bezpośrednio
-                try {
-                    Set-PoliciesForRegistryHive -BasePath $hkuPath -Label "User '$ChildUsername' (live HKU)"
-                } catch {
-                    Write-Warn "Policy apply dla zalogowanego $ChildUsername failed: $_"
-                }
-            } else {
-                # User niezalogowany — mountujemy jego NTUSER.DAT
-                $childProfile = "$env:SystemDrive\Users\$ChildUsername\NTUSER.DAT"
-                if (-not (Test-Path $childProfile)) {
-                    Write-Warn "Profile $ChildUsername nie istnieje pod $childProfile — pomijam direct apply"
-                } else {
-                    $tempChildKey = "HKLM\PC_ChildUser"
-                    try {
-                        if ((Invoke-RegExe load $tempChildKey $childProfile) -ne 0) { throw "reg load failed" }
-                        Set-PoliciesForRegistryHive `
-                            -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_ChildUser" `
-                            -Label "User '$ChildUsername' (offline NTUSER.DAT)"
-                    } catch {
-                        Write-Warn "Child profile policy failed: $_"
-                    } finally {
-                        [gc]::Collect()
-                        [gc]::WaitForPendingFinalizers()
-                        Start-Sleep -Milliseconds 500
-                        [void](Invoke-RegExe unload $tempChildKey)
-                    }
-                }
+            $tempChildKey = "HKLM\PC_ChildUser"
+            try {
+                if ((Invoke-RegExe load $tempChildKey (Join-Path $acc.Profile 'NTUSER.DAT')) -ne 0) { throw "reg load failed" }
+                Set-PoliciesForRegistryHive `
+                    -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_ChildUser" `
+                    -Label "User '$($acc.Name)' (offline NTUSER.DAT)"
+            } catch {
+                Write-Warn "Child profile policy failed: $_"
+            } finally {
+                [gc]::Collect()
+                [gc]::WaitForPendingFinalizers()
+                Start-Sleep -Milliseconds 500
+                [void](Invoke-RegExe unload $tempChildKey)
             }
         }
     } else {
-        Write-Warn "Brak -ChildUsername — policy zaaplikowane TYLKO w Default profile (efekt dla NOWYCH kont)."
-        Write-Warn "Dla istniejącego konta dziecka uruchom installer ponownie z -ChildUsername <nazwa> lub zaloguj się jako dziecko i wykonaj policy ręcznie."
+        Write-Warn "Brak konta dziecka — policy zaaplikowane TYLKO w Default profile (efekt dla NOWYCH kont)."
     }
 }
 
@@ -1082,20 +1077,19 @@ function Step-ReverseUserPolicies {
         }
     }
 
-    # 3. Named child account that is not logged in (offline NTUSER.DAT).
-    if ($ChildUsername) {
-        $sid = Get-UserSid $ChildUsername
-        $childProfile = "$env:SystemDrive\Users\$ChildUsername\NTUSER.DAT"
-        if ($sid -and -not (Test-Path "Registry::HKEY_USERS\$sid") -and (Test-Path $childProfile)) {
-            $tempChildKey = "HKLM\PC_ChildUser"
-            if ((Invoke-RegExe load $tempChildKey $childProfile) -eq 0) {
-                try {
-                    Clear-PoliciesFromRegistryHive -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_ChildUser"
-                    Write-OK "User '$ChildUsername' (offline): policies removed"
-                } finally {
-                    [gc]::Collect(); [gc]::WaitForPendingFinalizers(); Start-Sleep -Milliseconds 500
-                    [void](Invoke-RegExe unload $tempChildKey)
-                }
+    # 3. Every account that is not logged in (offline NTUSER.DAT): whichever got the policies, also
+    #    when the installer guessed or was told a different account than this run would.
+    $loaded = @(Get-LoadedUserHives)
+    foreach ($acc in @(Get-InteractiveAccounts)) {
+        if ($acc.Sid -in $loaded) { continue }
+        $tempChildKey = "HKLM\PC_ChildUser"
+        if ((Invoke-RegExe load $tempChildKey (Join-Path $acc.Profile 'NTUSER.DAT')) -eq 0) {
+            try {
+                Clear-PoliciesFromRegistryHive -BasePath "Registry::HKEY_LOCAL_MACHINE\PC_ChildUser"
+                Write-OK "User '$($acc.Name)' (offline): policies removed"
+            } finally {
+                [gc]::Collect(); [gc]::WaitForPendingFinalizers(); Start-Sleep -Milliseconds 500
+                [void](Invoke-RegExe unload $tempChildKey)
             }
         }
     }
@@ -1155,8 +1149,8 @@ function Invoke-UpdateConfig {
     if (-not (Test-Path $InstallDir)) {
         throw "$InstallDir nie istnieje — najpierw -Mode install"
     }
-    if (-not $ServerUrl -and -not $SigningKey) {
-        throw "Podaj co najmniej jeden z: -ServerUrl, -SigningKey"
+    if (-not $ServerUrl -and -not $PairingCode) {
+        throw "Podaj co najmniej jeden z: -ServerUrl, -PairingCode"
     }
 
     # Załaduj istniejące values z vigil.toml gdy parametry nie podane
@@ -1164,7 +1158,12 @@ function Invoke-UpdateConfig {
     if (-not $ServerUrl) {
         if ($existingToml -match 'server_url\s*=\s*"([^"]*)"') { $script:ServerUrl = $matches[1] }
         else { throw "ServerUrl nie podany i nie znaleziony w vigil.toml" }
-    } else { $script:ServerUrl = $ServerUrl }
+    } else { $script:ServerUrl = Normalize-ServerUrl $ServerUrl }
+
+    # Re-pair before stopping anything: a wrong or expired code leaves the install as it was.
+    if ($PairingCode) {
+        Get-CredentialsFromServer -serverUrl $script:ServerUrl -code $PairingCode
+    }
 
     $null = Stop-VigilService
 
@@ -1174,13 +1173,7 @@ function Invoke-UpdateConfig {
     try {
         # Zawsze przepisz vigil.toml: usuwa bearer_token ze starych instalacji (protokół v1).
         Step-WriteVigilToml
-        if ($SigningKey) {
-            $keyBytes = ConvertFrom-Base64UrlSafe $SigningKey
-            if ($keyBytes.Length -lt 16) {
-                throw "SigningKey po dekodowaniu ma tylko $($keyBytes.Length) bajtów"
-            }
-            Step-WriteSigningDat
-        }
+        if ($PairingCode) { Step-WriteSigningDat }
         Step-RemoveLegacyFiles
     } finally {
         # Niezależnie od success/fail — przywróć restrykcyjne ACL

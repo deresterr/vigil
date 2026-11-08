@@ -76,7 +76,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Vigil",
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -153,10 +153,7 @@ def health(db: sqlite3.Connection = Depends(get_db)) -> dict[str, str]:
     except sqlite3.Error as e:
         logger.exception("Healthcheck DB failed")
         raise HTTPException(status_code=503, detail=f"db_error: {e}") from e
-    with get_connection() as conn:
-        from .db import get_config_value
-        name = get_config_value(conn, "device_name") or "Vigil"
-    return {"status": "ok", "name": name}
+    return {"status": "ok", "name": "Vigil"}
 
 
 # Root redirect — bezpośrednio do /setup jeśli nie skonfigurowane, /admin jeśli OK.

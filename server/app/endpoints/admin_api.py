@@ -1,363 +1,413 @@
-"""JSON API dla admin UI (/admin/api/*). Wszystkie wymagają cookie session (require_admin_session).
+"""JSON API of the parent panel (/admin/api/*). Every endpoint needs the session cookie.
 
-Endpointy:
-- GET  /admin/api/status            — current daily_state + lock + watchdog online + config snapshot
-- POST /admin/api/grant             — manual grant czasu (limit lub night)
-- POST /admin/api/manual_lock       — toggle manual_lock
-- POST /admin/api/clear_extension   — wyczyść night_extension_until_utc
-- GET  /admin/api/config            — wszystkie config values (oprócz secrets)
-- POST /admin/api/config            — update config (single key lub batch)
-- POST /admin/api/regen_totp        — wygeneruj nowy TOTP secret + zwróć QR
-- POST /admin/api/regen_tokens      — wygeneruj nowy signing_key dla watchdoga
-- POST /admin/api/pairing_code      — jednorazowy kod parowania PC dziecka (Install.cmd)
-- GET  /admin/api/events            — lista ostatnich N events
-- POST /admin/api/change_password   — zmiana hasła rodzica
+Children and devices (D7):
+- GET    /admin/api/status?child_id=        — overview of all children + details of one
+- POST   /admin/api/children                — add a child
+- PATCH  /admin/api/children/{id}           — name, limits, night window
+- DELETE /admin/api/children/{id}           — only without devices
+- POST   /admin/api/children/{id}/grant     — extra time (limit or night)
+- POST   /admin/api/children/{id}/manual_lock
+- POST   /admin/api/children/{id}/clear_extension
+- PATCH  /admin/api/devices/{id}            — rename
+- DELETE /admin/api/devices/{id}            — unpair (its key stops working: the PC fails closed)
+- POST   /admin/api/pairing_code            — one-time code: new device of a child, or re-pair a device
+- DELETE /admin/api/pairing_code            — cancel it
+Server-wide:
+- GET/POST /admin/api/config                — timezone, heartbeat_grace_seconds
+- GET /admin/api/totp, POST /admin/api/regen_totp — the one TOTP secret for all children
+- POST /admin/api/change_password
 """
 
 from __future__ import annotations
 
 import io
-import re
 import sqlite3
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyotp
 import qrcode
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..admin_auth import require_admin_session, verify_admin_password
-from ..config import TOTP_ISSUER
-from ..crypto import generate_token_b64, hash_password
+from ..config import CHILD_DEFAULTS, TOTP_ISSUER
+from ..crypto import hash_password
 from ..db import (
-    ensure_daily_state,
+    ensure_child_day,
+    get_child,
     get_config_int,
     get_config_value,
     get_db,
     log_event,
     set_config_value,
-    update_daily_state,
+    update_child_day,
 )
-from ..lock_logic import (
-    compute_lock_reason,
-    is_in_night_window,
-    is_weekend,
-    load_lock_config,
-    parse_hhmm,
-    parse_iso_utc,
-)
+from ..lock_logic import child_today, is_in_night_window, is_weekend, parse_hhmm, parse_iso_utc
 from .journal import ALERT_WHERE
-from .pairing import active_pairing_expiry, create_pairing_code
+from .pairing import active_pairing_expiry, clear_pairing_code, create_pairing_code
 from .totp import _compute_night_extension_until
 
 router = APIRouter(prefix="/admin/api", dependencies=[Depends(require_admin_session)])
 
+HHMM = Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+Minutes = Annotated[int, Field(ge=0, le=1440)]
+Name = Annotated[str, Field(min_length=1, max_length=40)]
 
-# === GET /admin/api/status ===
+
+class _Body(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", str_strip_whitespace=True)
+
+
+def _now_tz(db: sqlite3.Connection) -> tuple[datetime, ZoneInfo]:
+    return datetime.now(timezone.utc), ZoneInfo(get_config_value(db, "timezone"))
+
+
+def _child_or_404(db: sqlite3.Connection, child_id: int) -> sqlite3.Row:
+    child = get_child(db, child_id)
+    if child is None:
+        raise HTTPException(status_code=404, detail="child_not_found")
+    return child
+
+
+# === Status ===
+
+
+def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, grace: int, today: str) -> dict:
+    ago = None
+    online = False
+    last_local = None
+    if row["last_heartbeat_utc"]:
+        last = parse_iso_utc(row["last_heartbeat_utc"])
+        ago = int((now_utc - last).total_seconds())
+        online = ago <= grace * 2  # 2x grace: a bit tolerant for the panel
+        last_local = last.astimezone(tz).strftime("%Y-%m-%d %H:%M")
+    active_now = online and bool(row["last_active_utc"]) and \
+        (now_utc - parse_iso_utc(row["last_active_utc"])).total_seconds() <= grace * 2
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "online": online,
+        "active_now": active_now,
+        "last_heartbeat_ago_seconds": ago,
+        "last_heartbeat_local": last_local,
+        "paired_local": parse_iso_utc(row["paired_utc"]).astimezone(tz).strftime("%Y-%m-%d"),
+        "minutes_today": (row["seconds_today"] // 60) if row["seconds_date"] == today else 0,
+    }
+
+
+def _child_detail(db: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime, tz: ZoneInfo,
+                  devices: list[dict]) -> dict:
+    t = child_today(db, child, now_utc, tz)
+    state, cfg = t["state"], t["cfg"]
+    night_ext_local = None
+    if state["night_extension_until_utc"]:
+        ext = parse_iso_utc(state["night_extension_until_utc"])
+        if now_utc < ext:
+            night_ext_local = ext.astimezone(tz).strftime("%Y-%m-%d %H:%M")
+    now_local = now_utc.astimezone(tz)
+    return {
+        "id": child["id"],
+        "name": child["name"],
+        "today_local": t["today"].isoformat(),
+        "is_weekend": is_weekend(t["today"]),
+        "current_time_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
+        "lock_required": t["lock_reason"] is not None,
+        "lock_reason": t["lock_reason"],
+        "minutes_used": t["minutes_used"],
+        "minutes_remaining": t["minutes_remaining"],
+        "daily_limit": t["daily_limit"],
+        "limit_override_minutes": state["limit_override_minutes"],
+        "effective_limit": t["effective_limit"],
+        "manual_lock": bool(state["manual_lock"]),
+        "pause_active": bool(state["pause_active"]),
+        "night_extension_until_local": night_ext_local,
+        "in_night_window": is_in_night_window(now_local.time(), parse_hhmm(cfg["night_lock_start"]),
+                                              parse_hhmm(cfg["night_lock_end"])),
+        "daily_limit_weekday": cfg["daily_limit_weekday"],
+        "daily_limit_weekend": cfg["daily_limit_weekend"],
+        "night_lock_start": cfg["night_lock_start"],
+        "night_lock_end": cfg["night_lock_end"],
+        "devices": devices,
+    }
 
 
 @router.get("/status")
-async def status(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Podstawowy status — wszystko czego admin UI potrzebuje do top sekcji.
+async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None = None) -> dict:
+    """Everything the panel polls every 5 s: all children in brief, one child (child_id, default the
+    first) in full. `child` is null while there is no child yet."""
+    now_utc, tz = _now_tz(db)
+    grace = get_config_int(db, "heartbeat_grace_seconds")
+    today = now_utc.astimezone(tz).date().isoformat()
+    children = db.execute("SELECT * FROM children ORDER BY id").fetchall()
+    unacked = dict(db.execute(
+        f"SELECT child_id, COUNT(*) FROM events WHERE {ALERT_WHERE} AND acked_utc IS NULL GROUP BY child_id"
+    ).fetchall())
 
-    Auto-refresh co 5s po stronie klienta.
-    """
-    now_utc = datetime.now(timezone.utc)
-    tz_name = get_config_value(db, "timezone")
-    tz = ZoneInfo(tz_name)
-    now_local = now_utc.astimezone(tz)
-    today_local = now_local.date()
-
-    state = dict(ensure_daily_state(db, today_local))
-
-    # Night extension — potrzebne zarówno do lock_reason jak i do wyświetlenia "do kiedy"
-    night_extended = False
-    night_extension_local: str | None = None
-    if state["night_extension_until_utc"]:
-        ext_until = parse_iso_utc(state["night_extension_until_utc"])
-        if now_utc < ext_until:
-            night_extended = True
-        night_extension_local = ext_until.astimezone(tz).strftime("%Y-%m-%d %H:%M")
-
-    lock_reason: str | None = compute_lock_reason(now_utc, tz, today_local, state, load_lock_config(db))
-
-    # in_night potrzebne do pola in_night_window w response (informacyjne dla admin UI)
-    night_start = parse_hhmm(get_config_value(db, "night_lock_start"))
-    night_end = parse_hhmm(get_config_value(db, "night_lock_end"))
-    in_night = is_in_night_window(now_local.time(), night_start, night_end)
-
-    daily_limit = get_config_int(
-        db, "daily_limit_weekend" if is_weekend(today_local) else "daily_limit_weekday"
-    )
-    effective_limit = daily_limit + state["limit_override_minutes"]
-    minutes_used = state["seconds_used"] // 60
-
-    # Watchdog online: ostatni heartbeat <= grace_seconds temu
-    watchdog_online = False
-    last_heartbeat_ago: int | None = None
-    if state["last_heartbeat_utc"]:
-        last_hb = parse_iso_utc(state["last_heartbeat_utc"])
-        last_heartbeat_ago = int((now_utc - last_hb).total_seconds())
-        grace = get_config_int(db, "heartbeat_grace_seconds")
-        watchdog_online = last_heartbeat_ago <= grace * 2  # 2× grace dla "online" w UI (bardziej tolerancyjne)
+    summaries, detail = [], None
+    devices_online = devices_total = 0
+    for child in children:
+        devices = [_device_view(d, now_utc, tz, grace, today) for d in
+                   db.execute("SELECT * FROM devices WHERE child_id = ? ORDER BY id", (child["id"],))]
+        online = sum(d["online"] for d in devices)
+        devices_online += online
+        devices_total += len(devices)
+        summaries.append({
+            "id": child["id"],
+            "name": child["name"],
+            "lock_reason": child_today(db, child, now_utc, tz)["lock_reason"],
+            "alerts_unacked": unacked.get(child["id"], 0),
+            "devices_online": online,
+            "devices_total": len(devices),
+        })
+        if detail is None and child_id in (None, child["id"]):
+            detail = _child_detail(db, child, now_utc, tz, devices)
+    if child_id is not None and detail is None:
+        raise HTTPException(status_code=404, detail="child_not_found")
 
     return {
-        "device_name": get_config_value(db, "device_name") or "Vigil",
-        "today_local": today_local.isoformat(),
-        "is_weekend": is_weekend(today_local),
-        "current_time_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
-        "lock_required": lock_reason is not None,
-        "lock_reason": lock_reason,
-        "minutes_used": minutes_used,
-        "minutes_remaining": max(0, effective_limit - minutes_used),
-        "daily_limit": daily_limit,
-        "limit_override_minutes": state["limit_override_minutes"],
-        "effective_limit": effective_limit,
-        "manual_lock": bool(state["manual_lock"]),
-        "pause_active": bool(state.get("pause_active", 0)),
-        "night_extension_until_local": night_extension_local if night_extended else None,
-        "alerts_unacked": db.execute(f"SELECT COUNT(*) FROM events WHERE {ALERT_WHERE} AND acked_utc IS NULL")
-        .fetchone()[0],
-        "in_night_window": in_night,
-        "night_lock_start": get_config_value(db, "night_lock_start"),
-        "night_lock_end": get_config_value(db, "night_lock_end"),
-        # Watchdog state
-        "watchdog_online": watchdog_online,
-        "last_heartbeat_utc": state["last_heartbeat_utc"],
-        "last_heartbeat_ago_seconds": last_heartbeat_ago,
+        "children": summaries,
+        "child": detail,
+        "devices_online": devices_online,
+        "devices_total": devices_total,
+        "alerts_unacked": sum(unacked.values()),
         "pairing_active": active_pairing_expiry(db, now_utc) is not None,
     }
 
 
-# === POST /admin/api/grant ===
+# === Children ===
 
 
-@router.post("/grant")
-async def grant(request: Request, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Manualny grant czasu (bez TOTP — admin już zalogowany hasłem).
-
-    Body: {"minutes": int, "mode": "limit" | "night"}
-    """
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="body_must_be_object")
-    minutes = body.get("minutes")
-    mode = body.get("mode")
-    if not isinstance(minutes, int) or isinstance(minutes, bool) or minutes <= 0 or minutes > 1440:
-        raise HTTPException(status_code=422, detail="invalid_minutes")
-    if mode not in ("limit", "night"):
-        raise HTTPException(status_code=422, detail="invalid_mode")
-
-    now_utc = datetime.now(timezone.utc)
-    tz = ZoneInfo(get_config_value(db, "timezone"))
-    today_local = now_utc.astimezone(tz).date()
-    # Upsert pustego rekordu (idempotent) — kolejne SQL operuje na istniejącym rekordzie
-    ensure_daily_state(db, today_local)
-
-    if mode == "limit":
-        # Atomic increment — race-safe gdy admin szybko klika kilka grantów równolegle.
-        # Stary kod (SELECT → modify in Python → UPDATE) tracił grants w tym scenariuszu.
-        db.execute(
-            "UPDATE daily_state SET limit_override_minutes = limit_override_minutes + ? "
-            "WHERE date_local = ?",
-            (minutes, today_local.isoformat()),
-        )
-        # Re-SELECT żeby zwrócić aktualną wartość w response (informational)
-        new_override = db.execute(
-            "SELECT limit_override_minutes FROM daily_state WHERE date_local = ?",
-            (today_local.isoformat(),),
-        ).fetchone()["limit_override_minutes"]
-        log_event(
-            db, "grant_applied",
-            {"mode": "extend_limit", "minutes": minutes, "via": "admin_ui"},
-        )
-        return {
-            "ok": True,
-            "applied": f"Dodano {minutes} minut do limitu dziennego.",
-            "new_override": new_override,
-        }
-
-    # mode == "night"
-    # Czytamy AKTUALNY extension żeby się dopisać do końca poprzedniego (jeśli istnieje).
-    # Stary kod liczył zawsze od night_start → wielokrotne klikanie "+60" dawało zawsze
-    # ten sam moment końca (nadpisanie, nie akumulacja).
-    current_ext_row = db.execute(
-        "SELECT night_extension_until_utc FROM daily_state WHERE date_local = ?",
-        (today_local.isoformat(),),
-    ).fetchone()
-    current_ext_utc = None
-    if current_ext_row and current_ext_row["night_extension_until_utc"]:
-        try:
-            parsed = parse_iso_utc(current_ext_row["night_extension_until_utc"])
-            if parsed > now_utc:
-                current_ext_utc = parsed
-        except (ValueError, TypeError):
-            pass  # corrupt data — ignoruj, bazuj na night_start
-
-    ext_utc, ext_local = _compute_night_extension_until(
-        now_utc, tz, minutes, db, current_extension_utc=current_ext_utc
-    )
-    update_daily_state(
-        db, today_local, night_extension_until_utc=ext_utc.isoformat()
-    )
-    log_event(
-        db, "grant_applied",
-        {"mode": "extend_night", "minutes": minutes, "via": "admin_ui",
-         "until_local": ext_local.strftime("%Y-%m-%d %H:%M")},
-    )
-    return {
-        "ok": True,
-        "applied": f"Dziecko może grać do {ext_local.strftime('%H:%M')}.",
-        "until_local": ext_local.strftime("%Y-%m-%d %H:%M"),
-    }
+class ChildCreate(_Body):
+    name: Name
+    daily_limit_weekday: Minutes = CHILD_DEFAULTS["daily_limit_weekday"]
+    daily_limit_weekend: Minutes = CHILD_DEFAULTS["daily_limit_weekend"]
+    night_lock_start: HHMM = CHILD_DEFAULTS["night_lock_start"]
+    night_lock_end: HHMM = CHILD_DEFAULTS["night_lock_end"]
 
 
-# === POST /admin/api/manual_lock ===
+class ChildUpdate(_Body):
+    name: Name | None = None
+    daily_limit_weekday: Minutes | None = None
+    daily_limit_weekend: Minutes | None = None
+    night_lock_start: HHMM | None = None
+    night_lock_end: HHMM | None = None
 
 
-@router.post("/manual_lock")
-async def set_manual_lock(request: Request, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Body: {"locked": true|false}. Toggle blokady manualnej."""
-    body = await request.json()
-    if not isinstance(body, dict) or not isinstance(body.get("locked"), bool):
-        raise HTTPException(status_code=422, detail="invalid_body")
-
-    now_utc = datetime.now(timezone.utc)
-    tz = ZoneInfo(get_config_value(db, "timezone"))
-    today_local = now_utc.astimezone(tz).date()
-    ensure_daily_state(db, today_local)
-
-    new_state = 1 if body["locked"] else 0
-    update_daily_state(db, today_local, manual_lock=new_state)
-    log_event(
-        db, "manual_lock_set" if body["locked"] else "manual_lock_cleared",
-        {"via": "admin_ui"},
-    )
-    return {"ok": True, "manual_lock": bool(new_state)}
+def insert_child(db: sqlite3.Connection, body: ChildCreate) -> int:
+    """Shared with the setup wizard."""
+    return db.execute(
+        "INSERT INTO children(name, daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end, "
+        "created_utc) VALUES (?, ?, ?, ?, ?, ?)",
+        (body.name, body.daily_limit_weekday, body.daily_limit_weekend, body.night_lock_start,
+         body.night_lock_end, datetime.now(timezone.utc).isoformat()),
+    ).lastrowid
 
 
-# === POST /admin/api/clear_extension ===
+@router.post("/children")
+async def create_child(body: ChildCreate, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    child_id = insert_child(db, body)
+    log_event(db, "child_added", {"name": body.name}, child_id=child_id)
+    return {"ok": True, "id": child_id}
 
 
-@router.post("/clear_extension")
-async def clear_extension(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Wyczysz wszystkie przedłużenia: night_extension i limit_override (bonus czasu).
-    Przydatne gdy rodzic się rozmyślił po przyznaniu +60 lub +godziny ciszy nocnej."""
-    now_utc = datetime.now(timezone.utc)
-    tz = ZoneInfo(get_config_value(db, "timezone"))
-    today_local = now_utc.astimezone(tz).date()
-    update_daily_state(
-        db, today_local,
-        night_extension_until_utc=None,
-        limit_override_minutes=0,
-    )
-    log_event(db, "extensions_cleared", {"via": "admin_ui"})
+@router.patch("/children/{child_id}")
+async def update_child(child_id: int, body: ChildUpdate, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    _child_or_404(db, child_id)
+    fields = body.model_dump(exclude_none=True)
+    if fields:
+        db.execute(f"UPDATE children SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                   (*fields.values(), child_id))
+        log_event(db, "config_updated", {"keys": sorted(fields), "via": "admin_ui"}, child_id=child_id)
+    return {"ok": True, "updated": sorted(fields)}
+
+
+@router.delete("/children/{child_id}")
+async def delete_child(child_id: int, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    child = _child_or_404(db, child_id)
+    if db.execute("SELECT 1 FROM devices WHERE child_id = ?", (child_id,)).fetchone():
+        raise HTTPException(status_code=409, detail="child_has_devices")
+    if get_config_value(db, "pairing_child_id") == str(child_id):
+        clear_pairing_code(db)
+    db.execute("DELETE FROM child_daily WHERE child_id = ?", (child_id,))
+    db.execute("DELETE FROM children WHERE id = ?", (child_id,))
+    # Journal entries stay (with their child_id); the journal shows them under the stored name.
+    log_event(db, "child_removed", {"name": child["name"]}, child_id=child_id)
     return {"ok": True}
 
 
-# === GET /admin/api/config ===
+class GrantBody(_Body):
+    minutes: Annotated[int, Field(gt=0, le=1440)]
+    mode: Annotated[str, Field(pattern="^(limit|night)$")]
 
-# Klucze edytowalne przez admin UI (kosmetyczne typu retention zostają hardcoded).
-_EDITABLE_CONFIG_KEYS = {
-    "daily_limit_weekday": int,
-    "daily_limit_weekend": int,
-    "night_lock_start": str,  # HH:MM
-    "night_lock_end": str,    # HH:MM
-    "timezone": str,
-    # heartbeat_grace_seconds: używany TYLKO przez admin UI do wyznaczania "watchdog online".
-    # Watchdog (Worker.cs) hardkoduje własny grace (30s po starcie, 90s podczas startup).
-    # Zmiana tej wartości NIE wpływa na zachowanie watchdoga.
-    "heartbeat_grace_seconds": int,
-}
 
-# Dopuszczalne zakresy dla integer config values. Klucze bez wpisu mają tylko `value >= 0`.
-# 1440 min = 24h (max dziennego limitu); idle/grace celowo nie nakładamy aby admin nie
-# wpadł na ścianę w niespotykanych setupach.
-_INT_CONFIG_BOUNDS: dict[str, tuple[int, int]] = {
-    "daily_limit_weekday": (0, 1440),
-    "daily_limit_weekend": (0, 1440),
-}
+@router.post("/children/{child_id}/grant")
+async def grant(child_id: int, body: GrantBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """Extra time from the panel (the parent is logged in: no TOTP)."""
+    child = _child_or_404(db, child_id)
+    now_utc, tz = _now_tz(db)
+    today = now_utc.astimezone(tz).date()
+    state = ensure_child_day(db, child_id, today)
 
-# Strict HH:MM 24h: dwie cyfry godziny 00-23, dwie cyfry minuty 00-59. Bez whitespace,
-# bez sekund, bez AM/PM. Frontend wysyła z <input type="time"> więc format jest gwarantowany,
-# ale walidujemy też tutaj — API może być wołane spoza UI.
-_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+    if body.mode == "limit":
+        # Atomic increment: several quick clicks must all count.
+        db.execute("UPDATE child_daily SET limit_override_minutes = limit_override_minutes + ? "
+                   "WHERE child_id = ? AND date_local = ?", (body.minutes, child_id, today.isoformat()))
+        new_override = ensure_child_day(db, child_id, today)["limit_override_minutes"]
+        log_event(db, "grant_applied", {"mode": "extend_limit", "minutes": body.minutes, "via": "admin_ui"},
+                  child_id=child_id)
+        return {"ok": True, "applied": f"Dodano {body.minutes} minut do limitu dziennego.",
+                "new_override": new_override}
+
+    # Night: grants stack onto the end of a still-running extension.
+    current_ext = None
+    if state["night_extension_until_utc"]:
+        parsed = parse_iso_utc(state["night_extension_until_utc"])
+        if parsed > now_utc:
+            current_ext = parsed
+    ext_utc, ext_local = _compute_night_extension_until(
+        now_utc, tz, body.minutes, child_today(db, child, now_utc, tz)["cfg"], current_extension_utc=current_ext)
+    update_child_day(db, child_id, today, night_extension_until_utc=ext_utc.isoformat())
+    until = ext_local.strftime("%Y-%m-%d %H:%M")
+    log_event(db, "grant_applied", {"mode": "extend_night", "minutes": body.minutes, "via": "admin_ui",
+                                    "until_local": until}, child_id=child_id)
+    return {"ok": True, "applied": f"Dziecko może grać do {ext_local.strftime('%H:%M')}.", "until_local": until}
+
+
+class ManualLockBody(_Body):
+    locked: bool
+
+
+@router.post("/children/{child_id}/manual_lock")
+async def set_manual_lock(child_id: int, body: ManualLockBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    _child_or_404(db, child_id)
+    now_utc, tz = _now_tz(db)
+    today = now_utc.astimezone(tz).date()
+    ensure_child_day(db, child_id, today)
+    update_child_day(db, child_id, today, manual_lock=int(body.locked))
+    log_event(db, "manual_lock_set" if body.locked else "manual_lock_cleared", {"via": "admin_ui"},
+              child_id=child_id)
+    return {"ok": True, "manual_lock": body.locked}
+
+
+@router.post("/children/{child_id}/clear_extension")
+async def clear_extension(child_id: int, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """Takes back today's extra time and night extension (the parent changed their mind)."""
+    _child_or_404(db, child_id)
+    now_utc, tz = _now_tz(db)
+    today = now_utc.astimezone(tz).date()
+    ensure_child_day(db, child_id, today)
+    update_child_day(db, child_id, today, night_extension_until_utc=None, limit_override_minutes=0)
+    log_event(db, "extensions_cleared", {"via": "admin_ui"}, child_id=child_id)
+    return {"ok": True}
+
+
+# === Devices and pairing ===
+
+
+def _device_or_404(db: sqlite3.Connection, device_id: int) -> sqlite3.Row:
+    row = db.execute("SELECT * FROM devices WHERE id = ?", (device_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="device_not_found")
+    return row
+
+
+class DeviceUpdate(_Body):
+    name: Name
+
+
+@router.patch("/devices/{device_id}")
+async def rename_device(device_id: int, body: DeviceUpdate, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    _device_or_404(db, device_id)
+    db.execute("UPDATE devices SET name = ? WHERE id = ?", (body.name, device_id))
+    return {"ok": True}
+
+
+@router.delete("/devices/{device_id}")
+async def unpair_device(device_id: int, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """Its key is gone: the PC's requests fail authentication and it locks (fail-closed)."""
+    row = _device_or_404(db, device_id)
+    if get_config_value(db, "pairing_device_id") == str(device_id):
+        clear_pairing_code(db)
+    db.execute("DELETE FROM devices WHERE id = ?", (device_id,))
+    log_event(db, "device_unpaired", {"name": row["name"]}, child_id=row["child_id"], device_id=device_id)
+    return {"ok": True}
+
+
+class PairingCodeBody(_Body):
+    """Either a new device (child_id + device_name) or re-pairing an existing one (device_id)."""
+
+    child_id: int | None = None
+    device_name: Name | None = None
+    device_id: int | None = None
+
+    @model_validator(mode="after")
+    def _one_target(self) -> PairingCodeBody:
+        if (self.device_id is None) == (self.child_id is None):
+            raise ValueError("give child_id or device_id")
+        return self
+
+
+@router.post("/pairing_code")
+async def new_pairing_code(body: PairingCodeBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """One-time code for Install.cmd. Generating a new one invalidates the previous one."""
+    now = datetime.now(timezone.utc)
+    if body.device_id is not None:
+        device = _device_or_404(db, body.device_id)
+        code, expires = create_pairing_code(db, now, device_id=device["id"])
+        child_id = device["child_id"]
+    else:
+        child_id = _child_or_404(db, body.child_id)["id"]
+        code, expires = create_pairing_code(db, now, child_id=child_id, device_name=body.device_name or "Komputer")
+    log_event(db, "pairing_code_created", {"via": "admin_ui", "repair": body.device_id is not None},
+              child_id=child_id, device_id=body.device_id)
+    tz = ZoneInfo(get_config_value(db, "timezone"))
+    return {"code": f"{code[:4]} {code[4:]}", "expires_local": expires.astimezone(tz).strftime("%H:%M"),
+            "expires_in_seconds": int((expires - now).total_seconds())}
+
+
+@router.delete("/pairing_code")
+async def cancel_pairing_code(db: sqlite3.Connection = Depends(get_db)) -> dict:
+    clear_pairing_code(db)
+    return {"ok": True}
+
+
+# === Server-wide config ===
+
+
+class ConfigBody(_Body):
+    timezone: str | None = None
+    # Panel only ("online" = last heartbeat within 2x grace); the watchdog has its own grace.
+    heartbeat_grace_seconds: Annotated[int, Field(ge=1, le=600)] | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_tz(cls, v):
+        if v is not None:
+            try:
+                ZoneInfo(v)
+            except (ZoneInfoNotFoundError, ValueError) as e:
+                raise ValueError("invalid_timezone") from e
+        return v
 
 
 @router.get("/config")
 async def get_config(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Zwraca tylko edytowalne klucze (bez secrets typu hasło/TOTP/session_key)."""
-    result = {}
-    for key in _EDITABLE_CONFIG_KEYS:
-        val = get_config_value(db, key)
-        if val is not None:
-            result[key] = val
-    return result
-
-
-# === POST /admin/api/config ===
+    return {k: get_config_value(db, k) for k in ConfigBody.model_fields}
 
 
 @router.post("/config")
-async def update_config(request: Request, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Update jednego lub wielu kluczy. Body: {"key1": value1, "key2": value2, ...}.
-
-    Walidacja (strict — wszelkie niezgodności → 422):
-    - klucz musi być na whiteliście _EDITABLE_CONFIG_KEYS
-    - typ wartości musi pasować (bool NIE liczy się jako int)
-    - int: w zakresie z _INT_CONFIG_BOUNDS (jeśli klucz tam jest) lub >= 0
-    - HH:MM: regex _HHMM_RE (00:00–23:59, bez whitespace, bez sekund)
-    - timezone: valid IANA name (sprawdzane przez ZoneInfo)
-    """
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="body_must_be_object")
-
-    updated: list[str] = []
-    for key, value in body.items():
-        if key not in _EDITABLE_CONFIG_KEYS:
-            raise HTTPException(status_code=422, detail=f"unknown_key: {key}")
-
-        expected_type = _EDITABLE_CONFIG_KEYS[key]
-        if expected_type is int:
-            # bool jest instance of int w Pythonie — odrzucamy żeby True nie poszedł
-            # przypadkiem jako wartość 1 dla limit/timeout.
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise HTTPException(status_code=422, detail=f"expected_int: {key}")
-            bounds = _INT_CONFIG_BOUNDS.get(key)
-            if bounds is not None:
-                lo, hi = bounds
-                if value < lo or value > hi:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"out_of_range: {key} must be {lo}..{hi}",
-                    )
-            elif value < 0:
-                raise HTTPException(status_code=422, detail=f"negative_value: {key}")
-            set_config_value(db, key, value)
-        else:  # str
-            if not isinstance(value, str):
-                raise HTTPException(status_code=422, detail=f"expected_str: {key}")
-            if key in ("night_lock_start", "night_lock_end"):
-                if not _HHMM_RE.match(value):
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"invalid_hhmm: {key} (expected HH:MM, 00:00-23:59)",
-                    )
-            if key == "timezone":
-                try:
-                    ZoneInfo(value)
-                except Exception as e:
-                    raise HTTPException(status_code=422, detail=f"invalid_timezone: {value}") from e
-            set_config_value(db, key, value)
-
-        updated.append(key)
-
-    log_event(db, "config_updated", {"keys": updated, "via": "admin_ui"})
-    return {"ok": True, "updated": updated}
+async def update_config(body: ConfigBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    fields = body.model_dump(exclude_none=True)
+    for key, value in fields.items():
+        set_config_value(db, key, value)
+    if fields:
+        log_event(db, "config_updated", {"keys": sorted(fields), "via": "admin_ui"})
+    return {"ok": True, "updated": sorted(fields)}
 
 
-# === POST /admin/api/regen_totp ===
+# === TOTP (one secret for all children) ===
 
 
 def _png_qr_base64(data: str) -> str:
@@ -423,95 +473,20 @@ async def regen_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
     }
 
 
-# === GET /admin/api/tokens + POST /admin/api/regen_tokens — the watchdog's signing key ===
-
-
-@router.get("/tokens")
-async def get_tokens(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Current signing key, for reinstalling the watchdog by hand. Secret: admin session only."""
-    signing = get_config_value(db, "signing_key")
-    if not signing:
-        raise HTTPException(status_code=404, detail="tokens_not_found")
-    return {"signing_key": signing}
-
-
-@router.post("/regen_tokens")
-async def regen_tokens(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """New signing key. The watchdog stops authenticating until update-config is run on the child PC
-    (it then fails closed: server_unreachable lock)."""
-    new_signing_key = generate_token_b64(32)
-    set_config_value(db, "signing_key", new_signing_key)
-    log_event(db, "tokens_regenerated", {"via": "admin_ui"})
-    return {"ok": True, "signing_key": new_signing_key}
-
-
-# === GET /admin/api/events ===
-
-
-@router.get("/events")
-async def list_events(
-    db: sqlite3.Connection = Depends(get_db),
-    limit: int = 50,
-) -> dict:
-    """Ostatnie N events, najnowsze pierwsze."""
-    if limit < 1 or limit > 500:
-        raise HTTPException(status_code=422, detail="limit_out_of_range")
-    rows = db.execute(
-        "SELECT id, ts_utc, event_type, details_json "
-        "FROM events ORDER BY id DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
-    return {
-        "events": [
-            {
-                "id": r["id"],
-                "ts_utc": r["ts_utc"],
-                "event_type": r["event_type"],
-                "details_json": r["details_json"],
-            }
-            for r in rows
-        ]
-    }
-
-
 # === POST /admin/api/change_password ===
 
 
+class PasswordBody(_Body):
+    current: str
+    new: Annotated[str, Field(min_length=8)]
+
+
 @router.post("/change_password")
-async def change_password(request: Request, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Body: {"current": "...", "new": "..."}.
-
-    Nie unieważniamy istniejących cookie sessions (admin_session_key osobny od hasła).
-    Możemy to zmienić na bardziej restrykcyjne w przyszłości — na razie KISS.
-    """
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="body_must_be_object")
-    current = body.get("current")
-    new = body.get("new")
-    if not isinstance(current, str) or not isinstance(new, str):
-        raise HTTPException(status_code=422, detail="missing_fields")
-    if len(new) < 8:
-        raise HTTPException(status_code=422, detail="new_password_too_short")
-
-    if not verify_admin_password(db, current):
+async def change_password(body: PasswordBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """Existing sessions stay valid (admin_session_key is separate from the password)."""
+    if not verify_admin_password(db, body.current):
         log_event(db, "admin_password_change_failed")
         raise HTTPException(status_code=401, detail="wrong_current_password")
-
-    set_config_value(db, "parent_password_hash", hash_password(new))
+    set_config_value(db, "parent_password_hash", hash_password(body.new))
     log_event(db, "admin_password_changed")
     return {"ok": True}
-
-
-# === POST /admin/api/pairing_code ===
-
-
-@router.post("/pairing_code")
-async def new_pairing_code(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """One-time code for Install.cmd on the child PC. Generating a new one invalidates the previous one;
-    using it rotates the signing key (a previously paired PC stops authenticating)."""
-    now = datetime.now(timezone.utc)
-    code, expires = create_pairing_code(db, now)
-    log_event(db, "pairing_code_created", {"via": "admin_ui"})
-    tz = ZoneInfo(get_config_value(db, "timezone"))
-    return {"code": f"{code[:4]} {code[4:]}", "expires_local": expires.astimezone(tz).strftime("%H:%M")}

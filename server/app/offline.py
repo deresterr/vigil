@@ -15,6 +15,7 @@ import hashlib
 import sqlite3
 from datetime import datetime
 
+from .auth import Device
 from .db import get_config_value, log_event, set_config_value
 
 
@@ -22,9 +23,11 @@ def totp_fingerprint(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()[:16]
 
 
-def sync_offline_totp(db: sqlite3.Connection, watchdog_fp: str | None, grants: list[dict]) -> str | None:
+def sync_offline_totp(db: sqlite3.Connection, device: Device, watchdog_fp: str | None,
+                      grants: list[dict]) -> str | None:
     """Record offline grants; return the secret if the watchdog needs it (None otherwise).
 
+    One TOTP secret for all children (D7 decision): every paired watchdog gets the same one.
     A watchdog that does not send totp_fp at all is not offline-capable: never send it the secret.
     """
     last_step = int(get_config_value(db, "totp_last_step") or 0)
@@ -39,7 +42,8 @@ def sync_offline_totp(db: sqlite3.Connection, watchdog_fp: str | None, grants: l
                 at = datetime.fromisoformat(g["at_utc"].replace("Z", "+00:00"))
             except ValueError:
                 at = None
-            log_event(db, "offline_unlock", {"minutes": g["minutes"], "step": g["step"]}, ts_utc=at)
+            log_event(db, "offline_unlock", {"minutes": g["minutes"], "step": g["step"]}, ts_utc=at,
+                      child_id=device.child_id, device_id=device.id)
         last_step = max(last_step, g["step"])
     if grants:
         set_config_value(db, "totp_last_step", last_step)

@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 def _is_first_run(conn) -> bool:
-    """First run = no signing_key in config (secrets not generated yet)."""
+    """First run = no admin_session_key in config (secrets not generated yet)."""
     return conn.execute(
-        "SELECT 1 FROM config WHERE key = 'signing_key'"
+        "SELECT 1 FROM config WHERE key = 'admin_session_key'"
     ).fetchone() is None
 
 
@@ -42,10 +42,9 @@ def run_bootstrap() -> None:
             logger.info("Database OK.")
             return
 
-        # First run — generuj sekrety kryptograficzne
+        # First run: server-wide secrets. Device signing keys come from pairing (endpoints/pairing.py).
         secrets = [
             ("totp_secret",       pyotp.random_base32()),
-            ("signing_key",       generate_token_b64(32)),
             ("admin_session_key", generate_token_b64(32)),
         ]
         conn.executemany(

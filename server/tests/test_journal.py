@@ -72,7 +72,7 @@ def test_day_summary_and_paging(client, watchdog):
         watchdog.heartbeat()
         r = client.get("/admin/api/journal?days=2").json()
         assert [d["date"] for d in r["days"]] == ["2026-11-06", "2026-11-05"]
-        assert r["days"][0]["limit_minutes"] == 240  # Friday counts as weekend
+        assert r["days"][0]["children"][0]["limit_minutes"] == 240  # Friday counts as weekend
         older = client.get("/admin/api/journal?before=2026-11-05&days=1").json()
         assert [d["date"] for d in older["days"]] == ["2026-11-04"]
         assert client.get("/admin/api/journal?days=99").status_code == 422
@@ -95,7 +95,8 @@ def test_totp_grant_after_limit_reads_as_story(client, watchdog):
         _login(client)
         watchdog.heartbeat()
         with get_connection() as conn:
-            conn.execute("UPDATE daily_state SET seconds_used = ? WHERE date_local = ?", (120 * 60 - 5, "2026-11-04"))
+            conn.execute("UPDATE child_daily SET seconds_used = ? WHERE child_id = 1 AND date_local = ?",
+                         (120 * 60 - 5, "2026-11-04"))
         t.shift(5)
         watchdog.heartbeat()  # limit reached
         watchdog.post("/v1/totp_attempt", {"code": pyotp.TOTP(config("totp_secret")).now(), "minutes_to_grant": 30})

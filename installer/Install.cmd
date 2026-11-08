@@ -8,6 +8,7 @@
 :: Tryb z parametrami:
 ::   Install.cmd -Mode uninstall
 ::   Install.cmd -Mode reinstall -ServerUrl http://192.168.0.2:8088
+::   Install.cmd -Mode verify        (sprawdza instalacje, niczego nie zmienia)
 
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "%~dp0vigil_install.ps1" %*
 

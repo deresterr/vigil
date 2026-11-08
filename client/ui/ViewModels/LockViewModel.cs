@@ -22,8 +22,15 @@ public sealed class LockViewModel : INotifyPropertyChanged
     public LockUiPhase Phase
     {
         get => _phase;
-        set => SetField(ref _phase, value);
+        set
+        {
+            if (value == LockUiPhase.GrantApplied && _phase != value) GrantAppliedAtUtc = DateTime.UtcNow;
+            SetField(ref _phase, value);
+        }
     }
+
+    /// <summary>When the current grant message appeared (App keeps it on screen for a minimum time).</summary>
+    public DateTime GrantAppliedAtUtc { get; private set; }
 
     private UiState _state = new() { Reason = LockReason.Limit };
     public UiState State

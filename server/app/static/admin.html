@@ -637,12 +637,12 @@ const VIA = d => d.via === 'admin_ui' ? t('Z panelu') : t('Kod z telefonu wpisan
 // type -> {cat, icon, title, sub}. Wording lives only here (Polish source, English in i18n.js).
 // vigil_guardian.ps1 checks (#36), keys as in server GUARDIAN_CHECKS.
 const GUARDIAN_CHECKS = {
-  service_not_running: t('usługa Vigil była zatrzymana'),
-  service_disabled:    t('usługa Vigil była wyłączona z autostartu'),
-  binary_replaced:     t('plik usługi Vigil był podmieniony'),
-  ifeo_debugger:       t('start usługi był przechwytywany (IFEO)'),
-  safeboot_missing:    t('usunięto start Vigila w trybie awaryjnym'),
-  recovery_missing:    t('usunięto automatyczny restart usługi'),
+  service_not_running: t('Usługa Vigil była zatrzymana'),
+  service_disabled:    t('Usługa Vigil była wyłączona z autostartu'),
+  binary_replaced:     t('Plik usługi Vigil był podmieniony'),
+  ifeo_debugger:       t('Start usługi był przechwytywany (IFEO)'),
+  safeboot_missing:    t('Usunięto start Vigila w trybie awaryjnym'),
+  recovery_missing:    t('Usunięto automatyczny restart usługi'),
 };
 const mins = sec => fmtMin(Math.max(1, Math.round(sec / 60)));
 const JOURNAL = {
@@ -672,9 +672,9 @@ const JOURNAL = {
   tamper_service_stopped:    () => ({title: t('Usługa Vigil została zatrzymana'), sub: t('Również przy deinstalacji lub update-config')}),
   tamper_lockscreen_killed:  d => ({title: t('Ekran blokady był wielokrotnie zamykany'),
                              sub: t('{kills} razy w {sec} s', {kills: d.kills ?? '?', sec: d.window_seconds ?? '?'}) + ' · ' +
-                                  (d.logged_off ? t('użytkownik został wylogowany') : t('wylogowanie się nie powiodło'))}),
+                                  (d.logged_off ? t('Użytkownik został wylogowany') : t('Wylogowanie się nie powiodło'))}),
   tamper_guardian_repaired:  d => ({title: t('Strażnik Vigila znalazł zmianę w instalacji'),
-                             sub: (GUARDIAN_CHECKS[d.check] || d.check) + ' · ' + (d.repaired ? t('naprawione') : t('naprawa nie powiodła się'))}),
+                             sub: (GUARDIAN_CHECKS[d.check] || d.check) + ' · ' + (d.repaired ? t('Naprawione') : t('Naprawa nie powiodła się'))}),
   tamper_watchdog_silent:    d => ({title: t('Vigil nie odzywał się, choć komputer działał'),
                              sub: t('Ok. {time} — proces mógł zostać wstrzymany', {time: mins(d.awake_gap_seconds)})}),
   totp_lockout:              d => ({title: t('Kilka błędnych kodów na ekranie blokady'),
@@ -844,7 +844,7 @@ function renderStatus(s) {
   if (c.limit_override_minutes) limitInfo += ' + ' + t('{time} bonusu', {time: fmtMinutes(c.limit_override_minutes)});
   if (c.night_extension_until_local) limitInfo += ' • ' + t('Cisza nocna przedłużona do {time}', {time: c.night_extension_until_local});
   else limitInfo += ' • ' + t('Cisza nocna {time}', {time: c.night_local.map(x => x.slice(11)).join('–')});
-  if (c.devices.length > 1) limitInfo += ' • ' + t('suma ze wszystkich komputerów');
+  if (c.devices.length > 1) limitInfo += ' • ' + t('Suma ze wszystkich komputerów');
   document.getElementById('limitInfo').textContent = limitInfo;
 
   document.getElementById('devicesList').innerHTML = c.devices.length ? c.devices.map(d =>

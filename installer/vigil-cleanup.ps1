@@ -238,6 +238,39 @@ function Dismount-OfflineHive {
 
 # === Online mode helpers ===
 
+function Invoke-ScAsSystem {
+    # "sc.exe <ScArgs>" as SYSTEM via a one-off scheduled task. The service DACL gives administrators
+    # no stop (WP) and no delete (SD) — only SYSTEM has them (vigil_install.ps1, Step-SetServiceDacl).
+    param([string]$ScArgs)
+    $name = "VigilCleanup_sc_$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $action = New-ScheduledTaskAction -Execute 'sc.exe' -Argument $ScArgs
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    # Default task settings refuse to start on battery power: a laptop would fall through to kill.
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $name
+        $deadline = (Get-Date).AddSeconds(10)
+        do { Start-Sleep -Milliseconds 300 }
+        while ((Get-ScheduledTask -TaskName $name).State -eq 'Running' -and (Get-Date) -lt $deadline)
+    } finally {
+        Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+    }
+}
+
+function Wait-WatchdogService {
+    # True once the service is in $Status ('Missing' = no longer registered).
+    param([string]$Status, [int]$Seconds)
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    do {
+        $svc = Get-Service -Name 'vigil_watchdog' -ErrorAction SilentlyContinue
+        $current = if ($svc) { [string]$svc.Status } else { 'Missing' }
+        if ($current -eq $Status) { return $true }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    return $false
+}
+
 function Stop-VigilServiceMultiStrategy {
     Write-Step "Zatrzymuję service vigil_watchdog"
     $svc = Get-Service -Name 'vigil_watchdog' -ErrorAction SilentlyContinue
@@ -245,44 +278,20 @@ function Stop-VigilServiceMultiStrategy {
 
     if ($svc.Status -eq 'Stopped') { Write-OK "Już zatrzymany"; return }
 
-    # Strategy 1: PowerShell native
+    # Strategy 1: normal stop as SYSTEM — the watchdog says goodbye to the server.
     try {
-        Stop-Service -Name 'vigil_watchdog' -Force -ErrorAction Stop
-        Start-Sleep -Seconds 2
-        $svc.Refresh()
-        if ($svc.Status -eq 'Stopped') { Write-OK "Zatrzymany (Stop-Service)"; return }
-    } catch { Write-Warn "Stop-Service failed: $_" }
+        Invoke-ScAsSystem 'stop vigil_watchdog'
+        if (Wait-WatchdogService 'Stopped' 15) { Write-OK "Zatrzymany (stop jako SYSTEM)"; return }
+    } catch { Write-Warn "Stop jako SYSTEM nie zadziałał: $_" }
 
-    # Strategy 2: sc.exe stop
-    & sc.exe stop vigil_watchdog 2>&1 | Out-Null
-    Start-Sleep -Seconds 2
-    $svc.Refresh()
-    if ($svc.Status -eq 'Stopped') { Write-OK "Zatrzymany (sc.exe)"; return }
-
-    # Strategy 3: kill process
+    # Strategy 2: kill the process (no goodbye).
     $proc = Get-Process -Name 'vigil_watchdog' -ErrorAction SilentlyContinue
     if ($proc) {
         try {
             $proc | Stop-Process -Force -ErrorAction Stop
-            Start-Sleep -Seconds 1
-            Write-OK "Zatrzymany (Stop-Process)"
-            return
+            if (Wait-WatchdogService 'Stopped' 8) { Write-OK "Zatrzymany (kill procesu)"; return }
         } catch { Write-Warn "Stop-Process failed: $_" }
     }
-
-    # Strategy 4: scheduled task as SYSTEM (DACL na service daje SY: GenericAll nawet
-    # gdy zwykły Admin nie ma access).
-    $sysTaskName = "VigilCleanup_StopService_$([guid]::NewGuid().ToString('N').Substring(0,8))"
-    try {
-        $action = New-ScheduledTaskAction -Execute 'sc.exe' -Argument 'stop vigil_watchdog'
-        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
-        Register-ScheduledTask -TaskName $sysTaskName -Action $action -Principal $principal -Force | Out-Null
-        Start-ScheduledTask -TaskName $sysTaskName
-        Start-Sleep -Seconds 3
-        Unregister-ScheduledTask -TaskName $sysTaskName -Confirm:$false -ErrorAction SilentlyContinue
-        $svc.Refresh()
-        if ($svc.Status -eq 'Stopped') { Write-OK "Zatrzymany (SYSTEM scheduled task)"; return }
-    } catch { Write-Warn "SYSTEM task fallback failed: $_" }
 
     Write-ErrMsg "Nie udało się zatrzymać service. Spróbuj ponownie po reboot lub w trybie offline (WinRE)."
 }
@@ -292,25 +301,9 @@ function Remove-VigilService {
     $svc = Get-Service -Name 'vigil_watchdog' -ErrorAction SilentlyContinue
     if (-not $svc) { Write-Skip "Service nie istnieje"; return }
 
-    & sc.exe delete vigil_watchdog 2>&1 | Out-Null
-    Start-Sleep -Seconds 1
-    if ($LASTEXITCODE -eq 0) {
-        Write-OK "Service skasowany"
-    } else {
-        # Fallback przez SYSTEM task (DACL bypass)
-        $sysTaskName = "VigilCleanup_DeleteService_$([guid]::NewGuid().ToString('N').Substring(0,8))"
-        try {
-            $action = New-ScheduledTaskAction -Execute 'sc.exe' -Argument 'delete vigil_watchdog'
-            $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
-            Register-ScheduledTask -TaskName $sysTaskName -Action $action -Principal $principal -Force | Out-Null
-            Start-ScheduledTask -TaskName $sysTaskName
-            Start-Sleep -Seconds 3
-            Unregister-ScheduledTask -TaskName $sysTaskName -Confirm:$false -ErrorAction SilentlyContinue
-            $svc2 = Get-Service -Name 'vigil_watchdog' -ErrorAction SilentlyContinue
-            if (-not $svc2) { Write-OK "Service skasowany (przez SYSTEM)" }
-            else { Write-ErrMsg "Nie udało się skasować service. Restart i spróbuj ponownie." }
-        } catch { Write-ErrMsg "sc.exe delete failed: exit=$LASTEXITCODE" }
-    }
+    try { Invoke-ScAsSystem 'delete vigil_watchdog' } catch { Write-Warn "Delete jako SYSTEM: $_" }
+    if (Wait-WatchdogService 'Missing' 10) { Write-OK "Service skasowany" }
+    else { Write-ErrMsg "Nie udało się skasować service. Restart i spróbuj ponownie." }
 }
 
 function Stop-VigilProcesses {

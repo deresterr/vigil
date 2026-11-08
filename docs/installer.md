@@ -5,7 +5,7 @@ PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_
 
 ## Pliki
 
-- `vigil_install.ps1` / `Install.cmd` — main installer z 4 trybami (install / uninstall / update-config / reinstall)
+- `vigil_install.ps1` / `Install.cmd` — main installer z 5 trybami (install / uninstall / update-config / reinstall / verify)
 - `vigil-cleanup.ps1` — nuclear-option uninstall, działa też offline z Windows Recovery
   (gdy Windows nie startuje albo `Cleanup.cmd` z jakiegoś powodu nie idzie).
   Patrz sekcja "Cleanup z Recovery" poniżej.
@@ -18,6 +18,7 @@ PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_
 | `uninstall` | Remove all | Nie |
 | `update-config` | Update server_url (vigil.toml) / signing_key (signing.dat) | Nie |
 | `reinstall` | Uninstall + install | Tak |
+| `verify` | Sprawdza instalację (albo, gdy nic nie jest zainstalowane, czy deinstalacja nic nie zostawiła): PASS/FAIL, kod wyjścia 1 przy FAIL. Niczego nie zmienia | Nie |
 
 ## Quick start
 
@@ -155,11 +156,11 @@ Skrypt walidowany na realnym Windowsie (install / reinstall / uninstall / update
 - **User policies dla istniejącego konta** wymagają `-ChildUsername` przy installu — bez tego
   installer modyfikuje tylko Default User profile (efekt dla nowych kont) i pokazuje warning
   z instrukcją. Patrz też „Krok 4" w głównym README.
-- **Service DACL a Stop-Service** — `Stop-Service` (PS native) dostaje ACCESS_DENIED z restrykcyjnym
-  DACL na serwisie, bo PS wymaga szerszego zestawu uprawnień niż same `SERVICE_STOP`. Installer
-  używa `sc.exe stop` z polling loop (do 12s) jako głównej strategii, potem kill procesu,
-  na końcu SYSTEM scheduled task. `sc sdset` może zwrócić warning na niektórych systemach —
-  installer kontynuuje, ale stop będzie wymagał kill zamiast graceful shutdown.
+- **Service DACL: Admin nie ma stop ani delete** — SDDL daje Administratorom tylko query/start
+  (bez `WP`, `SD`). Installer i `vigil-cleanup.ps1` zatrzymują i kasują usługę przez jednorazowy task
+  SYSTEM (`Invoke-ScAsSystem`): zwykły stop, watchdog wysyła serwerowi pożegnanie, w panelu alert
+  „Usługa Vigil została zatrzymana”. Kill procesu tylko awaryjnie (bez pożegnania → serwer widzi
+  „restart watchdoga”). To utrudnienie, nie ochrona: admin może zrobić to samo co installer.
 - **`-DisableWinRE` nie jest cofane przy uninstall** — opt-in z założenia, opt-out manualny
   (`reagentc /enable`).
 - **Backup binarki** (do restore przez guardian) jest single-version. Przy update binarki

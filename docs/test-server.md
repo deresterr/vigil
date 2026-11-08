@@ -78,14 +78,15 @@ Przed aktualizacją produkcji baza v0.4 przechodzi migracje 1–2 (D7) na serwer
 
 ```sh
 docker exec vigil python -c "import sqlite3; s=sqlite3.connect('/data/vigil.db'); d=sqlite3.connect('/data/vigil-copy.db'); s.backup(d); d.close()"
-docker inspect -f '{{range .Mounts}}{{.Source}}{{end}}' vigil        # katalog danych produkcji na hoście
+docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' vigil   # katalog danych produkcji na hoście
 sudo docker compose -f /opt/docker/vigil-test/compose.yaml stop
 sudo mv <katalog produkcji>/vigil-copy.db /opt/docker/vigil-test/data/vigil.db
 sudo rm -f /opt/docker/vigil-test/data/vigil.db-wal /opt/docker/vigil-test/data/vigil.db-shm
 sudo docker compose -f /opt/docker/vigil-test/compose.yaml up -d
-docker logs vigil-test | grep -i "schema migrated"
+docker logs vigil-test 2>&1 | grep -iE "schema migrated|error|traceback"
 ```
 
 `backup()` robi spójną kopię działającej bazy (WAL), produkcja nic nie traci. Logowanie do panelu testowego
-hasłem produkcji. Komputer dziecka z produkcji nie łączy się z testem (inny port), więc jego wpis w
+hasłem produkcji. Dziennik pokaże z historii v0.4 tylko akcje rodzica i pauzy (v0.4 nie logował zdarzeń
+komputera), czas dnia i limity muszą się zgadzać. Komputer dziecka z produkcji nie łączy się z testem (inny port), więc jego wpis w
 „Komputerach” jest tylko historią; VM dodaje się jako nowy komputer.

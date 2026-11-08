@@ -9,8 +9,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
   child's session, started and kept alive by the watchdog), `shared/IpcMessages.cs` (linked into both).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
+- `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
+  (server of the same commit on localhost, real install → verify → re-pair → uninstall → verify). Never on a real PC.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D21), roadmap (M1–M2 done, M3, M4.1).
+- `docs/review-2026-11.md` — known defects, decisions (D1–D22), roadmap (M1–M2 done, M3, M4.1).
   Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"
@@ -25,6 +27,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   test stack (`docs/test-server.md`). Production (v0.4, container `vigil`, image `vigil:local`, port 8088) runs on
   the same host: test instructions must never reuse its container or image name.
   Server-only changes still go one issue per PR. No stacked PRs: every PR targets `main`.
+- **Installer rewrite in C# (D22, #62–#66)** is the exception: each step is its own PR and merges once the CI
+  installer e2e is green; VM sessions only at the checkpoints (after #64 and after #66). Anything the e2e
+  cannot see (Windows 10/11 Home, Polish Windows, the child's session: vigil_ui, lock, the console wizard)
+  waits for the next checkpoint. The old `vigil_install.ps1 -Mode verify` is the oracle until the C# one matches it.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 
 ## Invariants (changing any of these is a design decision — ask first)

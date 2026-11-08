@@ -508,7 +508,8 @@ async def change_password(body: PasswordBody, db: sqlite3.Connection = Depends(g
     """Existing sessions stay valid (admin_session_key is separate from the password)."""
     if not verify_admin_password(db, body.current):
         log_event(db, "admin_password_change_failed")
-        raise HTTPException(status_code=401, detail="wrong_current_password")
+        # 403, not 401: the session is valid; the panel answers every 401 with a redirect to the login.
+        raise HTTPException(status_code=403, detail="wrong_current_password")
     set_config_value(db, "parent_password_hash", hash_password(body.new))
     log_event(db, "admin_password_changed")
     return {"ok": True}

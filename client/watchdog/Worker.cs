@@ -263,10 +263,7 @@ public sealed class Worker : BackgroundService
             _offlineLocked = true;
             await _ui.EnsureLockedAsync(new LockState(
                 Reason: "server_unreachable",
-                MainMessage: canUnlock
-                    ? "Brak połączenia z serwerem rodzica. Rodzic może odblokować komputer kodem z telefonu."
-                    : "Brak połączenia z serwerem rodzica. Komputer odblokuje się po przywróceniu połączenia.",
-                ShowTotpField: canUnlock,
+                ShowTotpField: canUnlock,  // vigil_ui words the message by it: code from the phone or wait
                 ShowResumeButton: false,
                 ShowRetryButton: true,
                 ShowShutdownButton: true,
@@ -286,7 +283,6 @@ public sealed class Worker : BackgroundService
             var isPause = response.LockReason == "pause";
             await _ui.EnsureLockedAsync(new LockState(
                 Reason: response.LockReason ?? "unknown",
-                MainMessage: ui?.MainMessage,
                 ShowTotpField: ui?.ShowTotpField ?? false,
                 ShowResumeButton: ui?.ShowResumeButton ?? false,
                 ShowRetryButton: ui?.ShowRetryButton ?? false,
@@ -331,12 +327,12 @@ public sealed class Worker : BackgroundService
                 MinutesToGrant = attempt.MinutesToGrant,
             }, ct).ConfigureAwait(false);
 
-            return new TotpResult(resp.Ok, resp.Mode, resp.Applied, resp.Reason, resp.LockoutSecondsRemaining);
+            return new TotpResult(resp.Ok, resp.Mode, resp.Minutes, resp.UntilLocal, resp.Reason, resp.LockoutSecondsRemaining);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "TOTP attempt failed");
-            return new TotpResult(false, null, null, "network_error");
+            return new TotpResult(false, Reason: "network_error");
         }
     }
 }

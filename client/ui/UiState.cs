@@ -4,12 +4,12 @@ namespace Vigil.Ui;
 
 /// <summary>
 /// Stan UI lockscreen, mirroring serwerowego ui_state z heartbeat response.
-/// Lockscreen otrzymuje to przez named pipe od watchdoga (IpcSetState).
+/// Lockscreen otrzymuje to przez named pipe od watchdoga (IpcSetState). The message is worded here from
+/// Reason (Strings.LockMessage, i18n D21).
 /// </summary>
 public sealed record UiState
 {
     public required LockReason Reason { get; init; }
-    public string? MainMessage { get; init; }
     public bool ShowTotpField { get; init; }
     public bool ShowRetryButton { get; init; }
     public bool ShowResumeButton { get; init; }   // "Jestem z powrotem" — tylko w trybie Pause
@@ -46,19 +46,5 @@ public static class LockReasonExtensions
         "pause"             => LockReason.Pause,
         "server_unreachable"=> LockReason.ServerUnreachable,
         _ => throw new ArgumentOutOfRangeException(nameof(s), $"Unknown lock reason: {s}"),
-    };
-}
-
-public static class DefaultMessages
-{
-    public static string ForReason(LockReason r) => r switch
-    {
-        LockReason.Limit             => "Skończył się Twój czas na dziś. Zapraszam jutro!",
-        LockReason.Night             => "Pora spać. Komputer odblokuje się rano.",
-        LockReason.Manual            => "Komputer został zablokowany przez rodzica.",
-        LockReason.Pause             => "Pauza — czas nie leci. Wróć gdy będziesz gotowy!",
-        LockReason.ServerUnreachable =>
-            "Brak połączenia z serwerem rodzica. Rodzic może odblokować komputer kodem z telefonu.",
-        _ => "Komputer jest zablokowany.",
     };
 }

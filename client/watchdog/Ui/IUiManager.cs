@@ -39,7 +39,6 @@ public interface IUiManager
 
 public sealed record LockState(
     string Reason,
-    string? MainMessage,
     bool ShowTotpField,
     bool ShowResumeButton,
     bool ShowRetryButton,
@@ -48,4 +47,6 @@ public sealed record LockState(
     string? CurrentTimeDisplay);
 
 public sealed record TotpFromLockscreen(string Code, int MinutesToGrant);
-public sealed record TotpResult(bool Ok, string? Mode, string? Applied, string? Reason, int? LockoutSecondsRemaining = null);
+/// <summary>Codes and numbers only; vigil_ui words them (i18n, D21).</summary>
+public sealed record TotpResult(bool Ok, string? Mode = null, int? Minutes = null, string? UntilLocal = null,
+                                string? Reason = null, int? LockoutSecondsRemaining = null);

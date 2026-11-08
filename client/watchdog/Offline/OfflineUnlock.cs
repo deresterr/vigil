@@ -49,13 +49,14 @@ public sealed class OfflineUnlock
     {
         var secret = _store.Secret;
         if (secret is null)
-            return new TotpResult(false, null, null, "offline_not_configured");
+            return new TotpResult(false, Reason: "offline_not_configured");
 
         lock (_gate)
         {
             var now = DateTime.UtcNow;
             if (now < _lockedUntilUtc)
-                return new TotpResult(false, null, null, "lockout", (int)Math.Ceiling((_lockedUntilUtc - now).TotalSeconds));
+                return new TotpResult(false, Reason: "lockout",
+                                      LockoutSecondsRemaining: (int)Math.Ceiling((_lockedUntilUtc - now).TotalSeconds));
 
             var step = MatchStep(secret, code.Trim(), now);
             if (step is null || step.Value <= _lastStep)
@@ -69,7 +70,7 @@ public sealed class OfflineUnlock
                     _lockedUntilUtc = now.AddSeconds(lockout.Value);
                 }
                 _logger.LogWarning("Offline unlock: wrong code (failures={Failures})", _failures);
-                return new TotpResult(false, null, null, "invalid_code", lockout);
+                return new TotpResult(false, Reason: "invalid_code", LockoutSecondsRemaining: lockout);
             }
 
             var minutes = Math.Clamp(minutesRequested, 1, MaxGrantMinutes);
@@ -83,7 +84,7 @@ public sealed class OfflineUnlock
                 Step = step.Value,
             });
             _logger.LogInformation("Offline unlock granted for {Minutes} min", minutes);
-            return new TotpResult(true, "offline_unlock", $"Odblokowano na {minutes} min (bez połączenia z serwerem).", null);
+            return new TotpResult(true, "offline_unlock", minutes);
         }
     }
 

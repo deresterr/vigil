@@ -51,8 +51,9 @@ Request bodies are Pydantic models in `app/models.py` (strict types, unknown fie
 
 **Language (i18n, #52):** the server sends codes and numbers, never sentences: `lock_reason`, TOTP `mode` with
 `minutes` and (night) `until_local`. Each UI words them in its own environment's language — the panel by the
-browser (`static/i18n.js`), the lock screen by the child's Windows (`vigil_ui`; the watchdog runs as SYSTEM and
-does not know it). Polish and English; the installer stays Polish until it is rewritten.
+browser (`static/i18n.js`), the lock screen and tray by the child's Windows (`vigil_ui`, `Strings.cs`; the watchdog
+runs as SYSTEM and does not know it, so the IPC carries codes too: `lock_reason` + `show_totp_field`, TOTP `mode`,
+`minutes`, `until_local`). Polish and English; the installer stays Polish until it is rewritten.
 
 ## Children, devices and time accounting (`heartbeat.py`, D7)
 

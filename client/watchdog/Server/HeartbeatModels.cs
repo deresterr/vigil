@@ -134,9 +134,6 @@ public sealed class HeartbeatResponse
 
 public sealed class UiState
 {
-    [JsonPropertyName("main_message")]
-    public string? MainMessage { get; init; }
-
     [JsonPropertyName("show_totp_field")]
     public bool ShowTotpField { get; init; }
 
@@ -182,8 +179,11 @@ public sealed class TotpAttemptResponse
     [JsonPropertyName("mode")]
     public string? Mode { get; init; }  // extend_limit | extend_night | manual_unlock | noop
 
-    [JsonPropertyName("applied")]
-    public string? Applied { get; init; }
+    [JsonPropertyName("minutes")]
+    public int? Minutes { get; init; }
+
+    [JsonPropertyName("until_local")]
+    public string? UntilLocal { get; init; }  // extend_night: "yyyy-MM-dd HH:mm"
 
     [JsonPropertyName("reason")]
     public string? Reason { get; init; }  // invalid_code | lockout

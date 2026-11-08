@@ -4,7 +4,7 @@ import time_machine
 
 from app.crypto import hash_password
 from app.db import get_connection, set_config_value
-from tests.conftest import Watchdog, config
+from tests.conftest import Watchdog, add_child
 
 PASSWORD = "haslo-rodzica"
 HB = {"session_active": True, "user_active": True, "current_time_utc": "2026-11-04T11:00:00Z", "uptime_seconds": 1}
@@ -16,10 +16,15 @@ def _login(client):
     client.post("/admin/login", data={"password": PASSWORD})
 
 
-def _new_code(client) -> str:
-    r = client.post("/admin/api/pairing_code", json={})
-    assert r.status_code == 200
+def _new_code(client, **target) -> str:
+    r = client.post("/admin/api/pairing_code", json=target or {"child_id": 1, "device_name": "Laptop"})
+    assert r.status_code == 200, r.text
     return r.json()["code"]
+
+
+def _devices() -> list[tuple]:
+    with get_connection() as conn:
+        return [tuple(r) for r in conn.execute("SELECT id, child_id, name FROM devices ORDER BY id")]
 
 
 def test_pair_without_code_is_rejected(client):
@@ -27,21 +32,53 @@ def test_pair_without_code_is_rejected(client):
     assert r.status_code == 404
 
 
-def test_pairing_rotates_key_and_is_single_use(client):
+def test_pairing_adds_a_device_of_the_child_and_is_single_use(client):
     _login(client)
-    old = Watchdog(client)
     code = _new_code(client)
     assert client.get("/admin/api/status").json()["pairing_active"] is True
 
     r = client.post("/v1/pair", json={"code": code})  # "1234 5678" format is accepted
     assert r.status_code == 200
-    assert r.json()["signing_key"] == config("signing_key")
     assert r.json()["server_url"]
+    assert _devices() == [(1, 1, "PC"), (2, 1, "Laptop")]
 
     assert client.post("/v1/pair", json={"code": code}).status_code == 404
     assert client.get("/admin/api/status").json()["pairing_active"] is False
+    # Both PCs of the child authenticate, each with its own key.
+    assert Watchdog(client, 1).post("/v1/heartbeat", HB).status_code == 200
+    assert Watchdog(client, 2).post("/v1/heartbeat", HB).status_code == 200
+
+
+def test_repairing_a_device_rotates_only_its_key(client):
+    _login(client)
+    old = Watchdog(client, 1)
+    code = _new_code(client, device_id=1).replace(" ", "")
+    as_sent = int(code) if code[0] != "0" else code  # ConvertTo-Json may send it as a number
+    assert client.post("/v1/pair", json={"code": as_sent}).status_code == 200
+    assert _devices() == [(1, 1, "PC")]
     assert old.post("/v1/heartbeat", HB, verify=False).status_code == 401
-    assert Watchdog(client).post("/v1/heartbeat", HB).status_code == 200
+    assert Watchdog(client, 1).post("/v1/heartbeat", HB).status_code == 200
+
+
+def test_pairing_code_needs_exactly_one_target(client):
+    _login(client)
+    for body in ({}, {"child_id": 1, "device_id": 1}, {"device_name": "x"}):
+        assert client.post("/admin/api/pairing_code", json=body).status_code == 422, body
+    assert client.post("/admin/api/pairing_code", json={"child_id": 99, "device_name": "x"}).status_code == 404
+    assert client.post("/admin/api/pairing_code", json={"device_id": 99}).status_code == 404
+
+
+def test_unpaired_device_is_rejected_and_its_child_keeps_the_others(client):
+    _login(client)
+    add_child("Kuba")
+    client.post("/v1/pair", json={"code": _new_code(client)})
+    gone = Watchdog(client, 1)
+    assert client.delete("/admin/api/devices/1").json() == {"ok": True}
+    assert gone.post("/v1/heartbeat", HB, verify=False).status_code == 401
+    assert Watchdog(client, 2).post("/v1/heartbeat", HB).status_code == 200
+    # A child with devices cannot be removed; one without can.
+    assert client.delete("/admin/api/children/1").status_code == 409
+    assert client.delete("/admin/api/children/2").json() == {"ok": True}
 
 
 def test_too_many_wrong_codes_invalidate_the_code(client):

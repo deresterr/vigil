@@ -3,8 +3,12 @@
 Flow: the parent generates a code in the panel (POST /admin/api/pairing_code), the installer on the
 child PC sends it to POST /v1/pair and receives a freshly generated signing key + server URL.
 
+The code is made for one target (D7): a new device of a given child (name entered in the panel), or
+an existing device being re-paired (reinstall). Re-pairing replaces that device's key, so the old
+install stops authenticating, and resets its tamper baseline.
+
 - 8 digits, valid 10 minutes, single use, 5 wrong attempts invalidate it (guessing odds ~5e-8).
-- Every successful pairing rotates the signing key, so a previously paired PC stops authenticating.
+- One code at a time: generating a new one invalidates the previous one.
 - Only a hash of the code is stored.
 
 Protection against other LAN devices grabbing the key. The response travels over plain HTTP on the LAN
@@ -24,6 +28,7 @@ from fastapi.responses import JSONResponse
 
 from ..crypto import generate_token_b64
 from ..db import get_config_value, get_db, log_event, set_config_value
+from ..models import PairRequest
 
 router = APIRouter()
 
@@ -40,18 +45,24 @@ def _normalize(code: str) -> str:
     return "".join(ch for ch in code if ch.isdigit())
 
 
-def create_pairing_code(db: sqlite3.Connection, now: datetime) -> tuple[str, datetime]:
+def create_pairing_code(db: sqlite3.Connection, now: datetime, *, child_id: int | None = None,
+                        device_name: str = "", device_id: int | None = None) -> tuple[str, datetime]:
+    """A code for a new device of `child_id` named `device_name`, or for re-pairing `device_id`."""
     code = f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
     expires = now + CODE_TTL
     set_config_value(db, "pairing_code_hash", _hash(code))
     set_config_value(db, "pairing_expires_utc", expires.isoformat())
     set_config_value(db, "pairing_attempts", 0)
+    set_config_value(db, "pairing_child_id", child_id or "")
+    set_config_value(db, "pairing_device_id", device_id or "")
+    set_config_value(db, "pairing_device_name", device_name)
     return code, expires
 
 
 def clear_pairing_code(db: sqlite3.Connection) -> None:
-    set_config_value(db, "pairing_code_hash", "")
-    set_config_value(db, "pairing_expires_utc", "")
+    for key in ("pairing_code_hash", "pairing_expires_utc", "pairing_child_id", "pairing_device_id",
+                "pairing_device_name"):
+        set_config_value(db, key, "")
     set_config_value(db, "pairing_attempts", 0)
 
 
@@ -73,9 +84,8 @@ def _server_url(db: sqlite3.Connection, request: Request) -> str:
 
 
 @router.post("/v1/pair")
-async def pair(request: Request, db: sqlite3.Connection = Depends(get_db)):
-    body = await request.json()
-    code = _normalize(str(body.get("code", ""))) if isinstance(body, dict) else ""
+async def pair(body: PairRequest, request: Request, db: sqlite3.Connection = Depends(get_db)):
+    code = _normalize(str(body.code))
     now = datetime.now(timezone.utc)
     remote = request.client.host if request.client else "unknown"
 
@@ -94,10 +104,18 @@ async def pair(request: Request, db: sqlite3.Connection = Depends(get_db)):
         return JSONResponse(status_code=401, content={"detail": "invalid_code", "attempts_left": left})
 
     signing_key = generate_token_b64(32)
-    set_config_value(db, "signing_key", signing_key)
+    device_id = int(get_config_value(db, "pairing_device_id") or 0)
+    if device_id:
+        # Re-pair: new key, and the reinstalled watchdog starts fresh (no tamper comparison).
+        db.execute("UPDATE devices SET signing_key = ?, paired_utc = ?, wd_instance_id = '', wd_awake_ms = -1, "
+                   "wd_goodbye = '' WHERE id = ?", (signing_key, now.isoformat(), device_id))
+        child_id = db.execute("SELECT child_id FROM devices WHERE id = ?", (device_id,)).fetchone()["child_id"]
+    else:
+        child_id = int(get_config_value(db, "pairing_child_id"))
+        device_id = db.execute(
+            "INSERT INTO devices(child_id, name, signing_key, paired_utc) VALUES (?, ?, ?, ?)",
+            (child_id, get_config_value(db, "pairing_device_name") or "Komputer", signing_key, now.isoformat()),
+        ).lastrowid
     clear_pairing_code(db)
-    # A (possibly different) PC starts fresh: no tamper comparison against the previous one.
-    for key, empty in (("wd_instance_id", ""), ("wd_awake_ms", -1), ("wd_goodbye", "")):
-        set_config_value(db, key, empty)
-    log_event(db, "device_paired", {"remote": remote})
+    log_event(db, "device_paired", {"remote": remote}, child_id=child_id, device_id=device_id)
     return {"signing_key": signing_key, "server_url": _server_url(db, request)}

@@ -23,6 +23,7 @@ from ..admin_auth import issue_session_cookie, set_session_cookie
 from ..config import TOTP_ISSUER
 from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
+from .admin_api import ChildCreate, insert_child
 
 router = APIRouter()
 
@@ -70,7 +71,7 @@ async def setup_complete(request: Request,
     body = await request.json()
 
     # --- Walidacja ---
-    device_name       = str(body.get("device_name", "")).strip()
+    child_name        = str(body.get("child_name", "")).strip()
     password          = str(body.get("password", ""))
     totp_code         = str(body.get("totp_code", "")).strip()
     timezone_str      = str(body.get("timezone", "Europe/Warsaw"))
@@ -81,8 +82,8 @@ async def setup_complete(request: Request,
     watchdog_server_url = str(body.get("watchdog_server_url", "")).strip()
 
     errors = {}
-    if not device_name:
-        errors["device_name"] = "required"
+    if not 0 < len(child_name) <= 40:
+        errors["child_name"] = "required_max_40"
     if len(password) < 8:
         errors["password"] = "min_8_chars"
     if not watchdog_server_url or not watchdog_server_url.startswith(("http://", "https://")):
@@ -115,21 +116,19 @@ async def setup_complete(request: Request,
 
     # --- Zapis ---
     settings = [
-        ("device_name",          device_name),
         ("parent_password_hash", hash_password(password)),
         ("timezone",             timezone_str),
-        ("daily_limit_weekday",  str(limit_weekday)),
-        ("daily_limit_weekend",  str(limit_weekend)),
-        ("night_lock_start",     night_start),
-        ("night_lock_end",       night_end),
         ("watchdog_server_url",  watchdog_server_url),
         ("setup_complete",       "1"),
     ]
     for key, value in settings:
         db.execute("INSERT OR REPLACE INTO config(key, value) VALUES (?, ?)", (key, value))
+    # The first child (D7) gets the limits from the wizard; its PCs are paired from the panel.
+    child_id = insert_child(db, ChildCreate(
+        name=child_name, daily_limit_weekday=min(limit_weekday, 1440), daily_limit_weekend=min(limit_weekend, 1440),
+        night_lock_start=night_start, night_lock_end=night_end))
 
-    log_event(db, "setup_completed",
-              {"device_name": device_name})
+    log_event(db, "setup_completed", {"child_name": child_name}, child_id=child_id)
 
     # Auto-login: wystawiamy cookie sesji żeby JS mógł od razu przejść do /admin
     cookie_value = issue_session_cookie(db)

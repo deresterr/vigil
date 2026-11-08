@@ -12,28 +12,17 @@ Server sam wybiera tryb na podstawie aktualnego lock_reason:
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from ..auth import authenticate_request
+from ..auth import Device, authenticate_request
 from ..crypto import match_totp_step
-from ..db import (
-    ensure_daily_state,
-    get_config_value,
-    get_db,
-    log_event,
-    set_config_value,
-    update_daily_state,
-)
-from ..lock_logic import (
-    compute_lock_reason,
-    load_lock_config,
-    parse_hhmm,
-    parse_iso_utc,
-)
+from ..db import get_child, get_config_value, get_db, log_event, set_config_value, update_child_day
+from ..lock_logic import child_today, parse_hhmm, parse_iso_utc
+from ..models import TotpAttemptRequest
 
 router = APIRouter()
 
@@ -46,7 +35,7 @@ _RESET_AFTER_SECONDS = 86400  # failure counter resets 24 h after the first fail
 
 
 # === Lockout management ===
-# Single-tenant: pojedynczy rekord w totp_lockout (id=1).
+# One TOTP secret for all children (D7), so one lockout row (id = 1) for all of them.
 
 
 def _check_lockout(conn: sqlite3.Connection, now_utc: datetime) -> int | None:
@@ -117,37 +106,11 @@ def _reset_lockout(conn: sqlite3.Connection) -> None:
 # === Helpers ===
 
 
-def _validate_request_body(body) -> dict:
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="body_must_be_object")
-    code = body.get("code")
-    if not isinstance(code, str) or not code.isdigit() or len(code) != 6:
-        raise HTTPException(status_code=422, detail="missing_or_invalid: code")
-    # minutes_to_grant jest OPCJONALNE — default 60 (godzina). Klient może w ogóle nie wysłać.
-    # Dla backwards compat akceptujemy też explicit value w zakresie 1-1440.
-    minutes = body.get("minutes_to_grant")
-    if minutes is None:
-        body["minutes_to_grant"] = 60
-    elif isinstance(minutes, bool) or not isinstance(minutes, int) or minutes <= 0 or minutes > 1440:
-        raise HTTPException(status_code=422, detail="invalid: minutes_to_grant must be 1-1440 or omitted")
-    return body
-
-
-def _get_current_lock_state(
-    conn: sqlite3.Connection, now_utc: datetime, tz: ZoneInfo
-) -> tuple[str | None, dict, date]:
-    """Pobiera daily_state i wyznacza lock_reason. Zwraca (lock_reason, state_dict, today_local)."""
-    today_local = now_utc.astimezone(tz).date()
-    state = dict(ensure_daily_state(conn, today_local))
-    lock_reason = compute_lock_reason(now_utc, tz, today_local, state, load_lock_config(conn))
-    return lock_reason, state, today_local
-
-
 def _compute_night_extension_until(
     now_utc: datetime,
     tz: ZoneInfo,
     minutes_to_grant: int,
-    conn: sqlite3.Connection,
+    lock_cfg: dict,
     current_extension_utc: datetime | None = None,
 ) -> tuple[datetime, datetime]:
     """Bonus = "ile minut grania PODCZAS ciszy nocnej". Pierwszy grant liczy się od
@@ -160,8 +123,8 @@ def _compute_night_extension_until(
 
     Returns: (extension_utc, extension_local_for_display)
     """
-    night_start = parse_hhmm(get_config_value(conn, "night_lock_start"))
-    night_end = parse_hhmm(get_config_value(conn, "night_lock_end"))
+    night_start = parse_hhmm(lock_cfg["night_lock_start"])
+    night_end = parse_hhmm(lock_cfg["night_lock_end"])
     now_local = now_utc.astimezone(tz)
 
     # Baza do dopisania bonusu: aktualny extension jeśli istnieje i jest w przyszłości,
@@ -189,15 +152,13 @@ def _compute_night_extension_until(
 
 @router.post("/v1/totp_attempt")
 async def totp_attempt(
-    request: Request,
-    _: None = Depends(authenticate_request),
+    body: TotpAttemptRequest,
+    device: Device = Depends(authenticate_request),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    raw_body = await request.json()
-    body = _validate_request_body(raw_body)
-
-    code = body["code"]
-    minutes_to_grant = body["minutes_to_grant"]
+    code = body.code
+    minutes_to_grant = body.minutes_to_grant
+    ids = {"child_id": device.child_id, "device_id": device.id}
 
     now_utc = datetime.now(timezone.utc)
     tz = ZoneInfo(get_config_value(db, "timezone"))
@@ -223,9 +184,9 @@ async def totp_attempt(
     last_step = int(get_config_value(db, "totp_last_step") or 0)
     if step is None or step <= last_step:
         new_count, seconds_remaining = _record_failure(db, now_utc)
-        log_event(db, "totp_failed", {"attempts_count": new_count, "replay": step is not None})
+        log_event(db, "totp_failed", {"attempts_count": new_count, "replay": step is not None}, **ids)
         if seconds_remaining:
-            log_event(db, "totp_lockout", {"attempts_count": new_count, "seconds": seconds_remaining})
+            log_event(db, "totp_lockout", {"attempts_count": new_count, "seconds": seconds_remaining}, **ids)
         return JSONResponse(
             status_code=401,
             content={
@@ -238,17 +199,18 @@ async def totp_attempt(
     # === 3. TOTP OK — remember the step, reset lockout ===
     set_config_value(db, "totp_last_step", step)
     _reset_lockout(db)
-    log_event(db, "totp_success", None)
+    log_event(db, "totp_success", None, **ids)
 
-    # === 4. Określ tryb na podstawie aktualnego lock_reason ===
-    current_lock, state, today_local = _get_current_lock_state(db, now_utc, tz)
+    # === 4. Mode from the current lock of the device's child ===
+    today = child_today(db, get_child(db, device.child_id), now_utc, tz)
+    current_lock, state, today_local = today["lock_reason"], today["state"], today["today"]
 
     if current_lock == "limit":
         new_override = state["limit_override_minutes"] + minutes_to_grant
-        update_daily_state(db, today_local, limit_override_minutes=new_override)
+        update_child_day(db, device.child_id, today_local, limit_override_minutes=new_override)
         log_event(
             db, "grant_applied",
-            {"mode": "extend_limit", "minutes": minutes_to_grant, "new_override": new_override},
+            {"mode": "extend_limit", "minutes": minutes_to_grant, "new_override": new_override}, **ids,
         )
         return {
             "ok": True,
@@ -267,14 +229,13 @@ async def totp_attempt(
             except (ValueError, TypeError):
                 pass
         ext_utc, ext_local = _compute_night_extension_until(
-            now_utc, tz, minutes_to_grant, db, current_extension_utc=current_ext_utc
+            now_utc, tz, minutes_to_grant, today["cfg"], current_extension_utc=current_ext_utc
         )
-        update_daily_state(
-            db, today_local, night_extension_until_utc=ext_utc.isoformat()
-        )
+        update_child_day(db, device.child_id, today_local, night_extension_until_utc=ext_utc.isoformat())
         log_event(
             db, "grant_applied",
             {"mode": "extend_night", "minutes": minutes_to_grant, "until_local": ext_local.strftime("%Y-%m-%d %H:%M")},
+            **ids,
         )
         return {
             "ok": True,
@@ -285,8 +246,8 @@ async def totp_attempt(
     if current_lock == "manual":
         # Spec nie precyzuje tego case'u (sekcja 4.4 wymienia tylko limit/night).
         # Defensywna interpretacja: TOTP w trybie manual_lock = rodzic zdejmuje blokadę.
-        update_daily_state(db, today_local, manual_lock=0)
-        log_event(db, "manual_unlock", {"via": "totp"})
+        update_child_day(db, device.child_id, today_local, manual_lock=0)
+        log_event(db, "manual_unlock", {"via": "totp"}, **ids)
         return {
             "ok": True,
             "mode": "manual_unlock",

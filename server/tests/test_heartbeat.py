@@ -6,7 +6,7 @@ import time_machine
 
 from app.crypto import hash_password
 from app.db import get_connection, set_config_value
-from tests.conftest import Watchdog, config, state_for
+from tests.conftest import Watchdog, config, set_child, state_for
 
 TZ = ZoneInfo("Europe/Warsaw")
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)  # Wednesday, outside night window
@@ -44,7 +44,8 @@ def test_limit_locks_and_freezes_time(watchdog):
     with time_machine.travel(NOON, tick=False) as t:
         watchdog.heartbeat()
         with get_connection() as conn:
-            conn.execute("UPDATE daily_state SET seconds_used = ? WHERE date_local = ?", (120 * 60 - 5, "2026-11-04"))
+            conn.execute("UPDATE child_daily SET seconds_used = ? WHERE child_id = 1 AND date_local = ?",
+                         (120 * 60 - 5, "2026-11-04"))
         t.shift(5)
         r = watchdog.heartbeat()
         assert r["lock_required"] and r["lock_reason"] == "limit"
@@ -58,7 +59,8 @@ def test_totp_grant_extends_limit(watchdog):
     with time_machine.travel(NOON, tick=False):
         watchdog.heartbeat()
         with get_connection() as conn:
-            conn.execute("UPDATE daily_state SET seconds_used = ? WHERE date_local = ?", (120 * 60, "2026-11-04"))
+            conn.execute("UPDATE child_daily SET seconds_used = ? WHERE child_id = 1 AND date_local = ?",
+                         (120 * 60, "2026-11-04"))
         code = pyotp.TOTP(config("totp_secret")).now()
         r = watchdog.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": 30})
         assert r.json()["mode"] == "extend_limit"
@@ -113,10 +115,10 @@ def test_admin_sees_and_clears_extension_after_midnight(client, watchdog):
         _grant_night(watchdog, 120)  # until 01:00
         t.shift(timedelta(minutes=90))  # 00:30, new local day
         assert client.post("/admin/login", data={"password": "haslo-rodzica"}).status_code == 200
-        status = client.get("/admin/api/status").json()
+        status = client.get("/admin/api/status").json()["child"]
         assert status["night_extension_until_local"] == "2026-11-05 01:00"
         assert status["lock_required"] is False
-        assert client.post("/admin/api/clear_extension").json()["ok"] is True
+        assert client.post("/admin/api/children/1/clear_extension").json()["ok"] is True
         assert watchdog.heartbeat()["lock_reason"] == "night"
 
 
@@ -128,7 +130,8 @@ def test_totp_code_cannot_be_replayed(watchdog):
     with time_machine.travel(NOON, tick=False):
         watchdog.heartbeat()
         with get_connection() as conn:
-            conn.execute("UPDATE daily_state SET seconds_used = ? WHERE date_local = ?", (120 * 60, "2026-11-04"))
+            conn.execute("UPDATE child_daily SET seconds_used = ? WHERE child_id = 1 AND date_local = ?",
+                         (120 * 60, "2026-11-04"))
         code = pyotp.TOTP(config("totp_secret")).now()
         assert watchdog.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": 30}).status_code == 200
         r = watchdog.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": 30})
@@ -164,6 +167,5 @@ def test_settings_change_applies_on_the_next_heartbeat(watchdog):
     """No config cache: a limit changed in the panel counts at once, not after a TTL."""
     with time_machine.travel(NOON, tick=False):
         assert watchdog.heartbeat()["lock_required"] is False
-        with get_connection() as conn:
-            set_config_value(conn, "daily_limit_weekday", "0")
+        set_child(daily_limit_weekday=0)
         assert watchdog.heartbeat()["lock_reason"] == "limit"

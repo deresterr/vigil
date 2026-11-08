@@ -1,57 +1,42 @@
-"""POST /v1/heartbeat — pełna logika tickowania z sekcji 6.3 spec'a.
+"""POST /v1/heartbeat (+ /v1/goodbye, /v1/tamper_event) — time accounting and lock decision.
 
-Reaktywne liczenie czasu: serwer NIE ma ticka, każde zapytanie watchdoga przesuwa licznik
-o `delta` (clamped 0..15s) jeśli ostatnia aktywność była niedawno (gap detection).
+Reactive: the server has no clock of its own; every heartbeat of a device moves its child's counter
+by `delta` (clamped 0..heartbeat_delta_max) when the device was active recently (gap detection).
+Per device (D7): delta and gap come from that device's own last heartbeat; the seconds go to its
+child, so two PCs used at once count twice (decision: time = sum over devices). Locks are per child.
 """
 
 from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 
-from ..auth import authenticate_request
-from ..db import (
-    ensure_daily_state,
-    get_config_value,
-    get_config_values,
-    get_db,
-    log_event,
-    set_config_value,
-    update_daily_state,
-)
-from ..lock_logic import (
-    compute_lock_reason,
-    is_weekend,
-    load_lock_config,
-    parse_iso_utc,
-    utc_iso,
-)
+from ..auth import Device, authenticate_request
+from ..db import get_child, get_config_values, get_db, log_event
+from ..lock_logic import child_today, compute_lock_reason, parse_iso_utc, utc_iso
+from ..models import GoodbyeRequest, GuardianRepaired, HeartbeatRequest, TamperEvent
 from ..offline import sync_offline_totp
-from ..tamper import GOODBYE_REASONS, process_goodbye, process_telemetry
+from ..tamper import process_goodbye, process_telemetry
 
 router = APIRouter()
 
 
 def _load_hb_cfg(db: sqlite3.Connection) -> dict:
-    """Config for one heartbeat, read fresh every time (one SELECT; no cache to invalidate)."""
-    cfg = load_lock_config(db)
-    extra = get_config_values(db, ("timezone", "heartbeat_delta_max", "gap_detection_threshold",
-                                   "totp_secret", "events_retention_days"))
-    cfg.update(
-        timezone=extra["timezone"],
-        heartbeat_delta_max=int(extra["heartbeat_delta_max"]),
-        gap_detection_threshold=int(extra["gap_detection_threshold"]),
-        totp_secret=extra["totp_secret"],
-        events_retention_days=int(extra["events_retention_days"]),
-    )
-    return cfg
+    """Server-wide settings for one heartbeat, read fresh every time (one SELECT; no cache)."""
+    v = get_config_values(db, ("timezone", "heartbeat_delta_max", "gap_detection_threshold",
+                               "totp_secret", "events_retention_days"))
+    return {
+        "timezone": v["timezone"],
+        "heartbeat_delta_max": int(v["heartbeat_delta_max"]),
+        "gap_detection_threshold": int(v["gap_detection_threshold"]),
+        "totp_secret": v["totp_secret"],
+        "events_retention_days": int(v["events_retention_days"]),
+    }
 
 
-# Counter dla okresowego cleanup events (single-worker uvicorn → bezpieczne).
 _heartbeat_counter = 0
 
 # Polskie komunikaty per lock_reason.
@@ -62,56 +47,6 @@ _UI_MESSAGES_TEMPLATE: dict[str, str] = {
     "manual": "Komputer został zablokowany przez rodzica.",
     "pause":  "Pauza — czas nie leci. Wróć gdy będziesz gotowy!",
 }
-
-
-def _validate_request_body(body: Any) -> dict:
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="body_must_be_object")
-
-    required_types: dict[str, type] = {
-        "session_active": bool,
-        "user_active": bool,
-        "current_time_utc": str,
-        "uptime_seconds": int,
-    }
-    for key, expected_type in required_types.items():
-        if key not in body:
-            raise HTTPException(status_code=422, detail=f"missing_field: {key}")
-        # bool jest podtypem int, więc sprawdzamy bool najpierw
-        if expected_type is bool and not isinstance(body[key], bool):
-            raise HTTPException(status_code=422, detail=f"invalid_type: {key}")
-        if expected_type is int and (isinstance(body[key], bool) or not isinstance(body[key], int)):
-            raise HTTPException(status_code=422, detail=f"invalid_type: {key}")
-        if expected_type is str and not isinstance(body[key], str):
-            raise HTTPException(status_code=422, detail=f"invalid_type: {key}")
-
-    # Tamper telemetry (#7). Optional so a watchdog without it still works; all or nothing.
-    telemetry = ("instance_id", "awake_ms", "awake_ms_at_start", "failed_attempts")
-    present = [k for k in telemetry if k in body]
-    if present and len(present) != len(telemetry):
-        raise HTTPException(status_code=422, detail="incomplete_telemetry")
-    if present:
-        if not isinstance(body["instance_id"], str) or not 0 < len(body["instance_id"]) <= 64:
-            raise HTTPException(status_code=422, detail="invalid_type: instance_id")
-        for k in telemetry[1:]:
-            v = body[k]
-            if isinstance(v, bool) or not isinstance(v, int) or v < 0:
-                raise HTTPException(status_code=422, detail=f"invalid_type: {k}")
-
-    # Offline TOTP (#9). totp_fp: which secret the watchdog holds; offline_grants: unlocks it did
-    # on its own while the server was unreachable, reported on reconnect.
-    if "totp_fp" in body and (not isinstance(body["totp_fp"], str) or len(body["totp_fp"]) > 64):
-        raise HTTPException(status_code=422, detail="invalid_type: totp_fp")
-    grants = body.get("offline_grants", [])
-    if not isinstance(grants, list) or len(grants) > 50:
-        raise HTTPException(status_code=422, detail="invalid_type: offline_grants")
-    for g in grants:
-        ok = (isinstance(g, dict) and isinstance(g.get("at_utc"), str)
-              and all(isinstance(g.get(k), int) and not isinstance(g.get(k), bool) for k in ("minutes", "step")))
-        if not ok:
-            raise HTTPException(status_code=422, detail="invalid_type: offline_grants")
-
-    return body
 
 
 # === Cleanup ===
@@ -133,87 +68,73 @@ def _maybe_cleanup_events(conn: sqlite3.Connection, cfg: dict) -> None:
 
 @router.post("/v1/heartbeat")
 async def heartbeat(
-    request: Request,
-    _: None = Depends(authenticate_request),
+    body: HeartbeatRequest,
+    device: Device = Depends(authenticate_request),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    raw_body = await request.json()
-    body = _validate_request_body(raw_body)
-
-    # === 0. Batch-load config (cache 60s, jeden SELECT dla wszystkich kluczy) ===
     cfg = _load_hb_cfg(db)
-
     now_utc = datetime.now(timezone.utc)
     tz = ZoneInfo(cfg["timezone"])
     now_local = now_utc.astimezone(tz)
-    today_local = now_local.date()
+    child = get_child(db, device.child_id)
+    ids = {"child_id": device.child_id, "device_id": device.id}
+    dev = db.execute("SELECT last_heartbeat_utc, last_active_utc FROM devices WHERE id = ?",
+                     (device.id,)).fetchone()
 
-    state = dict(ensure_daily_state(db, today_local))
+    # Pre-lock check: while the child is locked no time accrues (invariant).
+    today = child_today(db, child, now_utc, tz)
+    state, lock_cfg, today_local = today["state"], today["cfg"], today["today"]
+    active = body.session_active and body.user_active
 
-    # === 1. Tickowanie (sekcja 6.3) ===
+    # === 1. Time from this device ===
     seconds_added = 0
-    if state["last_heartbeat_utc"] and body["session_active"] and body["user_active"]:
-        last_hb = parse_iso_utc(state["last_heartbeat_utc"])
-        delta_seconds = (now_utc - last_hb).total_seconds()
-        delta_seconds = max(0.0, min(float(cfg["heartbeat_delta_max"]), delta_seconds))
-        if state["last_session_active_utc"]:
-            last_active = parse_iso_utc(state["last_session_active_utc"])
-            if (now_utc - last_active).total_seconds() <= cfg["gap_detection_threshold"]:
-                seconds_added = int(delta_seconds)
+    if today["lock_reason"] is None and active and dev["last_heartbeat_utc"] and dev["last_active_utc"]:
+        delta = (now_utc - parse_iso_utc(dev["last_heartbeat_utc"])).total_seconds()
+        delta = max(0.0, min(float(cfg["heartbeat_delta_max"]), delta))
+        if (now_utc - parse_iso_utc(dev["last_active_utc"])).total_seconds() <= cfg["gap_detection_threshold"]:
+            seconds_added = int(delta)
 
-    # Pre-lock check: jeśli już zablokowany — czas nie leci.
-    # Optymalizacja: compute_lock_reason wywołane RAZ z aktualnym stanem.
-    # Jeśli seconds_added > 0, wywołamy drugi raz z nowym seconds_used żeby sprawdzić
-    # czy właśnie przekroczyliśmy limit. Jeśli seconds_added == 0, obie odpowiedzi są identyczne.
-    pre_lock = compute_lock_reason(now_utc, tz, today_local, state, cfg)
-    if pre_lock is not None:
-        seconds_added = 0
-
+    # === 2. Update device and child ===
+    db.execute(
+        "UPDATE devices SET last_heartbeat_utc = ?, last_active_utc = COALESCE(?, last_active_utc), "
+        "seconds_today = CASE WHEN seconds_date = ? THEN seconds_today + ? ELSE ? END, seconds_date = ? "
+        "WHERE id = ?",
+        (now_utc.isoformat(), now_utc.isoformat() if active else None, today_local.isoformat(), seconds_added,
+         seconds_added, today_local.isoformat(), device.id),
+    )
     new_seconds_used = state["seconds_used"] + seconds_added
+    if seconds_added:
+        # Atomic: another device of the same child may have added its seconds meanwhile.
+        db.execute("UPDATE child_daily SET seconds_used = seconds_used + ? WHERE child_id = ? AND date_local = ?",
+                   (seconds_added, device.child_id, today_local.isoformat()))
 
-    # === 2. Update state ===
-    update_fields: dict = {"last_heartbeat_utc": now_utc.isoformat()}
-    if seconds_added > 0:
-        update_fields["seconds_used"] = new_seconds_used  # tylko gdy się zmieniło
-    if body["session_active"] and body["user_active"]:
-        update_fields["last_session_active_utc"] = now_utc.isoformat()
-    update_daily_state(db, today_local, **update_fields)
+    # === 3. Lock decision (again only if the new seconds may have reached the limit) ===
+    lock_reason = today["lock_reason"]
+    if seconds_added:
+        lock_reason = compute_lock_reason(now_utc, tz, today_local, {**state, "seconds_used": new_seconds_used},
+                                          lock_cfg)
 
-    # === 3. Lock determination ===
-    # Jeśli seconds_added == 0: stan się nie zmienił → lock_reason == pre_lock (0 dodatkowych SELECT-ów)
-    # Jeśli seconds_added > 0: nowe seconds_used mogły trafić w limit → sprawdź ponownie
-    if seconds_added > 0:
-        lock_reason = compute_lock_reason(
-            now_utc, tz, today_local,
-            {**state, "seconds_used": new_seconds_used},
-            cfg,
-        )
-    else:
-        lock_reason = pre_lock  # identyczny stan — ten sam wynik, zero duplikatów SELECT
-
-    # Journal (#8): the moment a limit/night lock starts. Manual lock and pause are logged by their
-    # own endpoints; unlocks by the grant that caused them.
-    last_reason = get_config_value(db, "last_lock_reason") or ""
-    if (lock_reason or "") != last_reason:
+    # Journal (#8): the moment a limit/night lock starts, once per child (not once per device).
+    # Manual lock and pause are logged by their own endpoints; unlocks by the grant that caused them.
+    if (lock_reason or "") != child["last_lock_reason"]:
         if lock_reason in ("limit", "night"):
-            log_event(db, "lock_started", {"reason": lock_reason, "minutes_used": new_seconds_used // 60})
-        set_config_value(db, "last_lock_reason", lock_reason or "")
+            log_event(db, "lock_started", {"reason": lock_reason, "minutes_used": new_seconds_used // 60},
+                      child_id=device.child_id)
+        db.execute("UPDATE children SET last_lock_reason = ? WHERE id = ?", (lock_reason or "", device.child_id))
 
     minutes_used = new_seconds_used // 60
-    daily_limit  = cfg["daily_limit_weekend"] if is_weekend(today_local) else cfg["daily_limit_weekday"]
-    effective_limit = daily_limit + state["limit_override_minutes"]
-    minutes_remaining = max(0, effective_limit - minutes_used)
+    minutes_remaining = max(0, today["effective_limit"] - minutes_used)
 
-    # === 4. Clock drift (informacyjny, nie blokuje) ===
+    # === 4. Clock drift (informational) ===
     try:
-        client_now = parse_iso_utc(body["current_time_utc"])
-        drift = abs((client_now - now_utc).total_seconds())
+        drift = abs((parse_iso_utc(body.current_time_utc) - now_utc).total_seconds())
         if drift > 180:
-            log_event(db, "clock_drift", {"drift_seconds": int(drift)})
-    except (ValueError, KeyError):
+            log_event(db, "clock_drift", {"drift_seconds": int(drift)}, **ids)
+    except ValueError:
         pass
 
-    # === 5. UI state (tylko gdy zablokowany) ===
+    # === 5. UI state (only while locked) ===
+    ui_state = None
     if lock_reason:
         ui_state = {
             "main_message": _UI_MESSAGES_TEMPLATE.get(lock_reason),
@@ -223,18 +144,15 @@ async def heartbeat(
             "show_shutdown_button": True,
             "current_time_display": now_local.strftime("%H:%M"),
         }
-    else:
-        ui_state = None
 
     # === 6. Tamper telemetry (#7) ===
-    if "instance_id" in body:
-        process_telemetry(db, body["instance_id"], body["awake_ms"], body["awake_ms_at_start"],
-                          body["failed_attempts"])
+    if body.has_telemetry:
+        process_telemetry(db, device, body.instance_id, body.awake_ms, body.awake_ms_at_start, body.failed_attempts)
 
     # === 7. Offline TOTP (#9) ===
-    offline_secret = sync_offline_totp(db, body.get("totp_fp"), body.get("offline_grants", []))
+    offline_secret = sync_offline_totp(db, device, body.totp_fp, [g.model_dump() for g in body.offline_grants])
 
-    # === 8. Cleanup events (co 100 hb) ===
+    # === 8. Cleanup events (every 100 heartbeats) ===
     _maybe_cleanup_events(db, cfg)
 
     return {
@@ -242,7 +160,7 @@ async def heartbeat(
         "lock_reason": lock_reason,
         "minutes_used": minutes_used,
         "minutes_remaining": minutes_remaining,
-        "next_check_seconds": 5 if body["session_active"] else 30,
+        "next_check_seconds": 5 if body.session_active else 30,
         "server_time_utc": utc_iso(now_utc),
         "ui_state": ui_state,
         # Only when the watchdog holds a different (or no) TOTP secret; the response is HMAC-signed.
@@ -252,81 +170,44 @@ async def heartbeat(
 
 @router.post("/v1/goodbye")
 async def goodbye(
-    request: Request,
-    _: None = Depends(authenticate_request),
+    body: GoodbyeRequest,
+    device: Device = Depends(authenticate_request),
     db: sqlite3.Connection = Depends(get_db),
 ):
     """Sent by the watchdog when its service stops (system shutdown or service stop)."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="body_must_be_object")
-    instance_id, reason = body.get("instance_id"), body.get("reason")
-    if not isinstance(instance_id, str) or not 0 < len(instance_id) <= 64:
-        raise HTTPException(status_code=422, detail="invalid_type: instance_id")
-    if reason not in GOODBYE_REASONS:
-        raise HTTPException(status_code=422, detail="invalid_reason")
-    process_goodbye(db, instance_id, reason)
+    process_goodbye(db, device, body.instance_id, body.reason)
     return {"ok": True}
 
 
-# Tamper events the watchdog observes itself (#10). Wire type -> journal event type.
-_TAMPER_EVENTS = {
-    "lockscreen_killed": "tamper_lockscreen_killed",
-    "guardian_repaired": "tamper_guardian_repaired",
-}
-# What vigil_guardian.ps1 found broken (#36); the watchdog maps its Event Log IDs to these names.
-GUARDIAN_CHECKS = frozenset(
-    {"service_not_running", "service_disabled", "binary_replaced", "ifeo_debugger", "safeboot_missing",
-     "recovery_missing"})
 # The watchdog re-sends the guardian's events of the last day after every restart; older ones are noise.
 _GUARDIAN_MAX_AGE = timedelta(days=2)
 
 
-def _guardian_details(body: dict) -> tuple[dict, datetime] | None:
-    """Validated details + time of a guardian_repaired report, or None if malformed."""
-    check, record_id, repaired = body.get("check"), body.get("record_id"), body.get("repaired")
-    if check not in GUARDIAN_CHECKS or not isinstance(repaired, bool):
-        return None
-    if not isinstance(record_id, int) or isinstance(record_id, bool) or record_id < 0:
-        return None
-    try:
-        occurred = datetime.fromisoformat(str(body.get("occurred_utc")).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if occurred.tzinfo is None:
-        return None
-    occurred = occurred.astimezone(timezone.utc)
-    now = datetime.now(timezone.utc)
-    if not now - _GUARDIAN_MAX_AGE <= occurred <= now + timedelta(minutes=5):
-        return None
-    return {"check": check, "repaired": repaired, "record_id": record_id}, min(occurred, now)
-
-
 @router.post("/v1/tamper_event")
 async def tamper_event(
-    request: Request,
-    _: None = Depends(authenticate_request),
+    body: TamperEvent,
+    device: Device = Depends(authenticate_request),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    body = await request.json()
-    if not isinstance(body, dict) or body.get("type") not in _TAMPER_EVENTS:
-        raise HTTPException(status_code=422, detail="invalid_type")
-    if body["type"] == "guardian_repaired":
-        parsed = _guardian_details(body)
-        if parsed is None:
+    """Tampering the watchdog observes itself: the lock UI killed in a loop (#10), guardian repairs (#36)."""
+    ids = {"child_id": device.child_id, "device_id": device.id}
+    if isinstance(body, GuardianRepaired):
+        now = datetime.now(timezone.utc)
+        occurred = body.occurred_utc.astimezone(timezone.utc)
+        if not now - _GUARDIAN_MAX_AGE <= occurred <= now + timedelta(minutes=5):
             raise HTTPException(status_code=422, detail="invalid_guardian_report")
-        details, occurred = parsed
+        occurred = min(occurred, now)
         # Event Log record IDs restart when the log is cleared: the time is part of the identity.
         seen = db.execute(
-            "SELECT 1 FROM events WHERE event_type = 'tamper_guardian_repaired' "
+            "SELECT 1 FROM events WHERE event_type = 'tamper_guardian_repaired' AND device_id = ? "
             "AND json_extract(details_json, '$.record_id') = ? AND ts_utc = ?",
-            (details["record_id"], occurred.isoformat()),
+            (device.id, body.record_id, occurred.isoformat()),
         ).fetchone()
         if not seen:
-            log_event(db, "tamper_guardian_repaired", details, ts_utc=occurred)
+            log_event(db, "tamper_guardian_repaired",
+                      {"check": body.check, "repaired": body.repaired, "record_id": body.record_id},
+                      ts_utc=occurred, **ids)
         return {"ok": True}
 
-    details = {k: body[k] for k in ("kills", "window_seconds", "logged_off")
-               if isinstance(body.get(k), int | bool)}
-    log_event(db, _TAMPER_EVENTS[body["type"]], details)
+    log_event(db, "tamper_lockscreen_killed", body.model_dump(exclude={"type"}, exclude_none=True), **ids)
     return {"ok": True}

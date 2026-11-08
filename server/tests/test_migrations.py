@@ -21,9 +21,13 @@ CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts_utc TEXT NOT NULL 
 CREATE TABLE totp_lockout (id INTEGER PRIMARY KEY CHECK (id = 1), attempts_count INTEGER NOT NULL DEFAULT 0,
     first_attempt_utc TEXT, lockout_until_utc TEXT);
 CREATE TABLE used_nonces (nonce TEXT PRIMARY KEY, ts_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-INSERT INTO config VALUES ('signing_key', 'k'), ('bearer_token', 'old'), ('daily_limit_weekday', '90');
-INSERT INTO daily_state(date_local, seconds_used) VALUES ('2026-11-01', 3600);
+INSERT INTO config VALUES ('signing_key', 'k'), ('bearer_token', 'old'), ('daily_limit_weekday', '90'),
+    ('setup_complete', '1'), ('device_name', 'Komputer Jasia'), ('timezone', 'Europe/Warsaw'),
+    ('wd_instance_id', 'abc'), ('wd_awake_ms', '5000'), ('last_lock_reason', 'limit');
+INSERT INTO daily_state(date_local, seconds_used, manual_lock, last_heartbeat_utc, last_session_active_utc)
+    VALUES ('2026-11-01', 3600, 1, '2026-11-01T18:00:00+00:00', '2026-11-01T17:59:55+00:00');
 INSERT INTO events(event_type) VALUES ('vigil_started');
+INSERT INTO events(event_type) VALUES ('watchdog_started');
 """
 
 
@@ -57,10 +61,41 @@ def test_v04_database_is_migrated_with_its_data(db_path):
 
     assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
     assert "acked_utc" in _columns(db_path, "events")
+    # Per-child and per-device keys left config; bearer_token is gone, the rest stays.
     assert _query(db_path, "SELECT key, value FROM config ORDER BY key") == [
-        ("daily_limit_weekday", "90"), ("signing_key", "k")]  # bearer_token dropped, the rest kept
-    assert _query(db_path, "SELECT seconds_used FROM daily_state") == [(3600,)]
-    assert _query(db_path, "SELECT event_type FROM events") == [("vigil_started",)]
+        ("setup_complete", "1"), ("timezone", "Europe/Warsaw")]
+    # D7: the one PC became child 1 with device 1, settings and state carried over.
+    assert _query(db_path, "SELECT id, name, daily_limit_weekday, daily_limit_weekend, night_lock_start, "
+                           "last_lock_reason FROM children") == [(1, "Komputer Jasia", 90, 240, "21:30", "limit")]
+    assert _query(db_path, "SELECT id, child_id, signing_key, last_heartbeat_utc, wd_instance_id, wd_awake_ms "
+                           "FROM devices") == [(1, 1, "k", "2026-11-01T18:00:00+00:00", "abc", 5000)]
+    assert _query(db_path, "SELECT child_id, date_local, seconds_used, manual_lock FROM child_daily") == [
+        (1, "2026-11-01", 3600, 1)]
+    assert _query(db_path, "SELECT event_type, child_id, device_id FROM events ORDER BY id") == [
+        ("vigil_started", 1, None), ("watchdog_started", 1, 1)]
+    assert _query(db_path, "SELECT name FROM sqlite_master WHERE name = 'daily_state'") == []
+
+
+def test_database_before_setup_gets_no_child(db_path):
+    with closing(sqlite3.connect(db_path)) as conn:
+        conn.executescript(V04_SCHEMA)
+        conn.execute("UPDATE config SET value = '0' WHERE key = 'setup_complete'")
+        conn.commit()
+    app.db.init_database()
+    assert _query(db_path, "SELECT COUNT(*) FROM children") == [(0,)]
+    assert _query(db_path, "SELECT COUNT(*) FROM devices") == [(0,)]
+
+
+def test_pc_that_never_connected_is_not_a_device(db_path):
+    """bootstrap generated a key before any pairing; a PC that never sent a heartbeat is not a device."""
+    with closing(sqlite3.connect(db_path)) as conn:
+        conn.executescript(V04_SCHEMA)
+        conn.execute("UPDATE daily_state SET last_heartbeat_utc = NULL")
+        conn.execute("DELETE FROM config WHERE key = 'wd_instance_id'")
+        conn.commit()
+    app.db.init_database()
+    assert _query(db_path, "SELECT COUNT(*) FROM children") == [(1,)]
+    assert _query(db_path, "SELECT COUNT(*) FROM devices") == [(0,)]
 
 
 def test_migration_is_idempotent(db_path):

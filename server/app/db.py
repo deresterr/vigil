@@ -4,9 +4,9 @@
 Single-worker uvicorn + WAL mode — ale asyncio nadal obsługuje kilka requestów współbieżnie
 (między await-ami). Dlatego get_db() używa asyncio.Lock: jeden request naraz ma dostęp do DB.
 
-Single-tenant: jeden PC dziecka = jeden kontener. Sekrety (signing_key,
-totp_secret, parent_password_hash) trzymane w `config` table jako pojedyncze klucze.
-Schema: migrations.py.
+One server, many children (D7): per-child settings in `children`, devices with their signing keys
+in `devices`, per-child days in `child_daily`. Server-wide settings and secrets (totp_secret,
+parent_password_hash, admin_session_key) are single keys in `config`. Schema: migrations.py.
 """
 
 from __future__ import annotations
@@ -116,50 +116,49 @@ def log_event(
     event_type: str,
     details: dict | None = None,
     ts_utc: datetime | None = None,
+    *,
+    child_id: int | None = None,
+    device_id: int | None = None,
 ) -> None:
-    """Wpis do `events`. details serializowany do JSON jeśli niepusty.
+    """One row in `events`; details as JSON when not empty.
 
-    ts_utc zapisujemy explicite Python isoformat (z 'T' i timezone) — SQLite
-    CURRENT_TIMESTAMP używa formatu ze spacją, nieporównywalnego lexicographically z naszymi cutoff.
+    ts_utc is written as Python isoformat (with 'T' and offset): SQLite CURRENT_TIMESTAMP uses a space
+    and would not compare lexicographically with our cutoffs. child_id/device_id say whom it concerns
+    (journal filter and labels); parent-wide events (password, TOTP) carry neither.
     """
     payload = json.dumps(details, separators=(",", ":"), default=str) if details else None
     conn.execute(
-        "INSERT INTO events(event_type, details_json, ts_utc) VALUES (?, ?, ?)",
-        (event_type, payload, (ts_utc or datetime.now(timezone.utc)).isoformat()),
+        "INSERT INTO events(event_type, details_json, ts_utc, child_id, device_id) VALUES (?, ?, ?, ?, ?)",
+        (event_type, payload, (ts_utc or datetime.now(timezone.utc)).isoformat(), child_id, device_id),
     )
 
 
-def ensure_daily_state(conn: sqlite3.Connection, date_local: date) -> sqlite3.Row:
-    """Zwraca rekord daily_state dla danej daty, tworząc pusty jeśli nie istnieje.
+# === Children and their days ===
 
-    Fast path: gdy rekord ISTNIEJE (typowa sytuacja w trakcie dnia), wykonujemy TYLKO
-    SELECT — żaden writer lock nie jest brany. Bez tego każdy GET /admin/api/status
-    otwierał implicit write transaction (przez INSERT OR IGNORE), co przy parallel
-    requests (auto-refresh UI + watchdog heartbeat) prowadziło do "database is locked"
-    pomimo busy_timeout=30s.
 
-    Slow path: rekord nie istnieje (pierwszy request dnia po północy) → INSERT i znów SELECT.
-    State that is not tied to a calendar day is carried over from the most recent previous row:
+def get_child(conn: sqlite3.Connection, child_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM children WHERE id = ?", (child_id,)).fetchone()
+
+
+def ensure_child_day(conn: sqlite3.Connection, child_id: int, date_local: date) -> sqlite3.Row:
+    """The child's child_daily row for this date, created when missing.
+
+    Fast path: the row exists (all day long) — only a SELECT, no write lock.
+    Slow path: the first request of the date inserts it. State not tied to a calendar day is carried
+    over from the child's most recent previous row:
     - manual_lock: stays until the parent removes it,
     - night_extension_until_utc: a night window spans midnight, so a grant made before midnight
       must still apply after it (only carried while it is still in the future).
     """
-    row = conn.execute(
-        "SELECT * FROM daily_state WHERE date_local = ?",
-        (date_local.isoformat(),),
-    ).fetchone()
+    key = (child_id, date_local.isoformat())
+    row = conn.execute("SELECT * FROM child_daily WHERE child_id = ? AND date_local = ?", key).fetchone()
     if row is not None:
         return row
-    # First request of this date — pisać.
-    conn.execute(
-        "INSERT INTO daily_state(date_local) VALUES (?) "
-        "ON CONFLICT(date_local) DO NOTHING",
-        (date_local.isoformat(),),
-    )
+    conn.execute("INSERT INTO child_daily(child_id, date_local) VALUES (?, ?) ON CONFLICT DO NOTHING", key)
     prev = conn.execute(
-        "SELECT manual_lock, night_extension_until_utc FROM daily_state WHERE date_local < ? "
+        "SELECT manual_lock, night_extension_until_utc FROM child_daily WHERE child_id = ? AND date_local < ? "
         "ORDER BY date_local DESC LIMIT 1",
-        (date_local.isoformat(),),
+        key,
     ).fetchone()
     if prev:
         carried: dict = {}
@@ -168,22 +167,16 @@ def ensure_daily_state(conn: sqlite3.Connection, date_local: date) -> sqlite3.Ro
         ext = prev["night_extension_until_utc"]
         if ext and datetime.fromisoformat(ext.replace("Z", "+00:00")) > datetime.now(timezone.utc):
             carried["night_extension_until_utc"] = ext
-        update_daily_state(conn, date_local, **carried)
-    return conn.execute(
-        "SELECT * FROM daily_state WHERE date_local = ?",
-        (date_local.isoformat(),),
-    ).fetchone()
+        update_child_day(conn, child_id, date_local, **carried)
+    return conn.execute("SELECT * FROM child_daily WHERE child_id = ? AND date_local = ?", key).fetchone()
 
 
-def update_daily_state(conn: sqlite3.Connection, date_local: date, **fields) -> None:
-    """UPDATE z wybranych pól. Buduje SQL dynamicznie — wartości przez parametry, klucze
-    pochodzą tylko ze zaufanego kodu, nie z user input.
-    """
+def update_child_day(conn: sqlite3.Connection, child_id: int, date_local: date, **fields) -> None:
+    """UPDATE of the given columns; column names come from our code only, values are parameters."""
     if not fields:
         return
     set_clause = ", ".join(f"{k} = ?" for k in fields)
-    values = [*fields.values(), date_local.isoformat()]
     conn.execute(
-        f"UPDATE daily_state SET {set_clause} WHERE date_local = ?",
-        values,
+        f"UPDATE child_daily SET {set_clause} WHERE child_id = ? AND date_local = ?",
+        [*fields.values(), child_id, date_local.isoformat()],
     )

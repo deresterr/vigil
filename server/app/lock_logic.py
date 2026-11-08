@@ -13,7 +13,7 @@ import sqlite3
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
-from .db import get_config_values
+from .db import ensure_child_day
 
 # === Datetime helpers ===
 
@@ -57,18 +57,40 @@ def is_in_night_window(now_local_time: time, night_start: time, night_end: time)
     return now_local_time >= night_start or now_local_time < night_end
 
 
-# === Lock config loader ===
+# === Lock config ===
 
 
-def load_lock_config(conn: sqlite3.Connection) -> dict:
-    """Config keys compute_lock_reason needs (every caller, heartbeat included; no cache)."""
-    rows = get_config_values(conn, ("night_lock_start", "night_lock_end",
-                                    "daily_limit_weekday", "daily_limit_weekend"))
+def load_lock_config(child: sqlite3.Row | dict) -> dict:
+    """The child's settings compute_lock_reason needs (a `children` row; read per request, no cache)."""
     return {
-        "night_lock_start":    rows["night_lock_start"],
-        "night_lock_end":      rows["night_lock_end"],
-        "daily_limit_weekday": int(rows["daily_limit_weekday"]),
-        "daily_limit_weekend": int(rows["daily_limit_weekend"]),
+        "night_lock_start":    child["night_lock_start"],
+        "night_lock_end":      child["night_lock_end"],
+        "daily_limit_weekday": int(child["daily_limit_weekday"]),
+        "daily_limit_weekend": int(child["daily_limit_weekend"]),
+    }
+
+
+def daily_limit(cfg: dict, day: date) -> int:
+    return cfg["daily_limit_weekend"] if is_weekend(day) else cfg["daily_limit_weekday"]
+
+
+def child_today(conn: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime, tz: ZoneInfo) -> dict:
+    """Today's state of one child: its child_daily row, lock reason and minutes (all its devices)."""
+    today = now_utc.astimezone(tz).date()
+    state = dict(ensure_child_day(conn, child["id"], today))
+    cfg = load_lock_config(child)
+    limit = daily_limit(cfg, today)
+    effective = limit + state["limit_override_minutes"]
+    used = state["seconds_used"] // 60
+    return {
+        "today": today,
+        "state": state,
+        "cfg": cfg,
+        "lock_reason": compute_lock_reason(now_utc, tz, today, state, cfg),
+        "minutes_used": used,
+        "daily_limit": limit,
+        "effective_limit": effective,
+        "minutes_remaining": max(0, effective - used),
     }
 
 
@@ -88,7 +110,7 @@ def compute_lock_reason(
 
     cfg musi zawierać: night_lock_start, night_lock_end,
                        daily_limit_weekday, daily_limit_weekend.
-    Pass load_lock_config(conn).
+    Pass load_lock_config(child).
     """
     if state["manual_lock"]:
         return "manual"
@@ -106,9 +128,7 @@ def compute_lock_reason(
     if in_night and not night_extended:
         return "night"
 
-    minutes_used = state["seconds_used"] // 60
-    daily_limit  = cfg["daily_limit_weekend"] if is_weekend(today_local) else cfg["daily_limit_weekday"]
-    if minutes_used >= daily_limit + state["limit_override_minutes"]:
+    if state["seconds_used"] // 60 >= daily_limit(cfg, today_local) + state["limit_override_minutes"]:
         return "limit"
 
     # Pauza — najniższy priorytet. Aktywna tylko gdy dziecko ma jeszcze czas.

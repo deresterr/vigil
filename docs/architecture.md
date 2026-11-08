@@ -38,7 +38,7 @@ signature like "server unreachable".
 |---|---|---|
 | `POST /v1/heartbeat` | `session_active, user_active, current_time_utc, uptime_seconds` | → `lock_required, lock_reason, minutes_used, minutes_remaining, next_check_seconds, server_time_utc, ui_state` |
 | `POST /v1/goodbye` | `instance_id, reason` (`service_stop`\|`shutdown`) | sent from the service's StopAsync; see Tamper detection |
-| `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`. every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
+| `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`; response `mode`, `minutes`, `until_local` (night). every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` | refused while a higher-priority lock is active |
 | `POST /v1/pair` | `code` | **unauthenticated**; one-time 8-digit code from the panel (10 min, 5 attempts) → new `signing_key` + `server_url`. The code is made for a new device of a child, or for re-pairing a device (its key is replaced) |
 | `POST /v1/tamper_event` | `type` `lockscreen_killed` \| `guardian_repaired` | see Tamper detection |
@@ -46,8 +46,13 @@ signature like "server unreachable".
 Request bodies are Pydantic models in `app/models.py` (strict types, unknown fields ignored) — a contract with
 `HeartbeatModels.cs`.
 
-`ui_state` (only when locked): `main_message` (Polish, from server), `show_totp_field`, `show_resume_button`,
-`show_retry_button`, `show_shutdown_button`, `current_time_display`.
+`ui_state` (only when locked): `show_totp_field`, `show_resume_button`, `show_retry_button`, `show_shutdown_button`,
+`current_time_display`.
+
+**Language (i18n, #52):** the server sends codes and numbers, never sentences: `lock_reason`, TOTP `mode` with
+`minutes` and (night) `until_local`. Each UI words them in its own environment's language — the panel by the
+browser (`static/i18n.js`), the lock screen by the child's Windows (`vigil_ui`; the watchdog runs as SYSTEM and
+does not know it). Polish and English; the installer stays Polish until it is rewritten.
 
 ## Children, devices and time accounting (`heartbeat.py`, D7)
 

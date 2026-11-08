@@ -10,7 +10,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   child's session, started and kept alive by the watchdog), `shared/IpcMessages.cs` (linked into both).
 - `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D20), roadmap (M1–M2 done, M3, M4.1).
+- `docs/review-2026-11.md` — known defects, decisions (D1–D21), roadmap (M1–M2 done, M3, M4.1).
   Other `docs/*.md` are older component notes; code wins.
 
 ## Verify before saying "done"
@@ -79,7 +79,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 
 ## Conventions
 - New code, comments, commit messages: English. Existing Polish comments: leave unless touching the code.
-  User-facing strings (UI, installer output): Polish for now.
+- i18n (D21): each UI speaks its environment's language (Polish or English); the server and the watchdog send
+  codes and numbers, never sentences. Panel: Polish source text marked `t('…')` / `tn(n, '…')` / `data-i18n`,
+  English in `server/app/static/i18n.js` — `tests/test_i18n.py` fails on a missing or unused entry. The
+  installer stays Polish until it is rewritten.
 - Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;
   panel bodies next to their endpoints); config through `get_config_value()`/`get_config_values()`, defaults in
   `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`

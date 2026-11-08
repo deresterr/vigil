@@ -39,16 +39,6 @@ def _load_hb_cfg(db: sqlite3.Connection) -> dict:
 
 _heartbeat_counter = 0
 
-# Polskie komunikaty per lock_reason.
-# `server_unreachable` ustawia watchdog lokalnie — tu nie pojawia się.
-_UI_MESSAGES_TEMPLATE: dict[str, str] = {
-    "limit":  "Skończył się Twój czas na dziś. Zapraszam jutro! :)",
-    "night":  "Pora spać. Komputer odblokuje się rano.",
-    "manual": "Komputer został zablokowany przez rodzica.",
-    "pause":  "Pauza — czas nie leci. Wróć gdy będziesz gotowy!",
-}
-
-
 # === Cleanup ===
 
 
@@ -134,10 +124,10 @@ async def heartbeat(
         pass
 
     # === 5. UI state (only while locked) ===
+    # No sentences: vigil_ui words the lock screen in the child's Windows language from lock_reason (i18n, #52).
     ui_state = None
     if lock_reason:
         ui_state = {
-            "main_message": _UI_MESSAGES_TEMPLATE.get(lock_reason),
             "show_totp_field": bool(cfg["totp_secret"]) and lock_reason in ("limit", "night", "manual"),
             "show_resume_button": lock_reason == "pause",
             "show_retry_button": False,

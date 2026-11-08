@@ -75,20 +75,22 @@
 <body>
   <form class="card" method="post" action="/admin/login">
     <h1 id="pageH1">Vigil</h1>
-    <label for="password">Hasło rodzica</label>
+    <label for="password" data-i18n>Hasło rodzica</label>
     <input type="password" id="password" name="password" autofocus required>
-    <div id="error" class="error" hidden>Nieprawidłowe hasło.</div>
-    <button type="submit">Zaloguj</button>
+    <div id="error" class="error" hidden data-i18n>Nieprawidłowe hasło.</div>
+    <button type="submit" data-i18n>Zaloguj</button>
   </form>
+  <!-- i18n -->
   <script>
+    applyI18n();
     const q = new URLSearchParams(location.search);
     const err = document.getElementById("error");
     if (q.get("error") === "1") {
       err.hidden = false;
     } else if (q.get("error") === "locked") {
       const wait = parseInt(q.get("wait") || "0", 10);
-      err.textContent = "Zbyt wiele nieudanych prób. Spróbuj ponownie za " +
-        (wait >= 60 ? Math.ceil(wait / 60) + " min." : wait + " s.");
+      err.textContent = t('Zbyt wiele nieudanych prób. Spróbuj ponownie za {time}.',
+                          {time: wait >= 60 ? Math.ceil(wait / 60) + " min" : wait + " s"});
       err.hidden = false;
     }
   </script>

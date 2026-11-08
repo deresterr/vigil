@@ -110,6 +110,7 @@ async def journal(db: sqlite3.Connection = Depends(get_db), before: str | None =
     names = {"children": {c["id"]: c["name"] for c in db.execute("SELECT id, name FROM children")},
              "devices": dict(db.execute("SELECT id, name FROM devices").fetchall())}
     child_filter, params = ("AND child_id = ?", (child_id,)) if child_id is not None else ("", ())
+    weeks = {c["id"]: load_lock_config(db, c["id"]) for c in children}
     out = []
     for i in range(days):
         day = first - timedelta(days=i)
@@ -130,7 +131,7 @@ async def journal(db: sqlite3.Connection = Depends(get_db), before: str | None =
                 "child_id": c["id"],
                 "name": c["name"],
                 "minutes_used": (state["seconds_used"] // 60) if state else 0,
-                "limit_minutes": daily_limit(load_lock_config(c), day)
+                "limit_minutes": daily_limit(weeks[c["id"]], day)
                 + (state["limit_override_minutes"] if state else 0),
             })
         out.append({"date": day.isoformat(), "children": totals, "entries": _entries(rows, tz, names)})

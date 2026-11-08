@@ -3,7 +3,7 @@
 Children and devices (D7):
 - GET    /admin/api/status?child_id=        — overview of all children + details of one
 - POST   /admin/api/children                — add a child
-- PATCH  /admin/api/children/{id}           — name, limits, night window
+- PATCH  /admin/api/children/{id}           — name, weekly schedule (limit + night window per day, #48)
 - DELETE /admin/api/children/{id}           — only without devices
 - POST   /admin/api/children/{id}/grant     — extra time (limit or night)
 - POST   /admin/api/children/{id}/manual_lock
@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..admin_auth import require_admin_session, verify_admin_password
-from ..config import CHILD_DEFAULTS, TOTP_ISSUER
+from ..config import TOTP_ISSUER, default_schedule
 from ..crypto import hash_password
 from ..db import (
     ensure_child_day,
@@ -44,7 +44,7 @@ from ..db import (
     set_config_value,
     update_child_day,
 )
-from ..lock_logic import child_today, is_in_night_window, is_weekend, parse_hhmm, parse_iso_utc
+from ..lock_logic import child_today, night_window, night_window_at, parse_iso_utc
 from .journal import ALERT_WHERE
 from .pairing import active_pairing_expiry, clear_pairing_code, create_pairing_code
 from .totp import _compute_night_extension_until
@@ -107,11 +107,13 @@ def _child_detail(db: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime,
         if now_utc < ext:
             night_ext_local = ext.astimezone(tz).strftime("%Y-%m-%d %H:%M")
     now_local = now_utc.astimezone(tz)
+    # Tonight's window, or the one in progress (after midnight it belongs to yesterday's evening).
+    night = night_window_at(cfg, now_local) or night_window(cfg, t["today"])
     return {
         "id": child["id"],
         "name": child["name"],
         "today_local": t["today"].isoformat(),
-        "is_weekend": is_weekend(t["today"]),
+        "today_weekday": t["today"].weekday(),
         "current_time_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
         "lock_required": t["lock_reason"] is not None,
         "lock_reason": t["lock_reason"],
@@ -123,12 +125,9 @@ def _child_detail(db: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime,
         "manual_lock": bool(state["manual_lock"]),
         "pause_active": bool(state["pause_active"]),
         "night_extension_until_local": night_ext_local,
-        "in_night_window": is_in_night_window(now_local.time(), parse_hhmm(cfg["night_lock_start"]),
-                                              parse_hhmm(cfg["night_lock_end"])),
-        "daily_limit_weekday": cfg["daily_limit_weekday"],
-        "daily_limit_weekend": cfg["daily_limit_weekend"],
-        "night_lock_start": cfg["night_lock_start"],
-        "night_lock_end": cfg["night_lock_end"],
+        "in_night_window": night_window_at(cfg, now_local) is not None,
+        "night_local": [dt.strftime("%Y-%m-%d %H:%M") for dt in night],
+        "schedule": cfg["days"],
         "devices": devices,
     }
 
@@ -179,30 +178,49 @@ async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None 
 # === Children ===
 
 
+class DayPlan(_Body):
+    """One day of the week. The night belongs to this day's evening; a start before 12:00 is after
+    midnight (lock_logic.night_window)."""
+    daily_limit: Minutes
+    night_start: HHMM
+    night_end: HHMM
+
+    @model_validator(mode="after")
+    def _night_not_empty(self) -> DayPlan:
+        if self.night_start == self.night_end:
+            raise ValueError("night_start_equals_end")
+        return self
+
+
+# Monday first (date.weekday()).
+Week = Annotated[list[DayPlan], Field(min_length=7, max_length=7)]
+
+
 class ChildCreate(_Body):
     name: Name
-    daily_limit_weekday: Minutes = CHILD_DEFAULTS["daily_limit_weekday"]
-    daily_limit_weekend: Minutes = CHILD_DEFAULTS["daily_limit_weekend"]
-    night_lock_start: HHMM = CHILD_DEFAULTS["night_lock_start"]
-    night_lock_end: HHMM = CHILD_DEFAULTS["night_lock_end"]
+    schedule: Week = Field(default_factory=lambda: [DayPlan(**d) for d in default_schedule()])
 
 
 class ChildUpdate(_Body):
     name: Name | None = None
-    daily_limit_weekday: Minutes | None = None
-    daily_limit_weekend: Minutes | None = None
-    night_lock_start: HHMM | None = None
-    night_lock_end: HHMM | None = None
+    schedule: Week | None = None
+
+
+def _write_schedule(db: sqlite3.Connection, child_id: int, week: list[DayPlan]) -> None:
+    db.executemany(
+        "INSERT INTO child_schedule(child_id, weekday, daily_limit, night_start, night_end) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(child_id, weekday) DO UPDATE SET daily_limit = excluded.daily_limit, "
+        "night_start = excluded.night_start, night_end = excluded.night_end",
+        [(child_id, weekday, d.daily_limit, d.night_start, d.night_end) for weekday, d in enumerate(week)],
+    )
 
 
 def insert_child(db: sqlite3.Connection, body: ChildCreate) -> int:
     """Shared with the setup wizard."""
-    return db.execute(
-        "INSERT INTO children(name, daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end, "
-        "created_utc) VALUES (?, ?, ?, ?, ?, ?)",
-        (body.name, body.daily_limit_weekday, body.daily_limit_weekend, body.night_lock_start,
-         body.night_lock_end, datetime.now(timezone.utc).isoformat()),
-    ).lastrowid
+    child_id = db.execute("INSERT INTO children(name, created_utc) VALUES (?, ?)",
+                          (body.name, datetime.now(timezone.utc).isoformat())).lastrowid
+    _write_schedule(db, child_id, body.schedule)
+    return child_id
 
 
 @router.post("/children")
@@ -215,12 +233,16 @@ async def create_child(body: ChildCreate, db: sqlite3.Connection = Depends(get_d
 @router.patch("/children/{child_id}")
 async def update_child(child_id: int, body: ChildUpdate, db: sqlite3.Connection = Depends(get_db)) -> dict:
     _child_or_404(db, child_id)
-    fields = body.model_dump(exclude_none=True)
-    if fields:
-        db.execute(f"UPDATE children SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
-                   (*fields.values(), child_id))
-        log_event(db, "config_updated", {"keys": sorted(fields), "via": "admin_ui"}, child_id=child_id)
-    return {"ok": True, "updated": sorted(fields)}
+    updated = []
+    if body.name is not None:
+        db.execute("UPDATE children SET name = ? WHERE id = ?", (body.name, child_id))
+        updated.append("name")
+    if body.schedule is not None:
+        _write_schedule(db, child_id, body.schedule)
+        updated.append("schedule")
+    if updated:
+        log_event(db, "config_updated", {"keys": updated, "via": "admin_ui"}, child_id=child_id)
+    return {"ok": True, "updated": updated}
 
 
 @router.delete("/children/{child_id}")
@@ -231,6 +253,7 @@ async def delete_child(child_id: int, db: sqlite3.Connection = Depends(get_db)) 
     if get_config_value(db, "pairing_child_id") == str(child_id):
         clear_pairing_code(db)
     db.execute("DELETE FROM child_daily WHERE child_id = ?", (child_id,))
+    db.execute("DELETE FROM child_schedule WHERE child_id = ?", (child_id,))
     db.execute("DELETE FROM children WHERE id = ?", (child_id,))
     # Journal entries stay (with their child_id); the journal shows them under the stored name.
     log_event(db, "child_removed", {"name": child["name"]}, child_id=child_id)

@@ -40,13 +40,26 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "totp_last_step":             "0",
 }
 
-# Settings of a new child (wizard, "Dodaj dziecko"); each child has its own row in `children`.
+# Settings of a new child (wizard, "Dodaj dziecko"). Migration 2 reads these keys too: keep them.
 CHILD_DEFAULTS: dict[str, object] = {
     "daily_limit_weekday": 120,
     "daily_limit_weekend": 240,
     "night_lock_start":    "21:30",
     "night_lock_end":      "06:30",
 }
+
+
+def week_schedule(limit_mon_thu: int, limit_fri_sun: int, night_start: str, night_end: str) -> list[dict]:
+    """Seven days (Monday first) for `child_schedule`: one limit Mon–Thu, another Fri–Sun, one night window.
+
+    The shape of the week before #48, for a new child (defaults, setup wizard)."""
+    return [{"daily_limit": limit_mon_thu if weekday < 4 else limit_fri_sun,
+             "night_start": night_start, "night_end": night_end} for weekday in range(7)]
+
+
+def default_schedule() -> list[dict]:
+    return week_schedule(int(CHILD_DEFAULTS["daily_limit_weekday"]), int(CHILD_DEFAULTS["daily_limit_weekend"]),
+                         str(CHILD_DEFAULTS["night_lock_start"]), str(CHILD_DEFAULTS["night_lock_end"]))
 
 # === Stałe nieprzechowywane w DB ===
 

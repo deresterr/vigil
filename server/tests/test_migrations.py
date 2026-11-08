@@ -65,8 +65,11 @@ def test_v04_database_is_migrated_with_its_data(db_path):
     assert _query(db_path, "SELECT key, value FROM config ORDER BY key") == [
         ("setup_complete", "1"), ("timezone", "Europe/Warsaw")]
     # D7: the one PC became child 1 with device 1, settings and state carried over.
-    assert _query(db_path, "SELECT id, name, daily_limit_weekday, daily_limit_weekend, night_lock_start, "
-                           "last_lock_reason FROM children") == [(1, "Komputer Jasia", 90, 240, "21:30", "limit")]
+    assert _query(db_path, "SELECT id, name, last_lock_reason FROM children") == [(1, "Komputer Jasia", "limit")]
+    # #48: the week as it was — v0.4 had weekday 90 (weekend and night: defaults), Friday counted as weekend.
+    assert _query(db_path, "SELECT weekday, daily_limit, night_start, night_end FROM child_schedule "
+                           "WHERE child_id = 1 ORDER BY weekday") == (
+        [(d, 90, "21:30", "06:30") for d in range(4)] + [(d, 240, "21:30", "06:30") for d in range(4, 7)])
     assert _query(db_path, "SELECT id, child_id, signing_key, last_heartbeat_utc, wd_instance_id, wd_awake_ms "
                            "FROM devices") == [(1, 1, "k", "2026-11-01T18:00:00+00:00", "abc", 5000)]
     assert _query(db_path, "SELECT child_id, date_local, seconds_used, manual_lock FROM child_daily") == [
@@ -125,3 +128,28 @@ def test_failed_migration_leaves_the_previous_version(db_path, monkeypatch):
         app.db.init_database()
     assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
     assert _query(db_path, "SELECT name FROM sqlite_master WHERE name = 'half_done'") == []
+
+
+def test_d7_children_get_their_week(db_path, monkeypatch):
+    """Migration 3 (#48) from a schema-2 database: each child's two limits and night window become 7 days."""
+    import app.migrations as migrations
+
+    with monkeypatch.context() as m:
+        m.setattr(migrations, "MIGRATIONS", migrations.MIGRATIONS[:2])
+        m.setattr(migrations, "LATEST_VERSION", 2)
+        app.db.init_database()
+    with closing(sqlite3.connect(db_path)) as conn:
+        conn.executemany(
+            "INSERT INTO children(name, daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end, "
+            "created_utc) VALUES (?, ?, ?, ?, ?, '2026-11-08')",
+            [("Ola", 60, 180, "22:00", "07:00"), ("Kuba", 0, 1440, "00:30", "06:00")])
+        conn.commit()
+
+    app.db.init_database()
+
+    assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
+    assert {"daily_limit_weekday", "night_lock_start"} & _columns(db_path, "children") == set()
+    rows = _query(db_path, "SELECT child_id, weekday, daily_limit, night_start, night_end FROM child_schedule "
+                           "ORDER BY child_id, weekday")
+    assert rows == ([(1, d, 60 if d < 4 else 180, "22:00", "07:00") for d in range(7)]
+                    + [(2, d, 0 if d < 4 else 1440, "00:30", "06:00") for d in range(7)])

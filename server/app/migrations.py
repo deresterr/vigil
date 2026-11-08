@@ -167,9 +167,35 @@ def _m002_children_devices(conn: sqlite3.Connection) -> None:
         "'wd_awake_ms', 'wd_goodbye')")
 
 
+def _m003_weekly_schedule(conn: sqlite3.Connection) -> None:
+    """B2 (#48): a daily limit and a night window for each day of the week, in `child_schedule`.
+
+    The night of a row belongs to the evening of its day (lock_logic.night_window). Existing children
+    keep their week exactly: Friday counted as weekend, so Mon–Thu get the weekday limit and Fri–Sun the
+    weekend one; the one night window goes to all seven days.
+    """
+    conn.execute("""CREATE TABLE child_schedule (
+        child_id     INTEGER NOT NULL REFERENCES children(id),
+        weekday      INTEGER NOT NULL CHECK (weekday BETWEEN 0 AND 6),  -- Monday = 0 (date.weekday())
+        daily_limit  INTEGER NOT NULL,
+        night_start  TEXT NOT NULL,
+        night_end    TEXT NOT NULL,
+        PRIMARY KEY (child_id, weekday)
+    )""")
+    rows = conn.execute("SELECT id, daily_limit_weekday, daily_limit_weekend, night_lock_start, night_lock_end "
+                        "FROM children").fetchall()  # plain tuples: no row factory here
+    for child_id, limit_mon_thu, limit_fri_sun, night_start, night_end in rows:
+        for weekday in range(7):
+            conn.execute("INSERT INTO child_schedule VALUES (?, ?, ?, ?, ?)",
+                         (child_id, weekday, limit_mon_thu if weekday < 4 else limit_fri_sun, night_start, night_end))
+    for column in ("daily_limit_weekday", "daily_limit_weekend", "night_lock_start", "night_lock_end"):
+        conn.execute(f"ALTER TABLE children DROP COLUMN {column}")
+
+
 MIGRATIONS: list[tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("baseline v0.5", _m001_baseline),
     ("children and devices (D7)", _m002_children_devices),
+    ("weekly schedule (B2)", _m003_weekly_schedule),
 ]
 
 LATEST_VERSION = len(MIGRATIONS)

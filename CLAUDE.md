@@ -34,6 +34,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   added to its child (D7: time = sum over the child's devices; locks and settings are per child).
   No time accrues while a lock is active (pre-lock check happens before adding the delta).
 - Lock priority: `manual > night > limit > pause`. `manual_lock` carries over midnight.
+- Weekly schedule (D19): limit and night per weekday (`child_schedule`). A night belongs to the evening of its day
+  (`night_start` before 12:00 = after midnight); `lock_logic.night_window` is the only place that resolves it.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
   names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs.
 - **Threat model**: the child MAY have an administrator account. Against an admin nothing on the PC is

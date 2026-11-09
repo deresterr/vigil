@@ -43,12 +43,21 @@ internal sealed class ScriptedConsole : IAnsiConsole
     }
 
     public Profile Profile => _inner.Profile;
-    public IAnsiConsoleCursor Cursor => _inner.Cursor;
+    // Without ANSI Spectre falls back to System.Console (Clear, CursorTop), which throws "The handle is
+    // invalid" on a redirected stdout: no cursor here, and a screen change is a separator line.
+    public IAnsiConsoleCursor Cursor { get; } = new NoCursor();
     public IAnsiConsoleInput Input => _input;
     public IExclusivityMode ExclusivityMode => _inner.ExclusivityMode;
     public RenderPipeline Pipeline => _inner.Pipeline;
-    public void Clear(bool home) => _inner.Clear(home);
+    public void Clear(bool home) => _inner.WriteLine();
     public void Write(IRenderable renderable) => _inner.Write(renderable);
+}
+
+internal sealed class NoCursor : IAnsiConsoleCursor
+{
+    public void Show(bool show) { }
+    public void SetPosition(int column, int line) { }
+    public void Move(CursorDirection direction, int steps) { }
 }
 
 internal sealed class ScriptedInput : IAnsiConsoleInput

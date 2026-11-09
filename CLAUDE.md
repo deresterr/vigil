@@ -134,7 +134,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;
   panel bodies next to their endpoints); config through `get_config_value()`/`get_config_values()`, defaults in
   `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`
-  (never edit an applied one) + a test that migrates an older database.
+  (never edit an applied one; migration 1 is the v0.8 baseline, D26) + a test that migrates an older database.
 - C#: async I/O, `ILogger<T>`, P/Invoke in `Native/`.
 - PowerShell: `Write-Step/OK/Warn/Skip` helpers, `$ErrorActionPreference = 'Stop'`.
 - One issue = one branch = one PR, except client changes batched for one VM session (see above).

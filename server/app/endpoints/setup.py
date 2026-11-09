@@ -1,8 +1,8 @@
-"""Kreator pierwszego uruchomienia (/setup).
+"""First-run wizard (/setup), open without a login until it is completed.
 
-GET  /setup           — strona wizarda (serwuje setup.html)
-GET  /setup/totp_qr   — QR code TOTP dla wizarda (tylko gdy setup_complete == 0)
-POST /setup/complete  — finalizuje konfigurację, ustawia setup_complete
+GET  /setup           the wizard page (setup.html)
+GET  /setup/totp_qr   the TOTP QR code (only while setup_complete == 0)
+POST /setup/complete  saves everything and sets setup_complete
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from ..admin_auth import issue_session_cookie, set_session_cookie
-from ..config import TOTP_ISSUER, week_schedule
+from ..config import TOTP_ACCOUNT, TOTP_ISSUER, week_schedule
 from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
 from ..pages import page
@@ -53,11 +53,11 @@ async def setup_page(db: sqlite3.Connection = Depends(get_db)) -> HTMLResponse:
 
 @router.get("/setup/totp_qr")
 async def setup_totp_qr(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Zwraca QR TOTP tylko podczas wizarda (setup_complete == 0)."""
+    """The TOTP QR code, only while the wizard is not complete."""
     if get_config_value(db, "setup_complete") == "1":
         raise HTTPException(status_code=404, detail="setup_already_complete")
     secret = get_config_value(db, "totp_secret")
-    uri = pyotp.TOTP(secret).provisioning_uri(name="rodzic", issuer_name=TOTP_ISSUER)
+    uri = pyotp.TOTP(secret).provisioning_uri(name=TOTP_ACCOUNT, issuer_name=TOTP_ISSUER)
     return {"qr_png_base64": _png_qr_base64(uri), "uri": uri}
 
 
@@ -73,7 +73,7 @@ async def setup_complete(request: Request,
     child_name        = str(body.get("child_name", "")).strip()
     password          = str(body.get("password", ""))
     totp_code         = str(body.get("totp_code", "")).strip()
-    timezone_str      = str(body.get("timezone", "Europe/Warsaw"))
+    timezone_str      = str(body.get("timezone", "UTC"))
     limit_weekday     = body.get("daily_limit_weekday", 120)
     limit_weekend     = body.get("daily_limit_weekend", 240)
     night_start       = str(body.get("night_lock_start", "21:30"))
@@ -105,9 +105,9 @@ async def setup_complete(request: Request,
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
-    # --- TOTP (opcjonalne) ---
+    # --- TOTP (optional) ---
     if totp_code:
-        # Weryfikacja: użytkownik podał kod — sprawdź czy pasuje do sekretu
+        # A code was typed: it must match the secret
         secret = get_config_value(db, "totp_secret")
         totp_step = match_totp_step(secret, totp_code, datetime.now(timezone.utc))
         if totp_step is None:
@@ -115,7 +115,7 @@ async def setup_complete(request: Request,
         # The code typed in the wizard must not work again on the lockscreen.
         db.execute("INSERT OR REPLACE INTO config(key, value) VALUES ('totp_last_step', ?)", (str(totp_step),))
 
-    # --- Zapis ---
+    # --- Save ---
     settings = [
         ("parent_password_hash", hash_password(password)),
         ("timezone",             timezone_str),
@@ -131,7 +131,7 @@ async def setup_complete(request: Request,
 
     log_event(db, "setup_completed", {"child_name": child_name}, child_id=child_id)
 
-    # Auto-login: wystawiamy cookie sesji żeby JS mógł od razu przejść do /admin
+    # Logged in at once: the page goes straight to /admin
     cookie_value = issue_session_cookie(db)
     response = JSONResponse({"ok": True})
     set_session_cookie(response, cookie_value)

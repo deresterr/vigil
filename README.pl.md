@@ -78,7 +78,7 @@ i uruchom `docker compose pull && docker compose up -d`, a krok 2 zastępuje pob
 
 ```bash
 cd server
-cp .env.example .env          # nazwa instancji, port, opcjonalnie gotowy obraz
+cp .env.example .env          # port, opcjonalnie gotowy obraz
 docker compose up -d
 ```
 

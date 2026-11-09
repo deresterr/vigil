@@ -1,7 +1,6 @@
-"""First-run bootstrap: inicjalizuje DB, generuje sekrety techniczne.
+"""Startup bootstrap: config defaults and, on the first run, the server's own secrets.
 
-Hasło rodzica, TOTP i ustawienia konfigurowane przez kreator /setup przy pierwszym wejściu
-na panel. Bootstrap tylko przygotowuje "fundament" — sekrety kryptograficzne i strukturę DB.
+The parent's password, TOTP and limits come from the /setup wizard; this only lays the groundwork.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ def _is_first_run(conn) -> bool:
 
 
 def _insert_config_defaults(conn) -> None:
-    """Wpisuje brakujące klucze konfiguracyjne (INSERT OR IGNORE — nie nadpisuje istniejących)."""
+    """Missing config keys get their defaults (INSERT OR IGNORE: existing values stay)."""
     conn.executemany(
         "INSERT OR IGNORE INTO config(key, value) VALUES (?, ?)",
         CONFIG_DEFAULTS.items(),
@@ -34,7 +33,7 @@ def _insert_config_defaults(conn) -> None:
 
 
 def run_bootstrap() -> None:
-    """Wołane przy starcie aplikacji (lifespan). Idempotent."""
+    """Called at startup (lifespan). Idempotent."""
     with get_connection() as conn:
         _insert_config_defaults(conn)
 

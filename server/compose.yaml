@@ -7,15 +7,16 @@ services:
     build: .
     # A release image (ghcr.io/deresterr/vigil-server:<version>) or, by default, a local build.
     image: ${VIGIL_IMAGE:-vigil-server:local}
-    container_name: ${VIGIL_CHILD:-vigil}
+    container_name: vigil
     restart: unless-stopped
     ports:
       - "${VIGIL_PORT:-8088}:${VIGIL_PORT:-8088}"
     volumes:
-      # SQLite DB. The path keeps VIGIL_CHILD from the one-instance-per-PC days, so existing data stays put.
-      - ./data/${VIGIL_CHILD:-vigil}:/data
+      # The SQLite database (keep it in your backups).
+      - ./data:/data
     environment:
       - LISTEN_PORT=${VIGIL_PORT:-8088}
+      - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:${VIGIL_PORT:-8088}/health"]
       interval: 30s

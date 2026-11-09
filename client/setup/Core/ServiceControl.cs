@@ -96,12 +96,22 @@ internal static class ServiceControl
         var exe = VigilLayout.PathOf(VigilLayout.WatchdogExe);
         Sc("create", Name, "binPath=", $"\"{exe}\"", "start=", "auto", "DisplayName=", VigilLayout.ServiceDisplayName);
         Sc("description", Name, "Service for parental time control");
+        SetRecovery();
+        r.Check(CheckLevel.Pass, Strings.ServiceCreated);
+    }
+
+    /// <summary>Restart ×3 after 60 s, reset after a day, also on a non-zero exit (installer and guardian).
+    /// sc.exe changes the config: SYSTEM only once the DACL is set.</summary>
+    public static void SetRecovery()
+    {
         var delay = VigilLayout.RecoveryDelayMs;
         Sc("failure", Name, "reset=", VigilLayout.RecoveryResetSeconds.ToString(),
             "actions=", string.Join('/', Enumerable.Repeat($"restart/{delay}", VigilLayout.RecoveryRestarts)));
         Sc("failureflag", Name, "1");
-        r.Check(CheckLevel.Pass, Strings.ServiceCreated);
     }
+
+    /// <summary>Automatic start (the guardian, as SYSTEM: the DACL denies admins change-config).</summary>
+    public static void SetAutoStart() => Sc("config", Name, "start=", "auto");
 
     /// <summary>Admins: query and start only (VigilLayout.ServiceSddl). Friction: an admin can still kill the
     /// process or act as SYSTEM, which is what this installer does. Detection is the server's job.</summary>

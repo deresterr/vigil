@@ -12,8 +12,8 @@ Describes the system as it is. Planned changes live in `review-2026-11.md`.
  └──────────────────────────┘                     │ vigil_ui (WPF, child's session): tray icon   │
                                                   │   always, lock overlay on demand; started    │
                                                   │   and kept alive by the watchdog             │
-                                                  │ vigil_guardian.ps1 (task "Vigil Guardian",   │
-                                                  │   SYSTEM, boot + 5 min)                      │
+                                                  │ vigil_setup.exe guardian (task "Vigil        │
+                                                  │   Guardian", SYSTEM, boot + 5 min)           │
                                                   └─────────────────────────────────────────────┘
 ```
 
@@ -104,7 +104,7 @@ Compared with the same device's previous heartbeat (`devices.wd_*`, reset when i
 | new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
 | vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
 
-| vigil_guardian.ps1 repaired something (Event Log 7001–7006) | `tamper_guardian_repaired` (`check`, `repaired`), stamped with the repair time; sent by `GuardianReporter` every minute, deduped by record id + time |
+| the guardian repaired something (Event Log 7001–7006) | `tamper_guardian_repaired` (`check`, `repaired`), stamped with the repair time; sent by `GuardianReporter` every minute, deduped by record id + time |
 
 `tamper_*` = alerts for the parent. Not detected: a watchdog that is stopped and never comes back
 (the panel only shows "offline"), and anything an admin forges with the signing key.
@@ -188,12 +188,12 @@ the installer removes both.
 ## Windows footprint
 
 ```
-C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_ui.exe, vigil_guardian.ps1,
+C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_ui.exe, vigil_setup.exe (the guardian, #65),
                         vigil.toml (server_url only), signing.dat, totp.dat, guardian.dat,
                         backup\vigil_watchdog.exe
                         ACL: SYSTEM full, Administrators modify, Authenticated Users read+execute (inherited)
 Service        vigil_watchdog ("Vigil Watchdog"), auto start, restart ×3, restricted DACL
-Tasks          "Vigil Guardian" (SYSTEM, boot + 5 min)
+Tasks          "Vigil Guardian" (SYSTEM, boot + 5 min): vigil_setup.exe guardian
 Registry       HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\{Minimal,Network}\vigil_watchdog
 Event Log      sources "Vigil Watchdog", "Vigil Guardian"
 ```

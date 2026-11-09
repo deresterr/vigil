@@ -9,7 +9,7 @@ using Vigil.Watchdog.Server;
 namespace Vigil.Watchdog.Guardian;
 
 /// <summary>
-/// Reports what vigil_guardian.ps1 repaired to the parent's journal (#36, detection).
+/// Reports what the guardian (`vigil_setup.exe guardian`, #65) repaired to the parent's journal (#36, detection).
 ///
 /// The guardian (SYSTEM task, every 5 min) writes one Event Log entry per finding, source
 /// "Vigil Guardian", IDs 7001–7006 (Warning = repaired, Error = repair failed). Every minute this

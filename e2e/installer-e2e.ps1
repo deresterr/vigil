@@ -12,17 +12,19 @@
         -> vigil_setup update-config with re-pairing
         -> vigil_setup uninstall (goodbye)
         -> vigil_setup install
+        -> the guardian (vigil_setup.exe guardian, #65): five repairs in one run, then a stopped service
         -> C:\ProgramData\Vigil deleted with the watchdog stopped (the README's emergency path from WinRE)
         -> vigil_setup uninstall -> nothing left
         -> the wizard (key script): unreachable address, wrong code, install -> verify
         -> the menu (key script): check, uninstall -> nothing left
 
-    Every verify runs twice: the PowerShell one (installer\vigil_install.ps1, the oracle, not in the package
-    since #64) and vigil_setup.exe's; both must give the expected exit code at every point.
+    Verify is vigil_setup.exe's. The PowerShell one (installer\vigil_install.ps1, the oracle until #64 proved
+    both equal at every point) checks only the PowerShell install: it does not know the C# guardian (#65).
 
     Server side, through the admin API: the PC comes online after each install, keeps its key through an
-    update, comes back with the new key after re-pairing, and an uninstall reaches the server as a normal
-    service stop (goodbye -> tamper_service_stopped), not as a killed watchdog.
+    update, comes back with the new key after re-pairing, every guardian repair reaches the journal as
+    tamper_guardian_repaired, and an uninstall reaches the server as a normal service stop (goodbye ->
+    tamper_service_stopped), not as a killed watchdog.
 
     Only for a disposable machine: it installs the service, sets the per-user policies on -ChildUsername
     and changes the boot menu policy.
@@ -55,6 +57,7 @@ $ServerDir = (Resolve-Path $ServerDir).Path
 
 $ServerUrl = "http://127.0.0.1:$Port"
 $Installer = (Resolve-Path (Join-Path $PSScriptRoot '..\installer\vigil_install.ps1')).Path
+$PsGuardian = (Resolve-Path (Join-Path $PSScriptRoot '..\installer\vigil_guardian.ps1')).Path
 # Not $Setup: PowerShell names are case-insensitive and the scenario has a $setup (the wizard's JSON).
 $SetupExe = Join-Path $PackageDir 'vigil_setup.exe'
 $InstallDir = 'C:\ProgramData\Vigil'
@@ -86,7 +89,7 @@ function Invoke-Installer {
     # installer's own parameters (-Mode ...) stay in $args.
     Write-Host "> vigil_install.ps1 $($args -join ' ')" -ForegroundColor DarkGray
     & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Installer @args `
-        -SourceDir $PackageDir | Out-Host
+        -SourceDir $PsPackageDir | Out-Host
     return $LASTEXITCODE
 }
 
@@ -113,11 +116,40 @@ function Assert-Setup([string]$What) {
     Assert-That ($rc -eq 0) "${What}: exit code 0 (got $rc)"
 }
 
-function Assert-Verify([int]$Expected, [string]$What) {
-    $ps = Invoke-Installer -Mode verify
+function Assert-Verify([int]$Expected, [string]$What, [switch]$WithOracle) {
     $cs = Invoke-Setup -Mode verify
-    Assert-That ($ps -eq $Expected -and $cs -eq $Expected) `
-        "${What}: verify exit code $Expected (vigil_install.ps1 $ps, vigil_setup.exe $cs)"
+    if ($WithOracle) {
+        $ps = Invoke-Installer -Mode verify
+        Assert-That ($ps -eq $Expected -and $cs -eq $Expected) `
+            "${What}: verify exit code $Expected (vigil_install.ps1 $ps, vigil_setup.exe $cs)"
+    } else {
+        Assert-That ($cs -eq $Expected) "${What}: verify exit code $Expected (got $cs)"
+    }
+}
+
+function Invoke-Guardian([string]$What) {
+    # One run of the task as Windows runs it (SYSTEM); returns when it has finished. Returns its start time.
+    $task = 'Vigil Guardian'
+    $start = Get-Date
+    Start-ScheduledTask -TaskName $task
+    Wait-Until {
+        (Get-ScheduledTaskInfo -TaskName $task).LastRunTime -ge $start.AddSeconds(-2) -and
+        (Get-ScheduledTask -TaskName $task).State -ne 'Running'
+    } 180 "${What}: the guardian run finished"
+    return $start
+}
+
+function Get-GuardianEvents([datetime]$Since) {
+    @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Vigil Guardian'; StartTime = $Since } `
+        -ErrorAction SilentlyContinue)
+}
+
+function Get-GuardianRepairs {
+    # The checks the server has as repaired (tamper_guardian_repaired, details.repaired).
+    $days = (Invoke-Admin Get 'journal?days=2').days
+    @($days | ForEach-Object { $_.entries } |
+        Where-Object { $_.type -eq 'tamper_guardian_repaired' -and $_.details.repaired } |
+        ForEach-Object { $_.details.check })
 }
 
 function Start-Server {
@@ -237,12 +269,17 @@ try {
     Assert-That ((Invoke-Admin Get 'status').children.Count -eq 1) 'setup wizard completed, one child'
 
     Write-Section "PowerShell install, as before D22 (child account: $ChildUsername)"
+    # The package of those days: the binaries and the PowerShell guardian (not in dist\ since #65).
+    $script:PsPackageDir = Join-Path $WorkDir 'package-ps'
+    New-Item -ItemType Directory -Path $PsPackageDir -Force | Out-Null
+    Copy-Item -Path (Join-Path $PackageDir '*') -Destination $PsPackageDir -Recurse
+    Copy-Item -Path $PsGuardian -Destination $PsPackageDir
     New-ChildAccount $ChildUsername
     $code = New-PairingCode @{ child_id = 1; device_name = 'CI runner' }
     $rc = Invoke-Installer -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
     Assert-That ($rc -eq 0) "PowerShell install exit code 0 (got $rc)"
     Wait-Until { (Get-Device).online } 60 'the PC is online (signed heartbeats accepted)'
-    Assert-Verify 0 'PowerShell install'
+    Assert-Verify 0 'PowerShell install (vigil_setup verify: the old guardian is a warning)' -WithOracle
 
     Write-Section 'vigil_setup update over the PowerShell install (migration, same key)'
     $keyBefore = Get-KeyHash
@@ -251,6 +288,10 @@ try {
     Wait-Heartbeat 'heartbeats with the same key after the update'
     Assert-That (@((Invoke-Admin Get 'status').child.devices).Count -eq 1) 'still one device (no new pairing)'
     Assert-Verify 0 'after the update'
+    Assert-That (-not (Test-Path (Join-Path $InstallDir 'vigil_guardian.ps1'))) 'the PowerShell guardian removed'
+    $action = (Get-ScheduledTask -TaskName 'Vigil Guardian').Actions[0]
+    Assert-That ($action.Execute -eq (Join-Path $InstallDir 'vigil_setup.exe') -and $action.Arguments -eq 'guardian') `
+        "the guardian task runs vigil_setup.exe guardian (got $($action.Execute) $($action.Arguments))"
 
     Write-Section 'Verify must fail on a broken install; update repairs it'
     $safeBoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\vigil_watchdog'
@@ -295,7 +336,50 @@ try {
     Wait-Heartbeat 'the PC is online again'
     Assert-Verify 0 'vigil_setup install'
 
+    Write-Section 'Guardian: five repairs in one run'
+    $reportedBefore = (Get-GuardianRepairs).Count
+    $svcKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\vigil_watchdog'
+    $ifeo = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\vigil_watchdog.exe'
+    # A replaced binary: stopped as SYSTEM (admins may not stop it), then one byte appended (admins may write
+    # the folder). The rest as an elevated child would: registry values admins may change.
+    Invoke-AsSystem 'sc.exe stop vigil_watchdog' { (Get-Service vigil_watchdog).Status -eq 'Stopped' } 30 `
+        'the watchdog stopped (as SYSTEM)'
+    [IO.File]::AppendAllText((Join-Path $InstallDir 'vigil_watchdog.exe'), 'x')
+    New-Item -Path $ifeo -Force | Out-Null
+    Set-ItemProperty -Path $ifeo -Name Debugger -Value 'C:\Windows\System32\systray.exe'
+    Set-ItemProperty -Path $svcKey -Name Start -Value 4
+    Remove-ItemProperty -Path $svcKey -Name FailureActions
+    Remove-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\vigil_watchdog' -Recurse -Force
+    Assert-Verify 1 'tampered five ways'
+    $since = Invoke-Guardian 'five repairs'
+    $events = Get-GuardianEvents $since
+    foreach ($id in 7003, 7004, 7002, 7006, 7005) {
+        Assert-That (@($events | Where-Object { $_.Id -eq $id -and $_.Level -eq 3 }).Count -eq 1) `
+            "event $id as a repair (Warning)"
+    }
+    Assert-That (@($events | Where-Object { $_.Level -le 2 }).Count -eq 0) 'no failed repair or crash (Error)'
+    Assert-That (@($events | Where-Object { $_.Id -eq 7001 }).Count -eq 0) 'no 7001: the binary repair started the service'
+    Assert-That ((Get-ItemProperty -Path $ifeo -Name Debugger -ErrorAction SilentlyContinue) -eq $null) 'IFEO Debugger gone'
+    Assert-Verify 0 'repaired by the guardian'
+    Wait-Until { (Get-GuardianRepairs).Count -ge $reportedBefore + 5 } 180 'the watchdog reported five repairs'
+    $checks = Get-GuardianRepairs
+    foreach ($check in 'binary_replaced', 'ifeo_debugger', 'service_disabled', 'recovery_missing', 'safeboot_missing') {
+        Assert-That ($checks -contains $check) "journal: tamper_guardian_repaired $check"
+    }
+
+    Write-Section 'Guardian: a stopped service'
+    Invoke-AsSystem 'sc.exe stop vigil_watchdog' { (Get-Service vigil_watchdog).Status -eq 'Stopped' } 30 `
+        'the watchdog stopped (as SYSTEM)'
+    $since = Invoke-Guardian 'stopped service (waits out service recovery, 75 s)'
+    $events = Get-GuardianEvents $since
+    Assert-That (@($events | Where-Object { $_.Id -eq 7001 -and $_.Level -eq 3 }).Count -eq 1) 'event 7001 as a repair (Warning)'
+    Assert-That ((Get-Service vigil_watchdog).Status -eq 'Running') 'the watchdog runs again'
+    Wait-Until { (Get-GuardianRepairs) -contains 'service_not_running' } 180 'journal: tamper_guardian_repaired service_not_running'
+    Assert-Verify 0 'after the guardian started it'
+
     Write-Section 'Emergency path: the folder deleted with the watchdog stopped (README, from WinRE)'
+    # Offline nothing runs; online the guardian would start the watchdog again or hold vigil_setup.exe open.
+    Disable-ScheduledTask -TaskName 'Vigil Guardian' | Out-Null
     Invoke-AsSystem 'sc.exe stop vigil_watchdog' { (Get-Service vigil_watchdog).Status -eq 'Stopped' } 30 `
         'the watchdog stopped (as SYSTEM)'
     Get-Process -Name vigil_ui -ErrorAction SilentlyContinue | Stop-Process -Force

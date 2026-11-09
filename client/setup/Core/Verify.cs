@@ -44,8 +44,19 @@ public sealed class Verify
 
     // === Installed ===
 
+    /// <summary>The guardian task still runs vigil_guardian.ps1: an installation from before #65. It works, so
+    /// a warning (update replaces it), and its files are judged by that layout.</summary>
+    private bool _oldGuardian;
+
     private void RunInstalled()
     {
+        try
+        {
+            _oldGuardian = ScheduledTasks.Get(VigilLayout.GuardianTaskName) is { } task
+                && task.Arguments.Contains(VigilLayout.GuardianScript, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception) { _oldGuardian = false; }
+
         // Each section on its own: an unexpected error is one failed check, not the end of the report.
         Section(Strings.SectionService(VigilLayout.ServiceName), CheckService);
         Section(Strings.SectionFiles(VigilLayout.InstallDir), CheckFiles);
@@ -78,8 +89,7 @@ public sealed class Verify
         _r.Check(path.Trim('"').Equals(exe, StringComparison.OrdinalIgnoreCase) && (quoted || !exe.Contains(' ')),
             Strings.ServicePath(path, unquoted: path.Length > 0 && !quoted));
 
-        var restarts = svc.FailureActions.Count == VigilLayout.RecoveryRestarts && svc.FailureActions.All(a => a.Type == 1);
-        _r.Check(restarts && svc.FailureActionsOnNonCrash, Strings.ServiceRecovery(svc.FailureActionsOnNonCrash));
+        _r.Check(svc.RecoveryAsInstalled, Strings.ServiceRecovery(svc.FailureActionsOnNonCrash));
 
         // DACL: what matters is that admins have no stop (WP) and no delete (SD).
         var sddl = WatchdogService.ReadSddl();
@@ -91,15 +101,20 @@ public sealed class Verify
     {
         string P(string name) => VigilLayout.PathOf(name);
         var watchdog = P(VigilLayout.WatchdogExe);
+        // What the guardian task runs: vigil_setup.exe, or before #65 the PowerShell script.
+        var guardianFile = _oldGuardian ? VigilLayout.GuardianScript : VigilLayout.SetupExe;
+        var binaries = new[] { VigilLayout.WatchdogExe, VigilLayout.UiExe, guardianFile };
         var files = new[]
         {
-            watchdog, P(VigilLayout.UiExe), P(VigilLayout.GuardianScript), P(VigilLayout.ConfigFile),
+            watchdog, P(VigilLayout.UiExe), P(guardianFile), P(VigilLayout.ConfigFile),
             P(VigilLayout.SigningFile), P(VigilLayout.GuardianFile), VigilLayout.BackupWatchdogPath,
         };
         var missing = files.Where(f => !File.Exists(f)).Select(Path.GetFileName).ToList();
         _r.Check(missing.Count == 0, Strings.FilesComplete(missing));
 
-        var legacy = VigilLayout.LegacyPaths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
+        var legacy = VigilLayout.LegacyPaths
+            .Where(p => !(_oldGuardian && p.Equals(P(VigilLayout.GuardianScript), StringComparison.OrdinalIgnoreCase)))
+            .Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
         _r.Check(legacy.Count == 0, Strings.NoLegacyFiles(legacy));
 
         if (File.Exists(watchdog))
@@ -121,10 +136,10 @@ public sealed class Verify
             var pkg = Path.Combine(_packageDir, VigilLayout.WatchdogExe);
             if (File.Exists(pkg) && !Path.GetFullPath(pkg).Equals(Path.GetFullPath(watchdog), StringComparison.OrdinalIgnoreCase))
             {
-                var same = new[] { VigilLayout.WatchdogExe, VigilLayout.UiExe, VigilLayout.GuardianScript }.Count(name =>
+                var same = binaries.Count(name =>
                     File.Exists(Path.Combine(_packageDir, name)) && File.Exists(P(name))
                     && Sha256(Path.Combine(_packageDir, name)) == Sha256(P(name)));
-                _r.Check(same == 3, Strings.PackageMatches(_packageDir), CheckLevel.Warn);
+                _r.Check(same == binaries.Length, Strings.PackageMatches(_packageDir), CheckLevel.Warn);
             }
         }
 
@@ -186,8 +201,15 @@ public sealed class Verify
             _r.Check(task.UserId is "S-1-5-18" or "SYSTEM" && task.RunLevel == "HighestAvailable", Strings.TaskAsSystem);
             _r.Check(task.Enabled, Strings.TaskEnabled(task.Enabled));
             _r.Check(task.HasBootTrigger && task.RepeatsEvery("PT5M"), Strings.TaskTriggers);
-            var script = VigilLayout.PathOf(VigilLayout.GuardianScript);
-            _r.Check(task.Arguments.Contains(script, StringComparison.OrdinalIgnoreCase), Strings.TaskRuns(script));
+            if (_oldGuardian)
+                _r.Check(CheckLevel.Warn, Strings.TaskOldGuardian(VigilLayout.PathOf(VigilLayout.GuardianScript)));
+            else
+            {
+                var exe = VigilLayout.PathOf(VigilLayout.SetupExe);
+                _r.Check(task.Command.Trim('"').Equals(exe, StringComparison.OrdinalIgnoreCase)
+                         && task.Arguments.Trim() == Installer.GuardianArgument,
+                    Strings.TaskRuns($"{exe} {Installer.GuardianArgument}"));
+            }
             if (task.LastResult == TaskInfo.HasNotRun)
                 _r.Check(CheckLevel.Pass, Strings.TaskNotRunYet);
             else if (task.LastResult is { } result)
@@ -197,10 +219,7 @@ public sealed class Verify
         CheckNoTempTasks();
 
         foreach (var key in VigilLayout.SafeBootKeys)
-        {
-            using var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(key);
-            _r.Check(k?.GetValue("") as string == "Service", Strings.SafeBoot(SafeBootMode(key)));
-        }
+            _r.Check(SafeBoot.Present(key), Strings.SafeBoot(SafeBootMode(key)));
 
         var (_, bcd) = NativeTool.Run("bcdedit.exe", "/enum", "{current}");
         var policy = Regex.Match(bcd, @"^bootmenupolicy\s+(\S+)", RegexOptions.Multiline) is { Success: true } m ? m.Groups[1].Value : "";

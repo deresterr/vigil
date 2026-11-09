@@ -16,15 +16,25 @@ public sealed class UserHive : IDisposable
 
     private UserHive(RegistryKey root) => Root = root;
 
+    /// <summary>True when the hive is the user's live one (HKEY_USERS\&lt;sid&gt;).</summary>
+    public bool IsLive { get; private init; }
+
     /// <returns>null when neither the live hive nor the file can be opened.</returns>
-    public static UserHive? Open(string? sid, string? hiveFile)
+    public static UserHive? Open(string? sid, string? hiveFile, bool writable = false)
     {
-        if (sid is not null && Registry.Users.OpenSubKey(sid) is { } live) return new UserHive(live);
+        if (sid is not null && Registry.Users.OpenSubKey(sid, writable) is { } live)
+            return new UserHive(live) { IsLive = true };
         if (hiveFile is null || !File.Exists(hiveFile)) return null;
-        var rc = Win32.RegLoadAppKeyW(hiveFile, out var handle, Win32.KEY_READ, 0, 0);
+        var rc = Win32.RegLoadAppKeyW(hiveFile, out var handle, writable ? Win32.KEY_ALL_ACCESS : Win32.KEY_READ, 0, 0);
         if (rc != 0) { handle.Dispose(); return null; }
         return new UserHive(RegistryKey.FromHandle(handle));
     }
+
+    /// <summary>SIDs of the loaded user hives (logged-on users), without the *_Classes hives.</summary>
+    public static List<string> LoadedUserSids() =>
+        Registry.Users.GetSubKeyNames()
+            .Where(n => n.StartsWith("S-1-5-21-", StringComparison.Ordinal) && !n.EndsWith("_Classes", StringComparison.Ordinal))
+            .ToList();
 
     public void Dispose() => Root.Dispose();
 }
@@ -59,6 +69,39 @@ public static class UserPolicies
         foreach (var p in VigilLayout.LegacyUserPolicies)
             result.Add(new PolicyValue(p, ValueOf(root, p) is null ? PolicyState.Clear : PolicyState.Legacy, true));
         return result;
+    }
+
+    /// <summary>Sets every value, removes the legacy ones.</summary>
+    public static void Apply(RegistryKey root)
+    {
+        foreach (var p in VigilLayout.UserPolicies)
+        {
+            using var key = root.CreateSubKey(p.Key, writable: true);
+            key.SetValue(p.Name, p.Value, p.Kind);
+        }
+        RemoveValues(root, VigilLayout.LegacyUserPolicies);
+    }
+
+    /// <summary>Legacy values first (DisableRegistryTools), then each value back to its reset value or removed.</summary>
+    public static void Clear(RegistryKey root)
+    {
+        RemoveValues(root, VigilLayout.LegacyUserPolicies);
+        foreach (var p in VigilLayout.UserPolicies)
+        {
+            using var key = root.OpenSubKey(p.Key, writable: true);
+            if (key is null) continue;
+            if (p.Reset is null) key.DeleteValue(p.Name, throwOnMissingValue: false);
+            else key.SetValue(p.Name, p.Reset, p.Kind);
+        }
+    }
+
+    private static void RemoveValues(RegistryKey root, IEnumerable<UserPolicy> policies)
+    {
+        foreach (var p in policies)
+        {
+            using var key = root.OpenSubKey(p.Key, writable: true);
+            key?.DeleteValue(p.Name, throwOnMissingValue: false);
+        }
     }
 
     private static string? ValueOf(RegistryKey root, UserPolicy p)

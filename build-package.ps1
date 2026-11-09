@@ -1,10 +1,10 @@
 ﻿<#
 .SYNOPSIS
-    Buduje wszystkie komponenty PC (3 .NET projekty) i sklada paczke gotowa do vigil_install.ps1.
+    Buduje wszystkie komponenty PC (3 .NET projekty) i sklada paczke dla vigil_setup.exe.
 
 .DESCRIPTION
     Wykonuje 'dotnet publish' dla kazdego projektu (single-file, self-contained, win-x64),
-    kopiuje wszystkie .exe + vigil_guardian.ps1 + vigil_install.ps1 do jednego katalogu output.
+    kopiuje wszystkie .exe + vigil_guardian.ps1 + launchery .cmd do jednego katalogu output.
 
     Uruchom z root projektu (repo root):
         .\build-package.ps1
@@ -12,20 +12,25 @@
     Output: .\dist\ z plikami:
         vigil_watchdog.exe     (~80 MB self-contained)
         vigil_ui.exe           (~80 MB, lock overlay + tray icon)
-        vigil_setup.exe        (installer/verify w C#, D22; na razie tylko -Mode verify)
+        vigil_setup.exe        (instalator w C#, D22: kreator/menu bez parametrow, -Mode ... dla skryptow)
         vigil_guardian.ps1
-        vigil_install.ps1
-        Install.cmd            (launcher bez ExecutionPolicy)
+        Install.cmd            (skrot do vigil_setup.exe z tymi samymi parametrami)
         vigil-cleanup.ps1
-        Cleanup.cmd            (launcher odinstalowania)
+        Cleanup.cmd            (launcher odinstalowania, do #66)
 
-    Skopiuj caly .\dist\ na PC dziecka i uruchom Install.cmd.
+    vigil_install.ps1 zostaje w repo (installer\) jako wyrocznia verify w e2e, poza paczka.
+    Skopiuj caly .\dist\ na PC dziecka i uruchom vigil_setup.exe.
 
 .PARAMETER OutputDir
     Gdzie zlozyc paczke. Default: .\dist
 
 .PARAMETER Configuration
     Release / Debug. Default: Release
+
+.PARAMETER Version
+    Wersja wszystkich binarek (-p:Version): release z taga (np. 0.8.0), CI 0.0.0-ci.<run>.
+    Default: 0.0.0-dev (jak client\Directory.Build.props). vigil_setup porownuje wersje
+    zainstalowana z wersja paczki.
 
 .PARAMETER SkipBuild
     Pomin dotnet publish (przydatne gdy juz zbudowane, chcesz tylko skopiowac).
@@ -35,6 +40,7 @@
 param(
     [string] $OutputDir = '',
     [ValidateSet('Release','Debug')] [string] $Configuration = 'Release',
+    [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')] [string] $Version = '0.0.0-dev',
     [switch] $SkipBuild
 )
 
@@ -91,6 +97,7 @@ foreach ($p in $projects) {
                 -p:PublishSingleFile=true `
                 -p:SelfContained=true `
                 -p:IncludeNativeLibrariesForSelfExtract=true `
+                "-p:Version=$Version" `
                 --nologo
             if ($LASTEXITCODE -ne 0) {
                 throw "dotnet publish failed for $($p.Dir) (exit $LASTEXITCODE)"
@@ -114,7 +121,6 @@ foreach ($p in $projects) {
 # === Skopiuj non-build artifacts ===
 $extras = @(
     @{ From = 'installer\vigil_guardian.ps1';   To = 'vigil_guardian.ps1' }
-    @{ From = 'installer\vigil_install.ps1';    To = 'vigil_install.ps1' }
     @{ From = 'installer\Install.cmd';          To = 'Install.cmd' }
     @{ From = 'installer\vigil-cleanup.ps1';    To = 'vigil-cleanup.ps1' }
     @{ From = 'installer\Cleanup.cmd';          To = 'Cleanup.cmd' }
@@ -136,6 +142,6 @@ Write-Host "==> Paczka gotowa: $OutputDir" -ForegroundColor Magenta
 Get-ChildItem -Path $OutputDir | Format-Table @{N='Plik';E={$_.Name}}, @{N='Rozmiar';E={[Math]::Round($_.Length/1MB,1).ToString()+' MB'}}
 
 Write-Host ""
-Write-Host "Skopiuj caly katalog dist\ na PC dziecka i uruchom jako Administrator:" -ForegroundColor Yellow
-Write-Host "  Tryb interaktywny (zalecany):  Install.cmd" -ForegroundColor Green
-Write-Host "  Lub z parametrami:             vigil_install.ps1 -Mode install -ServerUrl '...' ..." -ForegroundColor Yellow
+Write-Host "Skopiuj caly katalog dist\ na PC dziecka i uruchom:" -ForegroundColor Yellow
+Write-Host "  Kreator (zalecany):   vigil_setup.exe  (UAC z manifestu)" -ForegroundColor Green
+Write-Host "  Z parametrami:        vigil_setup.exe -Mode install -ServerUrl '...' -PairingCode '...'" -ForegroundColor Yellow

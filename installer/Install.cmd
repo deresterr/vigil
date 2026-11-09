@@ -1,19 +1,13 @@
 @echo off
-:: Install.cmd - uruchamia vigil_install.ps1 z pomincieciem ExecutionPolicy.
-:: Wymaga uruchomienia jako Administrator.
+:: Install.cmd - shortcut to vigil_setup.exe (D22) with the same parameters as before.
+:: vigil_setup.exe asks for administrator rights itself (UAC).
 ::
-:: Tryb interaktywny (zalecany):
-::   Install.cmd
-::
-:: Tryb z parametrami:
+::   Install.cmd                  wizard (nothing installed) or status and menu
+::   Install.cmd -Mode verify     checks the installation, changes nothing
 ::   Install.cmd -Mode uninstall
-::   Install.cmd -Mode reinstall -ServerUrl http://192.168.0.2:8088
-::   Install.cmd -Mode verify        (sprawdza instalacje, niczego nie zmienia)
+::   Install.cmd -Mode update-config -PairingCode 12345678
+::
+:: Kept until the final cleanup; run vigil_setup.exe directly.
 
-powershell.exe -NoLogo -ExecutionPolicy Bypass -File "%~dp0vigil_install.ps1" %*
-
-if %errorLevel% neq 0 (
-    echo.
-    echo [BLAD] Instalator zakonczyl sie bledem. Kod wyjscia: %errorLevel%
-)
-pause
+"%~dp0vigil_setup.exe" %*
+exit /b %errorLevel%

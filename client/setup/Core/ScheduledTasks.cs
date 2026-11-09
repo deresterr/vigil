@@ -110,6 +110,10 @@ public static class ScheduledTasks
         if (rc != 0) throw new SetupException(Strings.TaskRunFailed(name, output.Trim()));
     }
 
+    /// <summary>Ends a running instance, if any (the exit code says nothing useful: the status column that
+    /// would tell "running" is localized).</summary>
+    public static void End(string name) => NativeTool.Run("schtasks.exe", "/End", "/TN", name);
+
     /// <returns>True when the task is gone (also when there was none).</returns>
     public static bool Delete(string name)
     {

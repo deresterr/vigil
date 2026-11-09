@@ -22,6 +22,7 @@ public static class VigilLayout
     public const string WatchdogExe = "vigil_watchdog.exe";
     public const string UiExe = "vigil_ui.exe";
     public const string SetupExe = "vigil_setup.exe";
+    /// <summary>The PowerShell guardian before #65; now `vigil_setup.exe guardian`, the script a leftover.</summary>
     public const string GuardianScript = "vigil_guardian.ps1";
     public const string ConfigFile = "vigil.toml";
     /// <summary>The device's signing key, DPAPI LocalMachine with <see cref="SigningKeyEntropy"/>.</summary>
@@ -48,6 +49,7 @@ public static class VigilLayout
         PathOf("vigil_lockscreen.exe"),   // lock screen and tray before D8 (#35)
         PathOf("vigil_tray.exe"),
         @"C:\Users\Public\Vigil",         // bypass.flag before v0.5 (#9)
+        PathOf(GuardianScript),           // the PowerShell guardian before #65
     };
 
     // === Service ===

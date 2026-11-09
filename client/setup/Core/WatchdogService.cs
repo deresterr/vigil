@@ -19,6 +19,11 @@ public sealed class WatchdogService
     public List<(int Type, int DelayMs)> FailureActions { get; private init; } = new();
     public bool FailureActionsOnNonCrash { get; private init; }
 
+    /// <summary>Recovery as the installer sets it: restart ×3, also on a non-zero exit (verify and guardian).</summary>
+    public bool RecoveryAsInstalled =>
+        FailureActions.Count == VigilLayout.RecoveryRestarts && FailureActions.All(a => a.Type == 1)
+        && FailureActionsOnNonCrash;
+
     /// <returns>null when the service is not registered.</returns>
     public static WatchdogService? Read()
     {

@@ -288,6 +288,9 @@ public static class Strings
     public static string TaskAsSystem => T("  jako SYSTEM, najwyższe uprawnienia", "  as SYSTEM, highest privileges");
     public static string TaskEnabled(bool enabled) => T($"  stan: {(enabled ? "włączone" : "wyłączone")}", $"  state: {(enabled ? "enabled" : "disabled")}");
     public static string TaskTriggers => T("  wyzwalacze: przy starcie + co 5 min", "  triggers: at startup + every 5 min");
+    public static string TaskOldGuardian(string script) => T(
+        $"  uruchamia starego guardiana {script} — Napraw/Zaktualizuj wymieni go na vigil_setup.exe",
+        $"  runs the old guardian {script} — Repair/Update replaces it with vigil_setup.exe");
     public static string TaskRuns(string what) => T($"  uruchamia {what}", $"  runs {what}");
     public static string TaskNotRunYet => T("  jeszcze nie uruchomione (pierwsze uruchomienie w ciągu 5 min)", "  not run yet (first run within 5 min)");
     public static string TaskLastResult(int result, string time) => T($"  ostatni wynik: 0x{result:X} ({time})", $"  last result: 0x{result:X} ({time})");

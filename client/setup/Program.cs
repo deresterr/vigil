@@ -2,56 +2,150 @@ using System.Runtime.Versioning;
 using System.Text;
 using Vigil.Setup;
 using Vigil.Setup.Core;
-using Vigil.Setup.Native;
 
 [assembly: SupportedOSPlatform("windows")]
 
-// vigil_setup.exe (D22). Parameters as Install.cmd takes them (-Mode verify ...), so README, scripts and
-// the CI e2e work with both installers. Without parameters: the wizard and menu (#64); for now, usage.
+// vigil_setup.exe (D22). Without parameters: the wizard (nothing installed) or the menu. With parameters,
+// as Install.cmd took them (-Mode install -ServerUrl ... -PairingCode ...): for scripts, CI and support.
 
 Console.OutputEncoding = Encoding.UTF8;
-int exitCode;
-try
-{
-    exitCode = Run(Cli.Parse(args));
-}
+Cli cli;
+try { cli = Cli.Parse(args); }
 catch (CliException ex)
 {
     ConsoleReport.Error(ex.Message);
     Console.WriteLine();
     Console.WriteLine(Strings.Usage);
-    exitCode = 2;
+    ConsoleWindow.PauseIfOwn();
+    return 2;
 }
-PauseIfOwnWindow();
+
+using var log = new LogReport();
+if (cli.Mode is null)
+{
+    if (cli.InputScript is null && (Console.IsInputRedirected || Console.IsOutputRedirected))
+    {
+        Console.WriteLine(Strings.Usage);
+        return 2;
+    }
+    var code = Ui.Run(log, cli.InputScript);
+    return code;
+}
+
+int exitCode;
+try
+{
+    exitCode = RunMode(cli, log);
+}
+catch (SetupException ex)
+{
+    log.Error(ex);
+    ConsoleReport.Summary(Strings.Failed, ex.Message, CheckLevel.Fail);
+    exitCode = 1;
+}
+catch (Exception ex)
+{
+    log.Error(ex);
+    ConsoleReport.Summary(Strings.Failed, ex.Message, CheckLevel.Fail);
+    exitCode = 1;
+}
+if (log.Path is not null) Console.WriteLine(Strings.LogAt(log.Path));
+ConsoleWindow.PauseIfOwn();
 return exitCode;
 
-static int Run(Cli cli)
+static int RunMode(Cli cli, LogReport log)
 {
+    var report = new TeeReport(new ConsoleReport(), log);
+    var installer = new Installer(report, AppContext.BaseDirectory);
+    var title = cli.Mode!.ToUpperInvariant();
+    ConsoleReport.Title(title);
+
     switch (cli.Mode)
     {
-        case null:
-            Console.WriteLine(Strings.Usage);
-            return 0;
         case "verify":
-            var verify = new Verify(new ConsoleReport(), cli.ChildUserName, AppContext.BaseDirectory);
-            ConsoleReport.Title(Strings.VerifyTitle);
+        {
+            var verify = new Verify(report, cli.ChildUserName, AppContext.BaseDirectory);
             verify.Run();
             ConsoleReport.Summary(Strings.VerifyTitle, Strings.VerifySummary(verify.Pass, verify.Fail, verify.Warn),
                 verify.Fail > 0 ? CheckLevel.Fail : verify.Warn > 0 ? CheckLevel.Warn : CheckLevel.Pass);
             return verify.Fail > 0 ? 1 : 0;
-        default:
-            ConsoleReport.Error(Strings.ModeNotYet(cli.Mode));
-            return 2;
+        }
+        case "install":
+        {
+            var (url, code) = RequireUrlAndCode(cli);
+            var key = installer.Pair(url, code);
+            installer.Install(Request(cli, url, key, report));
+            break;
+        }
+        case "reinstall":
+        {
+            // Pairing first: a wrong code leaves the installation as it was.
+            var (url, code) = RequireUrlAndCode(cli);
+            var key = installer.Pair(url, code);
+            installer.Uninstall();
+            installer.Install(Request(cli, url, key, report));
+            break;
+        }
+        case "update":
+        {
+            var url = cli.ServerUrl is { } u ? Normalize(u) : Installer.InstalledServerUrl()
+                ?? throw new SetupException(Strings.NothingToUpdate);
+            installer.Install(Request(cli, url, null, report));
+            break;
+        }
+        case "update-config":
+        {
+            if (cli.ServerUrl is null && cli.PairingCode is null) throw new SetupException(Strings.UpdateConfigNeedsParams);
+            var url = cli.ServerUrl is { } u ? Normalize(u) : Installer.InstalledServerUrl()
+                ?? throw new SetupException(Strings.NotInstalled);
+            // Re-pair before stopping anything: a wrong or expired code leaves the installation as it was.
+            var key = cli.PairingCode is { } c ? installer.Pair(url, Code(c)) : null;
+            installer.UpdateConfig(url, key);
+            break;
+        }
+        case "uninstall":
+            if (!installer.Uninstall())
+            {
+                ConsoleReport.Summary(title, Strings.UninstallIncomplete, CheckLevel.Fail);
+                return 1;
+            }
+            break;
     }
+    ConsoleReport.Summary(title, Strings.Done, installer.Warnings > 0 ? CheckLevel.Warn : CheckLevel.Pass);
+    return 0;
 }
 
-// Started by a double click (its own console window, which closes on exit): wait for a key. From a
-// terminal, a script or CI the console is shared with the caller: no pause.
-static void PauseIfOwnWindow()
+static (string Url, string Code) RequireUrlAndCode(Cli cli)
 {
-    var processes = new uint[2];
-    if (Win32.GetConsoleProcessList(processes, 2) != 1 || Console.IsInputRedirected) return;
-    Console.WriteLine();
-    Console.WriteLine(Strings.PressAnyKey);
-    Console.ReadKey(intercept: true);
+    if (cli.ServerUrl is null || cli.PairingCode is null) throw new SetupException(Strings.InstallNeedsParams);
+    var url = Normalize(cli.ServerUrl);
+    if (!Pairing.IsHealthy(url)) throw new SetupException(Strings.ServerNotResponding(url));
+    return (url, Code(cli.PairingCode));
+}
+
+static string Normalize(string raw)
+{
+    var url = Pairing.NormalizeUrl(raw);
+    if (!Pairing.IsValidUrl(url)) throw new SetupException(Strings.InvalidServerUrl(raw));
+    return url;
+}
+
+static string Code(string raw) => Pairing.NormalizeCode(raw) ?? throw new SetupException(Strings.CodeFormat);
+
+/// <summary>Parameters: the account is resolved, never asked for; several accounts and no -ChildUsername =
+/// the Default profile only (as the PowerShell installer did).</summary>
+static InstallRequest Request(Cli cli, string url, string? key, IReport report)
+{
+    var child = ChildAccountChoice.Resolve(cli.ChildUserName);
+    if (child.Account is null && cli.ChildUserName is not null) throw new SetupException(child.Problem!);
+    if (child.Account is null) report.Check(CheckLevel.Warn, Strings.NoChildAccountForVerify(child.Problem));
+    else report.Info(Strings.ChildAccount(child.Account.Name));
+    return new InstallRequest
+    {
+        ServerUrl = url,
+        SigningKey = key,
+        Child = child.Account,
+        ApplyUserPolicies = !cli.NoUserPolicies,
+        DisableWinRE = cli.DisableWinRE,
+    };
 }

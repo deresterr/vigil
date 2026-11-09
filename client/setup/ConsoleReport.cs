@@ -60,3 +60,24 @@ public sealed class ConsoleReport : IReport
         Console.ForegroundColor = previous;
     }
 }
+
+public static class ConsoleWindow
+{
+    /// <summary>Started by a double click (its own console window, which closes on exit): wait for a key.
+    /// From a terminal, a script or CI the console is shared with the caller: no pause.</summary>
+    public static void PauseIfOwn()
+    {
+        var processes = new uint[2];
+        if (Native.Win32.GetConsoleProcessList(processes, 2) != 1 || Console.IsInputRedirected) return;
+        Console.WriteLine();
+        Console.WriteLine(Strings.PressAnyKey);
+        Console.ReadKey(intercept: true);
+    }
+
+    /// <summary>True when the window closes with this process (started by a double click or by UAC).</summary>
+    public static bool IsOwn()
+    {
+        var processes = new uint[2];
+        return Native.Win32.GetConsoleProcessList(processes, 2) == 1;
+    }
+}

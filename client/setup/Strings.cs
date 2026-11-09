@@ -142,4 +142,116 @@ public static class Strings
     public static string NoProcesses(IReadOnlyCollection<string> procs) => T(
         "Brak procesów Vigila" + (procs.Count > 0 ? $": {List(procs)}" : ""),
         "No Vigil processes" + (procs.Count > 0 ? $": {List(procs)}" : ""));
+
+    // === Install, update, update-config, uninstall: steps (what the parent sees) ===
+
+    public static string StepPairing => T("Parowanie z serwerem", "Pairing with the server");
+    public static string StepStopping => T("Zatrzymywanie usługi Vigil", "Stopping the Vigil service");
+    public static string StepFiles => T("Kopiowanie plików", "Copying files");
+    public static string StepConfig => T("Zapisywanie konfiguracji", "Saving the configuration");
+    public static string StepService => T("Rejestrowanie usługi", "Registering the service");
+    public static string StepProtection => T("Ochrona przed wyłączeniem", "Protection against switching off");
+    public static string StepPolicies => T("Ustawienia konta dziecka", "Child's account settings");
+    public static string StepAcls => T("Uprawnienia do plików", "File permissions");
+    public static string StepStart => T("Uruchamianie Vigila", "Starting Vigil");
+    public static string StepProcesses => T("Zamykanie okien Vigila", "Closing Vigil's windows");
+    public static string StepTasks => T("Usuwanie zadań i wpisów rozruchu", "Removing tasks and boot entries");
+    public static string StepFilesRemove => T("Usuwanie plików", "Removing files");
+
+    // === ... and their details ===
+
+    public static string Paired(string url) => T($"Sparowano z {url}, klucz otrzymany", $"Paired with {url}, key received");
+    public static string ServerUnreachable(string url, string error) => T(
+        $"Brak połączenia z serwerem {url} ({error}).", $"Cannot reach the server {url} ({error}).");
+    public static string PairingNoCode => T(
+        "Ten kod nie jest już aktywny (wygasł po 10 minutach albo został użyty). Wygeneruj nowy w panelu rodzica.",
+        "This code is no longer active (it expired after 10 minutes or was used). Create a new one in the parent panel.");
+    public static string PairingWrongCode(int? left) => T(
+        "Nieprawidłowy kod." + (left is { } n ? n > 0 ? $" Pozostałe próby: {n}." : " Kod przestał działać — wygeneruj nowy." : ""),
+        "Wrong code." + (left is { } n2 ? n2 > 0 ? $" Attempts left: {n2}." : " The code no longer works — create a new one." : ""));
+    public static string PairingFailed(int status) => T(
+        $"Parowanie nie powiodło się (HTTP {status}).", $"Pairing failed (HTTP {status}).");
+
+    public static string NotInstalled => T("Vigil nie jest zainstalowany na tym komputerze.", "Vigil is not installed on this computer.");
+    public static string NothingToUpdate => T(
+        "Brak zainstalowanej konfiguracji (vigil.toml, signing.dat) — potrzebna jest pełna instalacja z kodem parowania.",
+        "No installed configuration (vigil.toml, signing.dat) — a full install with a pairing code is needed.");
+    public static string SourceFilesMissing(string dir, IEnumerable<string> missing) => T(
+        $"W {dir} brakuje plików paczki: {List(missing)}", $"Package files missing in {dir}: {List(missing)}");
+    public static string RunFromPackage => T(
+        "Uruchom instalator z rozpakowanej paczki, nie z C:\\ProgramData\\Vigil.",
+        "Run the installer from the unpacked package, not from C:\\ProgramData\\Vigil.");
+    public static string PrivilegeMissing(string name) => T(
+        $"Brak uprawnienia {name} — uruchom jako administrator.", $"Privilege {name} missing — run as administrator.");
+
+    public static string ServiceAbsent => T("Usługa nie istnieje", "The service does not exist");
+    public static string ServiceAlreadyStopped => T("Usługa już zatrzymana", "The service is already stopped");
+    public static string ServiceStoppedAsSystem => T("Zatrzymana (zwykły stop jako SYSTEM, z pożegnaniem)", "Stopped (normal stop as SYSTEM, with goodbye)");
+    public static string ServiceKilled => T(
+        "Zatrzymana przez zamknięcie procesu (stop jako SYSTEM nie zadziałał) — serwer zobaczy restart",
+        "Stopped by ending the process (stop as SYSTEM did not work) — the server will see a restart");
+    public static string ServiceStopFailed => T(
+        "Nie udało się zatrzymać usługi Vigil. Uruchom komputer ponownie i spróbuj jeszcze raz.",
+        "Could not stop the Vigil service. Restart the computer and try again.");
+    public static string ServiceDeleteFailed => T(
+        "Nie udało się usunąć poprzedniej usługi — uruchom komputer ponownie i spróbuj jeszcze raz.",
+        "Could not remove the previous service — restart the computer and try again.");
+    public static string ServiceDeleteFailedReboot => T(
+        "Usługa dalej istnieje — zniknie po ponownym uruchomieniu komputera.",
+        "The service still exists — it will be gone after a restart.");
+    public static string OldServiceRemoved => T("Poprzednia usługa usunięta", "Previous service removed");
+    public static string ServiceRemoved => T("Usługa usunięta", "Service removed");
+    public static string ServiceCreated => T(
+        "Usługa zarejestrowana (start automatyczny, restart×3 po awarii, bez restartu komputera)",
+        "Service registered (automatic start, restart×3 on failure, no computer restart)");
+    public static string ServiceDaclSet => T("DACL usługi: Admin tylko query/start", "Service DACL: Admin query/start only");
+    public static string ServiceDaclFailed(int rc, string output) => T(
+        $"sc sdset nie powiodło się ({rc}): {output} — Admin może zatrzymać usługę", $"sc sdset failed ({rc}): {output} — Admin can stop the service");
+    public static string ServiceStarted => T("Usługa uruchomiona", "Service started");
+    public static string ServiceStartedAsSystem => T("Usługa uruchomiona (jako SYSTEM)", "Service started (as SYSTEM)");
+    public static string ServiceRunning => T("Usługa działa", "The service is running");
+    public static string ServiceDidNotStart => T(
+        "Usługa Vigil nie uruchomiła się. Szczegóły w Podglądzie zdarzeń (Aplikacja, źródło Vigil Watchdog).",
+        "The Vigil service did not start. Details in Event Viewer (Application, source Vigil Watchdog).");
+    public static string ServiceStoppedAfterStart => T(
+        "Usługa Vigil zatrzymała się zaraz po starcie. Szczegóły w Podglądzie zdarzeń (Aplikacja, źródło Vigil Watchdog).",
+        "The Vigil service stopped right after starting. Details in Event Viewer (Application, source Vigil Watchdog).");
+    public static string ScFailed(string command, int rc, string output) => T(
+        $"sc {command} nie powiodło się ({rc}): {output}", $"sc {command} failed ({rc}): {output}");
+    public static string ToolFailed(string tool, int rc, string output) => T(
+        $"{tool} zwrócił {rc}: {output}", $"{tool} returned {rc}: {output}");
+
+    public static string ProcessStopped(string name, int pid) => T($"Zamknięto {name} (pid {pid})", $"Closed {name} (pid {pid})");
+    public static string ProcessStopFailed(string name, string error) => T($"Nie udało się zamknąć {name}: {error}", $"Could not close {name}: {error}");
+    public static string LegacyRemoved(string path) => T($"Usunięto pozostałość starszej wersji: {path}", $"Removed a leftover of an older version: {path}");
+    public static string LegacyRemoveFailed(string path, string error) => T($"Nie udało się usunąć {path}: {error}", $"Could not remove {path}: {error}");
+
+    public static string GuardianHashWritten(string prefix) => T($"guardian.dat: SHA-256 {prefix}… (DPAPI)", $"guardian.dat: SHA-256 {prefix}… (DPAPI)");
+    public static string ConfigWritten(string url) => T($"vigil.toml: server_url = {url}", $"vigil.toml: server_url = {url}");
+    public static string SigningKeyWritten => T("signing.dat: klucz zaszyfrowany (DPAPI)", "signing.dat: key encrypted (DPAPI)");
+    public static string KeyKept => T("signing.dat i totp.dat bez zmian", "signing.dat and totp.dat unchanged");
+
+    public static string SafeBootAdded => T("SafeBoot Minimal + Network", "SafeBoot Minimal + Network");
+    public static string SafeBootRemoved => T("Wpisy SafeBoot usunięte", "SafeBoot entries removed");
+    public static string GuardianTaskCreated(string name) => T($"Zadanie '{name}' (przy starcie + co 5 min)", $"Task '{name}' (at startup + every 5 min)");
+    public static string TaskRemoved(string name) => T($"Zadanie '{name}' usunięte", $"Task '{name}' removed");
+    public static string TaskRemoveFailed(string name) => T($"Nie udało się usunąć zadania '{name}'", $"Could not remove task '{name}'");
+    public static string TaskCreateFailed(string name, string output) => T($"Nie udało się utworzyć zadania '{name}': {output}", $"Could not create task '{name}': {output}");
+    public static string TaskRunFailed(string name, string output) => T($"Nie udało się uruchomić zadania '{name}': {output}", $"Could not run task '{name}': {output}");
+    public static string BootMenuDisabled => T("Menu F8 wyłączone (bootmenupolicy Standard)", "F8 menu disabled (bootmenupolicy Standard)");
+    public static string WinReDisabled => T("WinRE wyłączone", "WinRE disabled");
+    public static string BootMenuNotRestored => T(
+        "Menu F8 i WinRE nie są przywracane: Standard to domyślne ustawienie Windows 10/11; wyłączone WinRE włącz poleceniem 'reagentc /enable'.",
+        "The F8 menu and WinRE are not restored: Standard is the Windows 10/11 default; enable a disabled WinRE with 'reagentc /enable'.");
+
+    public static string NoChildDefaultOnly => T(
+        "Brak konta dziecka — ustawienia tylko w Default profile (konta tworzone później)",
+        "No child's account — settings in the Default profile only (accounts created later)");
+    public static string PoliciesApplied(string label, bool live) => T(
+        $"{label}: ustawione{(live ? " (zalogowane)" : "")}", $"{label}: set{(live ? " (signed in)" : "")}");
+    public static string PoliciesSkipped => T("Pominięte (-NoUserPolicies)", "Skipped (-NoUserPolicies)");
+    public static string AclsSet => T(
+        "Katalog: SYSTEM full, Admin modify, AuthUsers r+x; sekrety: SYSTEM full, Admin read",
+        "Folder: SYSTEM full, Admin modify, AuthUsers r+x; secrets: SYSTEM full, Admin read");
+    public static string FolderRemoved(string dir) => T($"{dir} usunięty", $"{dir} removed");
 }

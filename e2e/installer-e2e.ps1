@@ -9,6 +9,9 @@
         install -> verify -> verify must fail on a broken install -> re-pair (update-config) -> verify
         -> uninstall -> verify (nothing left)
 
+    Every verify runs twice: the PowerShell one (the oracle) and vigil_setup.exe's (D22, #63); both must
+    give the expected exit code, also on a broken install.
+
     Server side, through the admin API: the PC comes online after install and again with the new key after
     re-pairing, and the uninstall reaches the server as a normal service stop (goodbye ->
     tamper_service_stopped), not as a killed watchdog.
@@ -73,6 +76,20 @@ function Invoke-Installer {
     Write-Host "> vigil_install.ps1 $($args -join ' ')" -ForegroundColor DarkGray
     & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Installer @args | Out-Host
     return $LASTEXITCODE
+}
+
+function Invoke-Setup {
+    # vigil_setup.exe from the package; same parameters as the PowerShell installer.
+    Write-Host "> vigil_setup.exe $($args -join ' ')" -ForegroundColor DarkGray
+    & (Join-Path $PackageDir 'vigil_setup.exe') @args | Out-Host
+    return $LASTEXITCODE
+}
+
+function Assert-Verify([int]$Expected, [string]$What) {
+    $ps = Invoke-Installer -Mode verify
+    $cs = Invoke-Setup -Mode verify
+    Assert-That ($ps -eq $Expected -and $cs -eq $Expected) `
+        "${What}: verify exit code $Expected (vigil_install.ps1 $ps, vigil_setup.exe $cs)"
 }
 
 function Start-Server {
@@ -167,19 +184,23 @@ try {
     Wait-Until { (Get-Device).online } 60 'the PC is online (signed heartbeats accepted)'
 
     Write-Section 'Verify (installed)'
-    $rc = Invoke-Installer -Mode verify
-    Assert-That ($rc -eq 0) "verify exit code 0 (got $rc)"
+    Assert-Verify 0 'installed'
 
     Write-Section 'Verify must fail on a broken install'
     $safeBoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\vigil_watchdog'
     Remove-Item -Path $safeBoot -Recurse -Force
-    try {
-        $rc = Invoke-Installer -Mode verify
-        Assert-That ($rc -eq 1) "verify exit code 1 without SafeBoot\Network (got $rc)"
-    } finally {
+    try { Assert-Verify 1 'without SafeBoot\Network' }
+    finally {
         New-Item -Path $safeBoot -Force | Out-Null
         Set-Item -Path $safeBoot -Value 'Service' -Force
     }
+    # Not the service's Start value: the SCM keeps its own copy until a reboot, and admins may not change
+    # the service config (DACL). A file admins may delete (folder: Administrators modify).
+    $backup = 'C:\ProgramData\Vigil\backup\vigil_watchdog.exe'
+    Remove-Item -Path $backup -Force
+    try { Assert-Verify 1 'without backup\vigil_watchdog.exe' }
+    finally { Copy-Item -Path (Join-Path $PackageDir 'vigil_watchdog.exe') -Destination $backup }
+    Assert-Verify 0 'repaired again'
 
     Write-Section 'Re-pair (update-config)'
     $code = New-PairingCode @{ device_id = (Get-Device).id }
@@ -189,8 +210,7 @@ try {
     # newer than that wait can only be signed with the new key.
     Start-Sleep -Seconds 10
     Wait-Until { (Get-Device).last_heartbeat_ago_seconds -le 8 } 60 'heartbeats with the new key'
-    $rc = Invoke-Installer -Mode verify
-    Assert-That ($rc -eq 0) "verify after re-pairing exit code 0 (got $rc)"
+    Assert-Verify 0 'after re-pairing'
 
     Write-Section 'Uninstall'
     $stopsBefore = Get-ServiceStopCount
@@ -199,8 +219,7 @@ try {
     Wait-Until { (Get-ServiceStopCount) -gt $stopsBefore } 20 'the server logged a normal service stop (goodbye)'
 
     Write-Section 'Verify (removed)'
-    $rc = Invoke-Installer -Mode verify
-    Assert-That ($rc -eq 0) "verify after uninstall exit code 0 (got $rc)"
+    Assert-Verify 0 'after uninstall'
 
     $failed = $false
     Write-Host "`nInstaller e2e: PASSED" -ForegroundColor Green

@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "vigil_watchdog", "watchdog\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "vigil_ui", "ui\vigil_ui.csproj", "{28239C83-BB8D-538B-A114-6B169EDE0D7B}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "vigil_setup", "setup\vigil_setup.csproj", "{6F1D3C2A-8B4E-4C9D-9A57-3E2B1D0C4F81}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,5 +23,9 @@ Global
 		{28239C83-BB8D-538B-A114-6B169EDE0D7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{28239C83-BB8D-538B-A114-6B169EDE0D7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{28239C83-BB8D-538B-A114-6B169EDE0D7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F1D3C2A-8B4E-4C9D-9A57-3E2B1D0C4F81}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F1D3C2A-8B4E-4C9D-9A57-3E2B1D0C4F81}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F1D3C2A-8B4E-4C9D-9A57-3E2B1D0C4F81}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F1D3C2A-8B4E-4C9D-9A57-3E2B1D0C4F81}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

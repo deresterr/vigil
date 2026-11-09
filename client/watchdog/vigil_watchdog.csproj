@@ -40,6 +40,9 @@
 
   <ItemGroup>
     <Compile Include="..\shared\IpcMessages.cs" Link="Ui\IpcMessages.cs" />
+    <!-- Installation layout shared with vigil_setup (D22): paths, entropy, service, policies, ACLs -->
+    <Compile Include="..\shared\VigilLayout.cs" Link="Shared\VigilLayout.cs" />
+    <Compile Include="..\shared\FileAcls.cs" Link="Shared\FileAcls.cs" />
   </ItemGroup>
 
 </Project>

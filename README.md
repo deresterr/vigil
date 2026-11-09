@@ -65,14 +65,14 @@ from a USB stick (offline as well), or forged requests sent by an administrator 
 - child's PC: Windows 10/11 x64, Home or Pro; the child's account is the only user account
   and may have administrator rights (the parent maintains the PC from that same account),
 - the parent's phone with a TOTP app (Aegis, Google Authenticator, …),
-- to build the client: Windows with the .NET 8 SDK (or a ready package from a release or GitHub Actions).
+- to build the client: Windows with the .NET 8 SDK (or a ready `vigil_setup.exe` from a release or GitHub Actions).
 
 ## Quick start
 
-Every release (the **Releases** tab) has ready packages: the server image
-`ghcr.io/deresterr/vigil-server:<version>` and `vigil-client-v<version>.zip` for the child's PC. With them you
-build nothing: in step 1 set `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<version>` in `server/.env` and run
-`docker compose pull && docker compose up -d`; the unpacked zip replaces step 2.
+Every release (the **Releases** tab) has both parts ready: the server image
+`ghcr.io/deresterr/vigil-server:<version>` and `vigil_setup.exe`, the whole client for the child's PC in one file.
+With them you build nothing: in step 1 set `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<version>` in `server/.env`
+and run `docker compose pull && docker compose up -d`; the downloaded `vigil_setup.exe` replaces step 2.
 
 **1. Server**
 
@@ -98,14 +98,15 @@ winget install Microsoft.DotNet.SDK.8
 Then (in a new window, so that `dotnet` is on the PATH):
 
 ```
-Build.cmd            → dist\
+Build.cmd            → dist\vigil_setup.exe
 ```
 
-Instead of building locally you can download a ready `dist\` from the `vigil-client-…` artifact of the latest CI run
-(Actions tab).
+`vigil_setup.exe` is the whole client: the installer carries the service and the lock screen. Instead of building
+locally you can download it from the `vigil-client-…` artifact of the latest CI run (Actions tab).
 
-**3. Install on the child's PC** — copy `dist\` to the child's PC and run `vigil_setup.exe` (it asks for
-administrator rights). The wizard asks for the server address and a pairing code (parent panel: Settings →
+**3. Install on the child's PC** — copy `vigil_setup.exe` to the child's PC and run it (it asks for
+administrator rights; a downloaded copy may first get SmartScreen's "Windows protected your PC": More info →
+Run anyway). The wizard asks for the server address and a pairing code (parent panel: Settings →
 Child's computers → "Add computer") and finds the child's account itself. Run it again later for the menu:
 check, update, change the server address, re-pair, uninstall.
 

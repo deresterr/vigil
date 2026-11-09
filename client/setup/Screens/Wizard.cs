@@ -13,11 +13,10 @@ internal static class Wizard
     public static void Run(App app)
     {
         var c = app.C;
-        var missing = app.MissingPackageFiles();
-        if (missing.Count > 0)
+        if (app.PackageProblem is { } problem)
         {
             Theme.Header(c, Strings.UiSetupTitle);
-            Theme.Problem(c, CheckLevel.Fail, Strings.UiPackageIncomplete(app.PackageDir, missing));
+            Theme.Problem(c, CheckLevel.Fail, problem);
             Prompts.Continue(c, Strings.UiPressEnterExit);
             return;
         }

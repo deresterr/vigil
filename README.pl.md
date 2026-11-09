@@ -65,14 +65,14 @@ który odczytał klucz z dysku.
 - PC dziecka: Windows 10/11 x64, Home lub Pro; konto dziecka jest jedynym kontem użytkownika
   i może mieć uprawnienia administratora (rodzic serwisuje PC z tego samego konta),
 - telefon rodzica z aplikacją TOTP (Aegis, Google Authenticator, …),
-- do budowania klienta: Windows z .NET 8 SDK (albo gotowa paczka z wydania lub z GitHub Actions).
+- do budowania klienta: Windows z .NET 8 SDK (albo gotowy `vigil_setup.exe` z wydania lub z GitHub Actions).
 
 ## Szybki start
 
-Gotowe paczki są przy każdym wydaniu (zakładka **Releases**): obraz serwera
-`ghcr.io/deresterr/vigil-server:<wersja>` i `vigil-client-v<wersja>.zip` z paczką dla PC dziecka. Z nimi
-nie budujesz niczego: w kroku 1 ustaw w `server/.env` `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<wersja>`
-i uruchom `docker compose pull && docker compose up -d`, a krok 2 zastępuje rozpakowany zip.
+Przy każdym wydaniu (zakładka **Releases**) obie części są gotowe: obraz serwera
+`ghcr.io/deresterr/vigil-server:<wersja>` i `vigil_setup.exe` — cały klient dla PC dziecka w jednym pliku.
+Z nimi nie budujesz niczego: w kroku 1 ustaw w `server/.env` `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<wersja>`
+i uruchom `docker compose pull && docker compose up -d`, a krok 2 zastępuje pobrany `vigil_setup.exe`.
 
 **1. Serwer**
 
@@ -97,14 +97,15 @@ winget install Microsoft.DotNet.SDK.8
 Potem (w nowym oknie, żeby `dotnet` był w PATH):
 
 ```
-Build.cmd            → dist\
+Build.cmd            → dist\vigil_setup.exe
 ```
 
-Zamiast budować lokalnie możesz pobrać gotowe `dist\` z artefaktu `vigil-client-…` ostatniego przebiegu CI
-(zakładka Actions).
+`vigil_setup.exe` to cały klient: instalator niesie w sobie usługę i ekran blokady. Zamiast budować lokalnie
+możesz go pobrać z artefaktu `vigil-client-…` ostatniego przebiegu CI (zakładka Actions).
 
-**3. Instalacja na PC dziecka** — skopiuj `dist\` na PC dziecka i uruchom `vigil_setup.exe` (sam poprosi
-o uprawnienia administratora). Kreator pyta o adres serwera i kod parowania (panel rodzica: Ustawienia →
+**3. Instalacja na PC dziecka** — skopiuj `vigil_setup.exe` na PC dziecka i uruchom go (sam poprosi
+o uprawnienia administratora; pobrany plik może najpierw dostać od SmartScreen „System Windows ochronił
+ten komputer”: Więcej informacji → Uruchom mimo to). Kreator pyta o adres serwera i kod parowania (panel rodzica: Ustawienia →
 Komputery dziecka → „Dodaj komputer”), konto dziecka znajduje sam. Uruchomiony ponownie pokazuje menu:
 sprawdzenie, aktualizacja, zmiana adresu serwera, ponowne parowanie, odinstalowanie.
 

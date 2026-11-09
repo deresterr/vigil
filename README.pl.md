@@ -11,9 +11,11 @@ sieci liczy czas i decyduje o blokadzie; usługa na PC dziecka pokazuje pełnoek
 wszystkim z przeglądarki i odblokowuje kodem TOTP z telefonu.
 
 <p align="center">
-  <img src="docs/images/panel-status.png" alt="Panel rodzica: dzisiejszy czas i akcje" width="300">
+  <img src="docs/images/panel-status.png" alt="Panel rodzica: dzisiejszy czas, komputery i akcje" width="260" align="top">
   &nbsp;
-  <img src="docs/images/lock-screen-pl.png" alt="Ekran blokady na PC dziecka" width="520">
+  <img src="docs/images/journal-alert.png" alt="Dziennik z alertem o ponownym uruchomieniu Vigila" width="260" align="top">
+  &nbsp;
+  <img src="docs/images/panel-schedule.png" alt="Harmonogram tygodnia" width="260" align="top">
 </p>
 
 > **Przed wersją 1.0, w codziennym użyciu.** Dziecko z uprawnieniami administratora jest w stanie Vigila obejść.
@@ -135,16 +137,6 @@ sam. Nic na PC się nie zmienia, zanim nie potwierdzisz podsumowania.
 
 Uruchom `vigil_setup.exe` później jeszcze raz, żeby zobaczyć stan i menu: sprawdzenie, aktualizacja, zmiana adresu
 serwera, ponowne parowanie, odinstalowanie. Parametry do skryptów (po angielsku): [`docs/installer.md`](docs/installer.md).
-
-<details>
-<summary>Więcej zrzutów ekranu</summary>
-
-| | |
-|---|---|
-| ![Dziennik z alertem](docs/images/journal-alert.png) | ![Harmonogram tygodnia](docs/images/panel-schedule.png) |
-| ![Kreator instalatora](docs/images/setup-wizard.png) | ![Menu instalatora](docs/images/setup-menu.png) |
-
-</details>
 
 ### Aktualizacja
 

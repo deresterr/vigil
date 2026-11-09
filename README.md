@@ -11,9 +11,11 @@ counts the time and decides when to lock; a service on the child's PC shows a fu
 manages everything from a browser and unlocks with a TOTP code from their phone.
 
 <p align="center">
-  <img src="docs/images/panel-status.png" alt="Parent panel: today's time and actions" width="300">
+  <img src="docs/images/panel-status.png" alt="Parent panel: today's time, computers and actions" width="260" align="top">
   &nbsp;
-  <img src="docs/images/lock-screen-en.png" alt="Lock screen on the child's PC" width="520">
+  <img src="docs/images/journal-alert.png" alt="Journal with an alert about Vigil being restarted" width="260" align="top">
+  &nbsp;
+  <img src="docs/images/panel-schedule.png" alt="Weekly schedule" width="260" align="top">
 </p>
 
 > **Before 1.0, in daily use.** A child with administrator rights can get around Vigil. Vigil makes that harder
@@ -135,16 +137,6 @@ itself. Nothing on the PC changes before you confirm the summary.
 
 Run `vigil_setup.exe` again later for the status and the menu: check, update, change the server address,
 re-pair, uninstall. Parameters for scripts: [`docs/installer.md`](docs/installer.md).
-
-<details>
-<summary>More screenshots</summary>
-
-| | |
-|---|---|
-| ![Journal with an alert](docs/images/journal-alert.png) | ![Weekly schedule](docs/images/panel-schedule.png) |
-| ![Installer wizard](docs/images/setup-wizard.png) | ![Installer menu](docs/images/setup-menu.png) |
-
-</details>
 
 ### Updating
 

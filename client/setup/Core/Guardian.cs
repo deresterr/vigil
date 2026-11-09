@@ -14,9 +14,9 @@ namespace Vigil.Setup.Core;
 /// Threat model: friction + detection. An elevated child can disable the task too; until then every change
 /// below is undone and the watchdog reports it to the parent's journal as tamper_guardian_repaired (#36).
 ///
-/// Checks, in this order (a replaced binary needs a stop/start; recovery, start type and SafeBoot before the
-/// final "is it running"):
-///   7003 binary_replaced      vigil_watchdog.exe hash != guardian.dat → restore from backup\
+/// Checks, in this order (a replaced binary is restored with the service stopped and started only after the
+/// other repairs: an IFEO debugger left in place would hijack that start):
+///   7003 binary_replaced      vigil_watchdog.exe hash != guardian.dat → restore from backup\, start last
 ///   7004 ifeo_debugger        IFEO Debugger on vigil_watchdog.exe → removed
 ///   7002 service_disabled     start type not automatic → automatic
 ///   7006 recovery_missing     restart actions not as installed → the installer's ones
@@ -62,8 +62,20 @@ public static class Guardian
             return;
         }
 
+        // Restored now, started last (reported then: the repair is only done once it runs again).
+        var restored = false;
         if (!BinaryIntact())
-            Repair(7003, "vigil_watchdog.exe was replaced", RestoreBinary);
+        {
+            try
+            {
+                RestoreBinary();
+                restored = true;
+            }
+            catch (Exception ex)
+            {
+                Write(EventLogEntryType.Error, 7003, $"{BinaryReplaced} - repair failed: {ex.Message}");
+            }
+        }
         if (IfeoDebugger() is { } debugger)
             Repair(7004, $"IFEO Debugger on vigil_watchdog.exe ({debugger})", RemoveIfeoDebugger);
         if (svc.Start != 2)
@@ -72,12 +84,16 @@ public static class Guardian
             Repair(7006, "service recovery is not restart x3", ServiceControl.SetRecovery);
         if (!SafeBoot.Present())
             Repair(7005, "SafeBoot entries missing", SafeBoot.Write);
-        if (!IsUp())
+        if (restored)
+            Repair(7003, BinaryReplaced, StartService);
+        else if (!IsUp())
         {
             Thread.Sleep(RecoveryWait);
             if (!IsUp()) Repair(7001, "service was stopped", StartService);
         }
     }
+
+    private const string BinaryReplaced = "vigil_watchdog.exe was replaced";
 
     /// <summary>Runs <paramref name="repair"/> and logs the finding for the watchdog: Warning if it worked,
     /// Error if it threw.</summary>
@@ -137,7 +153,6 @@ public static class Guardian
             }
         }
         File.Copy(backup, VigilLayout.PathOf(VigilLayout.WatchdogExe), overwrite: true);
-        StartService();
     }
 
     private static string? IfeoDebugger()

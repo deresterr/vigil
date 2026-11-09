@@ -132,6 +132,9 @@ public sealed class HeartbeatClient : IDisposable
 
         if (signatureHeader is null)
         {
+            // invalid_signature: the server no longer knows this key (re-paired or removed in the panel).
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized && IsInvalidSignature(responseBytes))
+                throw new KeyRejectedException($"{path}: the server rejected this computer's key (invalid_signature)");
             // Brak podpisu = pre-auth rejection (zły podpis, zły timestamp, duplicate nonce).
             // To NIE jest odpowiedź której powinniśmy ufać.
             var bodyStr = Encoding.UTF8.GetString(responseBytes);
@@ -150,6 +153,18 @@ public sealed class HeartbeatClient : IDisposable
             ?? throw new InvalidDataException($"{path}: deserializacja JSON dała null.");
 
         return (deserialized, nonce);
+    }
+
+    /// <summary>The body of a pre-auth 401 is FastAPI's {"detail": "..."} (server/app/auth.py _reject).</summary>
+    private static bool IsInvalidSignature(byte[] body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("detail", out var d)
+                && d.ValueKind == JsonValueKind.String && d.GetString() == "invalid_signature";
+        }
+        catch (JsonException) { return false; }
     }
 
     /// <summary>Request signature; must match canonical_request() in server/app/auth.py.</summary>
@@ -186,6 +201,12 @@ public sealed class HeartbeatClient : IDisposable
 
     public void Dispose() => _http.Dispose();
 }
+
+/// <summary>
+/// The server refused this computer's key (401 invalid_signature): it was re-paired or removed in the panel.
+/// An HttpRequestException like any other network failure, so heartbeats stay fail-closed exactly as before.
+/// </summary>
+public sealed class KeyRejectedException(string message) : HttpRequestException(message);
 
 public sealed class SignatureMismatchException : Exception
 {

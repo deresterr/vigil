@@ -8,12 +8,18 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   time/lock rules `app/lock_logic.py` + `app/endpoints/heartbeat.py`. Admin UI = static HTML in `app/static/`.
 - `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
   child's session, started and kept alive by the watchdog), `setup` (`vigil_setup.exe`, the C# installer of D22:
-  console, trimmed, `requireAdministrator`; core in `Core/` never touches the console, `IReport` gets the output),
+  console, trimmed, `requireAdministrator`; core in `Core/` never touches the console, `IReport` gets the output;
+  without parameters `Screens/` shows the wizard or the status + menu on Spectre.Console, with `-Mode ...` the
+  parameter mode for scripts and CI — both only call the core),
   `shared/` linked into the projects that need it: `IpcMessages.cs` (watchdog + ui), `VigilLayout.cs` (paths,
   file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
-- `installer/` — PowerShell install/cleanup + `vigil_guardian.ps1`. `build-package.ps1` → `dist/`.
+- `installer/` — `Install.cmd` (shortcut to `vigil_setup.exe`, same parameters), `vigil_install.ps1` (the old
+  installer: verify oracle and "install from before D22" in the e2e, not in the package), `vigil-cleanup.ps1` +
+  `Cleanup.cmd` (until #66), `vigil_guardian.ps1` (until #65). `build-package.ps1 -Version` → `dist/`.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
-  (server of the same commit on localhost, real install → verify → re-pair → uninstall → verify). Never on a real PC.
+  (server of the same commit on localhost; PowerShell install → vigil_setup update → broken installs → re-pair →
+  uninstall → install → folder deleted "from WinRE" → uninstall, then the wizard and the menu through a key
+  script). Both verifies at every point. Never on a real PC.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
 - `docs/review-2026-11.md` — known defects, decisions (D1–D22), roadmap (M1–M2 done, M3, M4.1).
   Other `docs/*.md` are older component notes; code wins.
@@ -83,6 +89,13 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   APIs, task XML, CSV columns by position, exit codes. The SCM keeps its own copy of a service's config until a
   reboot: a `Start` edited in the registry is not what `Get-Service` shows.
 - `vigil_setup` is trimmed: no built-in COM (Task Scheduler goes through `schtasks.exe`), no `dynamic`.
+- `vigil_setup` screens: Spectre's SelectionPrompt and live displays need ANSI, and its ReadLine spins forever on
+  a null key. Menus and fields go through `Screens/Prompts.cs` (digits work without ANSI too); the CI drives
+  them with `-Keys <file>` (`ScriptedConsole`: plain-text output, throws when the script runs out — exit 3).
+  Windows 10 conhost (Consolas, no font fallback) has no ✓/✗, braille spinners or rounded borders: `Theme` uses
+  √/× and the line spinner unless `WT_SESSION` is set, square borders everywhere.
+- PowerShell: an MSBuild property with a dot after a dash in a splatted array (`-p:Version=0.0.0-ci.89`) reached
+  dotnet mangled (MSB1001). Pass such arguments as one quoted string: `"-p:Version=$Version"`.
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using
   removed: it clashes with WPF (`Application`, `KeyEventArgs`). Alias what you need (`using Forms = …`).
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via
@@ -95,8 +108,11 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - New code, comments, commit messages: English. Existing Polish comments: leave unless touching the code.
 - i18n (D21): each UI speaks its environment's language (Polish or English); the server and the watchdog send
   codes and numbers, never sentences. Panel: Polish source text marked `t('…')` / `tn(n, '…')` / `data-i18n`,
-  English in `server/app/static/i18n.js` — `tests/test_i18n.py` fails on a missing or unused entry. The
-  installer stays Polish until it is rewritten.
+  English in `server/app/static/i18n.js` — `tests/test_i18n.py` fails on a missing or unused entry.
+  `vigil_setup` speaks Windows' display language (`CurrentUICulture`), every text in `client/setup/Strings.cs`;
+  the remaining PowerShell scripts stay Polish until they are removed (#65, #66).
+- Versions: one for every client binary, `build-package.ps1 -Version` (release: the tag without "v"; CI:
+  `0.0.0-ci.<run>`; local: `0.0.0-dev`). Binaries of v0.7 and older carry the SDK default 1.0.0 = "before v0.8".
 - Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;
   panel bodies next to their endpoints); config through `get_config_value()`/`get_config_values()`, defaults in
   `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`

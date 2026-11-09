@@ -4,21 +4,28 @@
 
 .DESCRIPTION
     Starts the server from this checkout on localhost with a temporary database, completes the setup
-    wizard over HTTP and drives the installer from the package:
+    wizard over HTTP and drives the installers in parameter mode:
 
-        install -> verify -> verify must fail on a broken install -> re-pair (update-config) -> verify
-        -> uninstall -> verify (nothing left)
+        PowerShell install (an installation from before D22)
+        -> vigil_setup update (migration: same key, no pairing)
+        -> broken installs (verify must fail; update repairs)
+        -> vigil_setup update-config with re-pairing
+        -> vigil_setup uninstall (goodbye)
+        -> vigil_setup install
+        -> C:\ProgramData\Vigil deleted with the watchdog stopped (the README's emergency path from WinRE)
+        -> vigil_setup uninstall -> nothing left
+        -> the wizard (key script): unreachable address, wrong code, install -> verify
+        -> the menu (key script): check, uninstall -> nothing left
 
-    Every verify runs twice: the PowerShell one (the oracle) and vigil_setup.exe's (D22, #63); both must
-    give the expected exit code, also on a broken install.
+    Every verify runs twice: the PowerShell one (installer\vigil_install.ps1, the oracle, not in the package
+    since #64) and vigil_setup.exe's; both must give the expected exit code at every point.
 
-    Server side, through the admin API: the PC comes online after install and again with the new key after
-    re-pairing, and the uninstall reaches the server as a normal service stop (goodbye ->
-    tamper_service_stopped), not as a killed watchdog.
+    Server side, through the admin API: the PC comes online after each install, keeps its key through an
+    update, comes back with the new key after re-pairing, and an uninstall reaches the server as a normal
+    service stop (goodbye -> tamper_service_stopped), not as a killed watchdog.
 
-    The installer is called with the same parameters as Install.cmd, so the C# installer (D22) goes
-    through this script unchanged. Only for a disposable machine: it installs the service, sets the
-    per-user policies on -ChildUsername and changes the boot menu policy.
+    Only for a disposable machine: it installs the service, sets the per-user policies on -ChildUsername
+    and changes the boot menu policy.
 
 .PARAMETER ChildUsername
     Local account created as the child's (administrator, profile without a logon).
@@ -47,7 +54,10 @@ $PackageDir = (Resolve-Path $PackageDir).Path
 $ServerDir = (Resolve-Path $ServerDir).Path
 
 $ServerUrl = "http://127.0.0.1:$Port"
-$Installer = Join-Path $PackageDir 'vigil_install.ps1'
+$Installer = (Resolve-Path (Join-Path $PSScriptRoot '..\installer\vigil_install.ps1')).Path
+# Not $Setup: PowerShell names are case-insensitive and the scenario has a $setup (the wizard's JSON).
+$SetupExe = Join-Path $PackageDir 'vigil_setup.exe'
+$InstallDir = 'C:\ProgramData\Vigil'
 $WorkDir = Join-Path ([IO.Path]::GetTempPath()) "vigil-e2e-$PID"
 New-Item -Path $WorkDir -ItemType Directory -Force | Out-Null
 $ServerLog = Join-Path $WorkDir 'server.log'
@@ -71,18 +81,36 @@ function Wait-Until([scriptblock]$Condition, [int]$Seconds, [string]$What) {
 }
 
 function Invoke-Installer {
-    # As Install.cmd runs it (Windows PowerShell 5.1), but -NonInteractive: a question fails instead of
-    # hanging. No param() on purpose: the installer's own parameters (-Mode ...) stay in $args.
+    # The PowerShell installer as Install.cmd ran it before D22 (Windows PowerShell 5.1), on the package's
+    # binaries, but -NonInteractive: a question fails instead of hanging. No param() on purpose: the
+    # installer's own parameters (-Mode ...) stay in $args.
     Write-Host "> vigil_install.ps1 $($args -join ' ')" -ForegroundColor DarkGray
-    & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Installer @args | Out-Host
+    & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Installer @args `
+        -SourceDir $PackageDir | Out-Host
     return $LASTEXITCODE
 }
 
 function Invoke-Setup {
-    # vigil_setup.exe from the package; same parameters as the PowerShell installer.
+    # vigil_setup.exe from the package, parameter mode (input redirected: the wizard can never start).
     Write-Host "> vigil_setup.exe $($args -join ' ')" -ForegroundColor DarkGray
-    & (Join-Path $PackageDir 'vigil_setup.exe') @args | Out-Host
+    $null | & $SetupExe @args | Out-Host
     return $LASTEXITCODE
+}
+
+function Invoke-Screens([string]$What, [string[]]$Keys) {
+    # vigil_setup.exe without -Mode: the wizard or the menu, driven by a key script (-Keys, Screens/Scripted.cs).
+    # The screens go to the CI log as plain text. A script that runs out ends the run with exit code 3.
+    $file = Join-Path $WorkDir "keys-$([guid]::NewGuid().ToString('N')).txt"
+    Set-Content -Path $file -Value $Keys -Encoding UTF8
+    Write-Host "> vigil_setup.exe -Keys ($($Keys -join ' | '))" -ForegroundColor DarkGray
+    $null | & $SetupExe -Keys $file -ChildUsername $ChildUsername | Out-Host
+    Assert-That ($LASTEXITCODE -eq 0) "${What}: exit code 0 (got $LASTEXITCODE)"
+}
+
+function Assert-Setup([string]$What) {
+    # vigil_setup.exe with the remaining arguments; exit code 0 expected.
+    $rc = Invoke-Setup @args
+    Assert-That ($rc -eq 0) "${What}: exit code 0 (got $rc)"
 }
 
 function Assert-Verify([int]$Expected, [string]$What) {
@@ -121,6 +149,38 @@ function New-PairingCode([hashtable]$Target) {
 }
 
 function Get-Device { (Invoke-Admin Get 'status').child.devices | Select-Object -First 1 }
+
+function Wait-Heartbeat([string]$What) {
+    # A heartbeat newer than the service restart: the device is online with whatever key it has now.
+    Start-Sleep -Seconds 10
+    Wait-Until { (Get-Device).last_heartbeat_ago_seconds -le 8 } 60 $What
+}
+
+function Get-KeyHash {
+    # signing.dat as stored (DPAPI output is randomized: the same bytes mean the file was not rewritten).
+    # Administrators may read it (secret ACL: SYSTEM full, Administrators read).
+    (Get-FileHash -Path (Join-Path $InstallDir 'signing.dat') -Algorithm SHA256).Hash
+}
+
+function Invoke-AsSystem([string]$Command, [scriptblock]$Until, [int]$Seconds, [string]$What) {
+    # cmd.exe /c <Command> as SYSTEM through a one-off task (as WinRE's cmd would have the rights to).
+    $name = "vigil_e2e_$PID"
+    $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c $Command"
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $name
+        Wait-Until $Until $Seconds $What
+    } finally {
+        Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-PairedCount {
+    $days = (Invoke-Admin Get 'journal?days=2').days
+    @($days | ForEach-Object { $_.entries } | Where-Object { $_.type -eq 'device_paired' }).Count
+}
 
 function Get-ServiceStopCount {
     $days = (Invoke-Admin Get 'journal?days=2').days
@@ -176,50 +236,104 @@ try {
     $script:AdminSession = $session
     Assert-That ((Invoke-Admin Get 'status').children.Count -eq 1) 'setup wizard completed, one child'
 
-    Write-Section "Install (child account: $ChildUsername)"
+    Write-Section "PowerShell install, as before D22 (child account: $ChildUsername)"
     New-ChildAccount $ChildUsername
     $code = New-PairingCode @{ child_id = 1; device_name = 'CI runner' }
     $rc = Invoke-Installer -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
-    Assert-That ($rc -eq 0) "install exit code 0 (got $rc)"
+    Assert-That ($rc -eq 0) "PowerShell install exit code 0 (got $rc)"
     Wait-Until { (Get-Device).online } 60 'the PC is online (signed heartbeats accepted)'
+    Assert-Verify 0 'PowerShell install'
 
-    Write-Section 'Verify (installed)'
-    Assert-Verify 0 'installed'
+    Write-Section 'vigil_setup update over the PowerShell install (migration, same key)'
+    $keyBefore = Get-KeyHash
+    Assert-Setup 'update' -Mode update
+    Assert-That ((Get-KeyHash) -eq $keyBefore) 'signing.dat kept as it was'
+    Wait-Heartbeat 'heartbeats with the same key after the update'
+    Assert-That (@((Invoke-Admin Get 'status').child.devices).Count -eq 1) 'still one device (no new pairing)'
+    Assert-Verify 0 'after the update'
 
-    Write-Section 'Verify must fail on a broken install'
+    Write-Section 'Verify must fail on a broken install; update repairs it'
     $safeBoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\vigil_watchdog'
     Remove-Item -Path $safeBoot -Recurse -Force
-    try { Assert-Verify 1 'without SafeBoot\Network' }
-    finally {
-        New-Item -Path $safeBoot -Force | Out-Null
-        Set-Item -Path $safeBoot -Value 'Service' -Force
-    }
+    Assert-Verify 1 'without SafeBoot\Network'
+    Assert-Setup 'update as a repair' -Mode update
+    Assert-Verify 0 'repaired by update'
     # Not the service's Start value: the SCM keeps its own copy until a reboot, and admins may not change
     # the service config (DACL). A file admins may delete (folder: Administrators modify).
-    $backup = 'C:\ProgramData\Vigil\backup\vigil_watchdog.exe'
+    $backup = Join-Path $InstallDir 'backup\vigil_watchdog.exe'
     Remove-Item -Path $backup -Force
     try { Assert-Verify 1 'without backup\vigil_watchdog.exe' }
     finally { Copy-Item -Path (Join-Path $PackageDir 'vigil_watchdog.exe') -Destination $backup }
     Assert-Verify 0 'repaired again'
 
-    Write-Section 'Re-pair (update-config)'
+    Write-Section 'Re-pair (vigil_setup update-config)'
+    $keyBefore = Get-KeyHash
+    $repairStart = Get-Date
     $code = New-PairingCode @{ device_id = (Get-Device).id }
-    $rc = Invoke-Installer -Mode update-config -PairingCode $code
-    Assert-That ($rc -eq 0) "update-config exit code 0 (got $rc)"
+    Assert-Setup 'update-config' -Mode update-config -PairingCode $code
+    Assert-That ((Get-KeyHash) -ne $keyBefore) 'signing.dat rewritten with the new key'
     # The old key stopped working when the code was used, before the service restarted; a heartbeat
-    # newer than that wait can only be signed with the new key.
-    Start-Sleep -Seconds 10
-    Wait-Until { (Get-Device).last_heartbeat_ago_seconds -le 8 } 60 'heartbeats with the new key'
+    # newer than that can only be signed with the new key.
+    Wait-Heartbeat 'heartbeats with the new key'
+    # The old key dies when the code is used, before the stop: the refused goodbye is expected, not a
+    # warning (it showed in every verify after re-pairing, VM 1 of #64).
+    $goodbyeWarnings = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'Application'; ProviderName = 'Vigil Watchdog'; Level = 2, 3; StartTime = $repairStart
+        } -ErrorAction SilentlyContinue | Where-Object { $_.Message -like '*Goodbye not delivered*' }).Count
+    Assert-That ($goodbyeWarnings -eq 0) "no goodbye warning after re-pairing (got $goodbyeWarnings)"
     Assert-Verify 0 'after re-pairing'
 
-    Write-Section 'Uninstall'
+    Write-Section 'vigil_setup uninstall'
     $stopsBefore = Get-ServiceStopCount
-    $rc = Invoke-Installer -Mode uninstall
-    Assert-That ($rc -eq 0) "uninstall exit code 0 (got $rc)"
+    Assert-Setup 'uninstall' -Mode uninstall
     Wait-Until { (Get-ServiceStopCount) -gt $stopsBefore } 20 'the server logged a normal service stop (goodbye)'
+    Assert-Verify 0 'after uninstall (nothing left)'
 
-    Write-Section 'Verify (removed)'
-    Assert-Verify 0 'after uninstall'
+    Write-Section 'vigil_setup install'
+    $code = New-PairingCode @{ device_id = (Get-Device).id }
+    Assert-Setup 'install' -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
+    Wait-Heartbeat 'the PC is online again'
+    Assert-Verify 0 'vigil_setup install'
+
+    Write-Section 'Emergency path: the folder deleted with the watchdog stopped (README, from WinRE)'
+    Invoke-AsSystem 'sc.exe stop vigil_watchdog' { (Get-Service vigil_watchdog).Status -eq 'Stopped' } 30 `
+        'the watchdog stopped (as SYSTEM)'
+    Get-Process -Name vigil_ui -ErrorAction SilentlyContinue | Stop-Process -Force
+    Invoke-AsSystem "rmdir /s /q `"$InstallDir`"" { -not (Test-Path $InstallDir) } 30 "$InstallDir deleted (as SYSTEM)"
+    Assert-Verify 1 'service registered, folder gone'
+    Assert-Setup 'uninstall of what is left' -Mode uninstall
+    Assert-Verify 0 'after uninstall (nothing left)'
+
+    Write-Section 'The wizard (key script)'
+    $code = New-PairingCode @{ device_id = (Get-Device).id }
+    $pairedBefore = Get-PairedCount
+    $wrong = ([int]::Parse($code.Substring(0, 1)) + 1) % 10
+    $wrong = "$wrong$($code.Substring(1))"
+    Invoke-Screens 'wizard install' @(
+        '127.0.0.1:1'           # 1: nothing listens there -> the same screen with an error
+        '{Esc}'                 #    clear the field
+        ($ServerUrl -replace '^http://', '')
+        $wrong                  # 2: a wrong code: accepted as 8 digits, used only after the summary
+        '{1}'                   # summary: Install -> pairing fails (401), nothing changed -> the code again
+        $code
+        '{Enter}'               # installed, verify table -> the menu
+        '{0}'                   # menu: Exit
+    )
+    Assert-That ((Get-PairedCount) -eq $pairedBefore + 1) 'paired once: the wrong code changed nothing'
+    Wait-Heartbeat 'the PC is online after the wizard'
+    Assert-Verify 0 'installed by the wizard'
+
+    Write-Section 'The menu (key script): check, uninstall'
+    $stopsBefore = Get-ServiceStopCount
+    Invoke-Screens 'menu check and uninstall' @(
+        '{1}'                   # Check the installation (full list)
+        '{Enter}'               # back to the menu
+        '{5}'                   # Uninstall
+        '{1}'                   # confirm
+        '{Enter}'               # exit
+    )
+    Wait-Until { (Get-ServiceStopCount) -gt $stopsBefore } 20 'the server logged a normal service stop (goodbye)'
+    Assert-Verify 0 'after uninstall from the menu (nothing left)'
 
     $failed = $false
     Write-Host "`nInstaller e2e: PASSED" -ForegroundColor Green

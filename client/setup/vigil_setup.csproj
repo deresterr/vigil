@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- vigil_setup.exe: installer, verify and (later) the guardian, D22. Console, run elevated (app.manifest). -->
+  <!-- vigil_setup.exe: installer (wizard, menu, parameter mode), verify and (later) the guardian, D22.
+       Console, run elevated (app.manifest). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -29,6 +30,8 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
+    <!-- The wizard and the menu (D22). MIT. -->
+    <PackageReference Include="Spectre.Console" Version="0.49.1" />
   </ItemGroup>
 
   <ItemGroup>

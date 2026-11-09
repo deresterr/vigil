@@ -5,6 +5,11 @@ namespace Vigil.Setup;
 /// <summary>Plain console lines for the parameter mode (scripts, CI): one line per step and check.</summary>
 public sealed class ConsoleReport : IReport
 {
+    // Windows 10 conhost (Consolas, no font fallback) has no ✓/✗; Windows Terminal sets WT_SESSION.
+    private static readonly bool RichFont = Environment.GetEnvironmentVariable("WT_SESSION") is not null;
+    private static readonly string Ok = RichFont ? "✓" : "√";
+    private static readonly string Bad = RichFont ? "✗" : "×";
+
     public void Section(string title)
     {
         Write("==> ", ConsoleColor.Cyan);
@@ -15,9 +20,9 @@ public sealed class ConsoleReport : IReport
     {
         var (mark, color) = level switch
         {
-            CheckLevel.Pass => ("    ✓ ", ConsoleColor.Green),
+            CheckLevel.Pass => ($"    {Ok} ", ConsoleColor.Green),
             CheckLevel.Warn => ("    ! ", ConsoleColor.Yellow),
-            _ => ("    ✗ ", ConsoleColor.Red),
+            _ => ($"    {Bad} ", ConsoleColor.Red),
         };
         Write(mark, color);
         Console.WriteLine(message);
@@ -58,5 +63,26 @@ public sealed class ConsoleReport : IReport
         Console.ForegroundColor = color;
         Console.Write(text);
         Console.ForegroundColor = previous;
+    }
+}
+
+public static class ConsoleWindow
+{
+    /// <summary>Started by a double click (its own console window, which closes on exit): wait for a key.
+    /// From a terminal, a script or CI the console is shared with the caller: no pause.</summary>
+    public static void PauseIfOwn()
+    {
+        var processes = new uint[2];
+        if (Native.Win32.GetConsoleProcessList(processes, 2) != 1 || Console.IsInputRedirected) return;
+        Console.WriteLine();
+        Console.WriteLine(Strings.PressAnyKey);
+        Console.ReadKey(intercept: true);
+    }
+
+    /// <summary>True when the window closes with this process (started by a double click or by UAC).</summary>
+    public static bool IsOwn()
+    {
+        var processes = new uint[2];
+        return Native.Win32.GetConsoleProcessList(processes, 2) == 1;
     }
 }

@@ -58,7 +58,8 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Build package
         shell: pwsh
-        run: ./build-package.ps1 -Configuration Release
+        # The binaries carry the tag's version without the "v" (vigil_setup compares installed and package).
+        run: ./build-package.ps1 -Configuration Release -Version ('${{ github.ref_name }}'.TrimStart('v'))
       # The artifact is dist/ itself: downloaded from the Actions run it is the same as the release asset
       # (the zip is made in the release job). A zipped artifact downloaded as a zip inside a zip.
       # Only a hand-over to the release job, which attaches the zip to the release.
@@ -87,7 +88,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          notes="Server: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (in \`server/.env\`: \`VIGIL_IMAGE=\`). Client: \`vigil-client-${TAG}.zip\` (the \`dist\\\` package; run \`Install.cmd\` as administrator)."
+          notes="Server: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (in \`server/.env\`: \`VIGIL_IMAGE=\`). Client: \`vigil-client-${TAG}.zip\` (the \`dist\\\` package; run \`vigil_setup.exe\`)."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "vigil-client-${TAG}.zip" --clobber
           else

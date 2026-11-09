@@ -14,12 +14,13 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   run as SYSTEM from the copy the installer puts in `C:\ProgramData\Vigil`, see `docs/guardian.md`),
   `shared/` linked into the projects that need it: `IpcMessages.cs` (watchdog + ui), `VigilLayout.cs` (paths,
   file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
-- `installer/` — `Install.cmd` (shortcut to `vigil_setup.exe`, same parameters), `vigil_install.ps1` +
-  `vigil_guardian.ps1` (the old installer and guardian: only the e2e's "install from before D22", not in the
-  package), `vigil-cleanup.ps1` + `Cleanup.cmd` (until #66). `build-package.ps1 -Version` → `dist/`.
+- `installer/` — `Install.cmd` (shortcut to `vigil_setup.exe`, same parameters), `Cleanup.cmd`
+  (`vigil_setup.exe -Mode uninstall`), `vigil_install.ps1` + `vigil_guardian.ps1` (the old installer and guardian:
+  only the e2e's "install from before D22", not in the package). `build-package.ps1 -Version` → `dist/`.
+  `docs/installer.md` describes the installer, the README the emergency path from WinRE.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
   (server of the same commit on localhost; PowerShell install → vigil_setup update → broken installs → re-pair →
-  uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → uninstall,
+  uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → Cleanup.cmd,
   then the wizard and the menu through a key script). Never on a real PC.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
 - `docs/review-2026-11.md` — known defects, decisions (D1–D22), roadmap (M1–M2 done, M3, M4.1).
@@ -37,8 +38,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   test stack (`docs/test-server.md`). Production (v0.4, container `vigil`, image `vigil:local`, port 8088) runs on
   the same host: test instructions must never reuse its container or image name.
   Server-only changes still go one issue per PR. No stacked PRs: every PR targets `main`.
-- **Installer rewrite in C# (D22, #62–#66)** is the exception: each step is its own PR and merges once the CI
-  installer e2e is green; VM sessions only at the checkpoints (after #64 and after #66). Anything the e2e
+- **Installer rewrite in C# (D22, #62–#66)** was the exception: each step its own PR, merged once the CI
+  installer e2e was green; VM sessions only at the checkpoints (after #64 and after #66). Anything the e2e
   cannot see (Windows 10/11 Home, Polish Windows, the child's session: vigil_ui, lock, the console wizard)
   waits for the next checkpoint. The old `vigil_install.ps1 -Mode verify` was the oracle until the C# one matched
   it at every e2e point (#63, #64); since #65 (C# guardian) the C# verify is the reference and the PowerShell one
@@ -56,7 +57,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   (`night_start` before 12:00 = after midnight); `lock_logic.night_window` is the only place that resolves it.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
   names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs. They live in
-  `client/shared/VigilLayout.cs` (the PowerShell installer still has its own copy until #66).
+  `client/shared/VigilLayout.cs` (the old PowerShell installer, kept for the e2e, has its own copy).
 - **Threat model**: the child MAY have an administrator account. Against an admin nothing on the PC is
   tamper-proof, so every mechanism is one of: protection (holds even against admin, e.g. server-side state),
   friction (stops a non-elevated process / casual attempt), or detection (reports tampering to the parent panel).
@@ -65,8 +66,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   as a requirement); policies only as registry values, which Home honours.
 - **One account**: the child's account is the only interactive account on the PC and is an administrator.
   The parent maintains the PC through that same account, so per-user policies (HKCU) hit the parent too.
-- Service DACL (`sc sdset`, `$ServiceSddl`) gives admins query/start only — no stop (WP), no delete (SD).
-  Stop/delete through a one-off SYSTEM task (`Invoke-ScAsSystem`): a normal stop, so the watchdog says goodbye.
+- Service DACL (`sc sdset`, `VigilLayout.ServiceSddl`) gives admins query/start only — no stop (WP), no delete (SD).
+  Stop/delete through a one-off SYSTEM task (`ServiceControl.ScAsSystem`): a normal stop, so the watchdog says goodbye.
   Admin `sc.exe stop`/`Stop-Service` always fail; killing the process skips the goodbye (server: restart alert).
 
 ## Gotchas that already cost time
@@ -118,7 +119,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   codes and numbers, never sentences. Panel: Polish source text marked `t('…')` / `tn(n, '…')` / `data-i18n`,
   English in `server/app/static/i18n.js` — `tests/test_i18n.py` fails on a missing or unused entry.
   `vigil_setup` speaks Windows' display language (`CurrentUICulture`), every text in `client/setup/Strings.cs`;
-  the remaining PowerShell scripts stay Polish until they are removed (#65, #66).
+  the old PowerShell installer (e2e only) stays Polish.
 - Versions: one for every client binary, `build-package.ps1 -Version` (release: the tag without "v"; CI:
   `0.0.0-ci.<run>`; local: `0.0.0-dev`). Binaries of v0.7 and older carry the SDK default 1.0.0 = "before v0.8".
 - Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;

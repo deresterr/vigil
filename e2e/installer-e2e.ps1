@@ -14,7 +14,7 @@
         -> vigil_setup install
         -> the guardian (vigil_setup.exe guardian, #65): five repairs in one run, then a stopped service
         -> C:\ProgramData\Vigil deleted with the watchdog stopped (the README's emergency path from WinRE)
-        -> vigil_setup uninstall -> nothing left
+        -> Cleanup.cmd (vigil_setup uninstall) -> nothing left
         -> the wizard (key script): unreachable address, wrong code, install -> verify
         -> the menu (key script): check, uninstall -> nothing left
 
@@ -385,7 +385,10 @@ try {
     Get-Process -Name vigil_ui -ErrorAction SilentlyContinue | Stop-Process -Force
     Invoke-AsSystem "rmdir /s /q `"$InstallDir`"" { -not (Test-Path $InstallDir) } 30 "$InstallDir deleted (as SYSTEM)"
     Assert-Verify 1 'service registered, folder gone'
-    Assert-Setup 'uninstall of what is left' -Mode uninstall
+    # Through Cleanup.cmd (#66): the shortcut must pass the exit code on.
+    Write-Host "> Cleanup.cmd" -ForegroundColor DarkGray
+    $null | & cmd.exe /c (Join-Path $PackageDir 'Cleanup.cmd') | Out-Host
+    Assert-That ($LASTEXITCODE -eq 0) "Cleanup.cmd on what is left: exit code 0 (got $LASTEXITCODE)"
     Assert-Verify 0 'after uninstall (nothing left)'
 
     Write-Section 'The wizard (key script)'

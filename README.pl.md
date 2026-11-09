@@ -19,7 +19,7 @@ pokazuje pełnoekranową blokadę. Rodzic zarządza z przeglądarki i odblokowuj
 - pauza uruchamiana przez dziecko (czas nie leci, ekran zablokowany),
 - fail-closed: brak połączenia z serwerem = blokada,
 - dziennik zdarzeń w panelu rodzica z alertami o próbach obejścia,
-- panel i ekran blokady po polsku albo angielsku — według języka przeglądarki i Windows (instalator na razie tylko po polsku).
+- panel, ekran blokady i instalator po polsku albo angielsku — według języka przeglądarki i Windows.
 
 ## Model zagrożeń
 
@@ -103,24 +103,33 @@ Build.cmd            → dist\
 Zamiast budować lokalnie możesz pobrać gotowe `dist\` z artefaktu `vigil-client-…` ostatniego przebiegu CI
 (zakładka Actions).
 
-**3. Instalacja na PC dziecka** — w panelu rodzica: Ustawienia → „Dodaj komputer”, skopiuj `dist\`
-na PC dziecka i uruchom jako administrator:
+**3. Instalacja na PC dziecka** — skopiuj `dist\` na PC dziecka i uruchom `vigil_setup.exe` (sam poprosi
+o uprawnienia administratora). Kreator pyta o adres serwera i kod parowania (panel rodzica: Ustawienia →
+Komputery dziecka → „Dodaj komputer”), konto dziecka znajduje sam. Uruchomiony ponownie pokazuje menu:
+sprawdzenie, aktualizacja, zmiana adresu serwera, ponowne parowanie, odinstalowanie.
 
 ```
-Install.cmd          (tryb interaktywny: adres serwera i kod parowania; konto dziecka wykrywa sam)
-Install.cmd -Mode verify    (sprawdza instalację: usługa, pliki, uprawnienia, polityki, połączenie z serwerem)
+vigil_setup.exe                  kreator, a gdy Vigil jest zainstalowany: stan i menu
+vigil_setup.exe -Mode verify     sprawdza instalację (albo, po deinstalacji, czy nic nie zostało)
+Cleanup.cmd                      odinstalowuje (to samo co w menu)
 ```
 
-Odinstalowanie: `Install.cmd -Mode uninstall` albo `Cleanup.cmd` (lub `vigil-cleanup-offline.cmd` z WinRE,
-gdy system nie startuje). `Install.cmd -Mode verify` po deinstalacji sprawdza, czy nic nie zostało.
+Parametry dla skryptów i każdy krok instalacji: [`docs/installer.md`](docs/installer.md).
+
+**Gdy Windows nie startuje albo Vigila nie da się usunąć normalnie:** uruchom Windows Recovery → Rozwiąż
+problemy → Wiersz polecenia, wpisz `rmdir /s /q D:\ProgramData\Vigil` (dysk z Windows to tam często `D:`;
+sprawdź `dir D:\ProgramData`), uruchom komputer normalnie, potem `Cleanup.cmd` i `vigil_setup.exe -Mode verify`.
+Bez swoich plików Vigil nie startuje, więc nie ma blokady. Na zwykłą blokadę wystarczy kod TOTP rodzica.
 
 ## Struktura repo
 
 | Katalog | Zawartość |
 |---|---|
 | `server/` | FastAPI + SQLite, panel rodzica, testy |
-| `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`) |
-| `installer/` | skrypty instalacji, deinstalacji i strażnika integralności |
+| `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`), instalator (`setup`) |
+| `client/setup/` | instalator `vigil_setup.exe`: kreator, menu, verify, strażnik integralności |
+| `installer/` | skróty `Install.cmd`, `Cleanup.cmd` (i stary instalator PowerShell używany przez test w CI) |
+| `e2e/` | test end-to-end instalatora (CI, jednorazowy Windows) |
 | `docs/` | architektura, przegląd i roadmapa |
 
 ## Bezpieczeństwo

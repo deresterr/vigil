@@ -109,7 +109,8 @@ public sealed class Verify
             watchdog, P(VigilLayout.UiExe), P(guardianFile), P(VigilLayout.ConfigFile),
             P(VigilLayout.SigningFile), P(VigilLayout.GuardianFile), VigilLayout.BackupWatchdogPath,
         };
-        var missing = files.Where(f => !File.Exists(f)).Select(Path.GetFileName).ToList();
+        // Relative to the folder: "backup\vigil_watchdog.exe", not just the name it shares with the original.
+        var missing = files.Where(f => !File.Exists(f)).Select(f => Path.GetRelativePath(VigilLayout.InstallDir, f)).ToList();
         _r.Check(missing.Count == 0, Strings.FilesComplete(missing));
 
         var legacy = VigilLayout.LegacyPaths
@@ -300,6 +301,9 @@ public sealed class Verify
         }
         var procs = VigilLayout.ProcessNames.Where(n => Process.GetProcessesByName(n).Length > 0).ToList();
         _r.Check(procs.Count == 0, Strings.NoProcesses(procs));
+        // Harmless when left (an uninstall before #66 kept them), so a warning.
+        var sources = VigilLayout.EventSources.Where(EventLog.SourceExists).ToList();
+        _r.Check(sources.Count == 0, Strings.NoEventSources(sources), CheckLevel.Warn);
         foreach (var acc in Accounts.Interactive())
             CheckUserPolicies(Strings.AccountLabel(acc.Name), acc.Sid, acc.HiveFile, removed: true);
         CheckUserPolicies(Strings.DefaultProfile, null, VigilLayout.DefaultProfileHive, removed: true);

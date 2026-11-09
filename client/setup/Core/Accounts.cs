@@ -54,7 +54,7 @@ public static class Accounts
         catch (Exception) { return null; }
     }
 
-    private static string NameOf(string sid)
+    public static string NameOf(string sid)
     {
         try { return new SecurityIdentifier(sid).Translate(typeof(NTAccount)).Value; }
         catch (Exception) { return sid; }

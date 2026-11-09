@@ -1071,7 +1071,7 @@ function showPairingCode(r, forWhat) {
   showModal(t('Kod parowania'),
     `<p class="muted" style="margin-top: 0;">${esc(forWhat)}</p>` +
     '<p style="font-size: 2.2em; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 12px 0;">' + esc(r.code) + '</p>' +
-    '<p class="muted">' + t('Ważny do {time}, jednorazowy. Uruchom <code>Install.cmd</code> na tym komputerze jako administrator i wpisz ten kod, gdy instalator o niego poprosi.', {time: esc(r.expires_local)}) + '</p>' +
+    '<p class="muted">' + t('Ważny do {time}, jednorazowy. Uruchom <code>vigil_setup.exe</code> z paczki na tym komputerze i wpisz ten kod, gdy instalator o niego poprosi.', {time: esc(r.expires_local)}) + '</p>' +
     `<button class="btn btn-ghost" onclick="cancelPairing()" style="margin-top: 8px;">${t('Anuluj kod')}</button>`);
   loadStatus();
 }

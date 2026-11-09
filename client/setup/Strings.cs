@@ -175,8 +175,8 @@ public static class Strings
     public static string UiVerifyResult => T("Wynik", "Result");
     public static string UiVerifyAllOk => T("Wszystko w porządku.", "Everything is in order.");
     public static string UiVerifyProblems(int fail, int warn) => T(
-        $"Błędy: {fail}, ostrzeżenia: {warn} — szczegóły niżej i w logu.",
-        $"Failures: {fail}, warnings: {warn} — details below and in the log.");
+        $"Błędy: {fail}, ostrzeżenia: {warn} — szczegóły wyżej i w logu.",
+        $"Failures: {fail}, warnings: {warn} — details above and in the log.");
 
     // Menu: status
     public static string UiStatusChecking => T("Sprawdzam stan…", "Checking the status…");

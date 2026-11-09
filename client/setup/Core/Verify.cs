@@ -307,6 +307,12 @@ public sealed class Verify
         catch (Exception) { return false; }
     }
 
+    /// <summary>The message without the "Category: …" / "EventId: …" lines Microsoft.Extensions.Logging puts first.</summary>
+    private static string? FirstMessageLine(string? description) =>
+        description?.Split('\n').Select(l => l.Trim())
+            .FirstOrDefault(l => l.Length > 0 && !l.StartsWith("Category:", StringComparison.Ordinal)
+                                 && !l.StartsWith("EventId:", StringComparison.Ordinal));
+
     /// <summary>Warnings and errors of the watchdog in the last 15 minutes, and the newest one's first line.</summary>
     private static (int Count, string? Last) RecentWatchdogProblems()
     {
@@ -325,7 +331,7 @@ public sealed class Verify
                     count++;
                     if (last is null)
                     {
-                        try { last = e.FormatDescription()?.Split('\n')[0].Trim(); }
+                        try { last = FirstMessageLine(e.FormatDescription()); }
                         catch (EventLogException) { last = $"event {e.Id}"; }
                     }
                 }

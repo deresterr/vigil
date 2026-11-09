@@ -102,7 +102,7 @@ Compared with the same device's previous heartbeat (`devices.wd_*`, reset when i
 | same instance, awake gap > 90 s, 0 failed attempts | `tamper_watchdog_silent` (suspended/frozen) |
 | same instance, awake gap > 90 s, retries | `watchdog_offline` (info) |
 | new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
-| vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
+| vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not; respawned at once, judged 10 s later — an exit with a logoff of its session or a shutdown reported by the SCM around it is the session ending, not a kill | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
 
 | the guardian repaired something (Event Log 7001–7006) | `tamper_guardian_repaired` (`check`, `repaired`), stamped with the repair time; sent by `GuardianReporter` every minute, deduped by record id + time |
 
@@ -114,7 +114,7 @@ Compared with the same device's previous heartbeat (`devices.wd_*`, reset when i
 First start: `bootstrap.py` generates secrets; `setup_complete=0` ⇒ `setup_guard` middleware redirects
 everything to `/setup` (unauthenticated wizard: first child's name and limits, parent password, TOTP, server URL).
 In the panel the parent pairs PCs: a code for "new PC of child X named Y" or "re-pair device Z" (only its
-hash is stored, with its target: `pairing_*` config keys); `Install.cmd` sends it to `/v1/pair` and stores the
+hash is stored, with its target: `pairing_*` config keys); `vigil_setup.exe` sends it to `/v1/pair` and stores the
 returned key in `signing.dat`. Re-pairing replaces that device's key (the old install fails closed); "Odłącz"
 deletes the device row, so its key stops working. There is no way to read a device key in the panel.
 

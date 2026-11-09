@@ -45,7 +45,7 @@ vigil_watchdog.exe
 ```
 
 Watchdog szyfruje klucz przez DPAPI LocalMachine, zapisuje `signing.dat`, kolejne starty
-nie wymagają już parametru. Installer (`Install.cmd`) robi to automatycznie podczas instalacji.
+nie wymagają już parametru. Instalator (`vigil_setup.exe`) robi to automatycznie podczas instalacji.
 
 ## Ograniczenia
 

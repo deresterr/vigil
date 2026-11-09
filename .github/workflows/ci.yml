@@ -84,13 +84,15 @@ jobs:
         # A pre-release version per run: vigil_setup tells an installed CI build from a newer one.
         run: ./build-package.ps1 -Configuration Release -Version "0.0.0-ci.${{ github.run_number }}"
       # The package for the VM test of a PR only (#70: ~100 MB a run filled the 0.5 GB Actions storage).
-      # Named after the PR's head commit; an older one comes back with Re-run jobs.
+      # Named after the PR's head commit; an older one comes back with Re-run jobs. One day: storage is billed
+      # in GB-hours accrued over the month and shared with the GHCR images (deleting does not undo it), and with
+      # a $0 budget an overrun blocks all of Actions until the next month (November 2026).
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'pull_request'
         with:
           name: vigil-client-${{ github.event.pull_request.head.sha }}
           path: dist/
-          retention-days: 3
+          retention-days: 1
       # A real install on the throwaway runner (D22): the package above against the server of this commit.
       - uses: actions/setup-python@v5
         with:

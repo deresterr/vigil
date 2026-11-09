@@ -47,6 +47,12 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // ui.log is the only trace of this process: a crash or an exit with the session has to land there too.
+        UiLog.Write($"start pid={Environment.ProcessId}");
+        DispatcherUnhandledException += (_, ex) => UiLog.Write("unhandled: " + ex.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) => UiLog.Write("unhandled: " + ex.ExceptionObject);
+        SessionEnding += (_, ex) => UiLog.Write("session ending: " + ex.ReasonSessionEnding);
+
         // A previous instance killed while locked leaves the taskbar hidden.
         TaskbarHider.RestoreAll();
 

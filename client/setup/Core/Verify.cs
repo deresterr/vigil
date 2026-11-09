@@ -22,14 +22,14 @@ public sealed class Verify
 {
     private readonly CountingReport _r;
     private readonly string? _childUserName;
-    private readonly string _packageDir;
+    private readonly Package? _package;
     private string? _serverUrl;
 
-    public Verify(IReport report, string? childUserName, string packageDir)
+    public Verify(IReport report, string? childUserName, Package? package)
     {
         _r = new CountingReport(report);
         _childUserName = childUserName;
-        _packageDir = packageDir;
+        _package = package;
     }
 
     public int Pass => _r.Pass;
@@ -103,7 +103,6 @@ public sealed class Verify
         var watchdog = P(VigilLayout.WatchdogExe);
         // What the guardian task runs: vigil_setup.exe, or before #65 the PowerShell script.
         var guardianFile = _oldGuardian ? VigilLayout.GuardianScript : VigilLayout.SetupExe;
-        var binaries = new[] { VigilLayout.WatchdogExe, VigilLayout.UiExe, guardianFile };
         var files = new[]
         {
             watchdog, P(VigilLayout.UiExe), P(guardianFile), P(VigilLayout.ConfigFile),
@@ -133,14 +132,12 @@ public sealed class Verify
                 }
                 catch (CryptographicException ex) { _r.Check(CheckLevel.Fail, Strings.DoesNotDecrypt(VigilLayout.GuardianFile, ex.Message)); }
             }
-            // The package this program came from: is it the one installed?
-            var pkg = Path.Combine(_packageDir, VigilLayout.WatchdogExe);
-            if (File.Exists(pkg) && !Path.GetFullPath(pkg).Equals(Path.GetFullPath(watchdog), StringComparison.OrdinalIgnoreCase))
+            // The package this program carries (none in the installed copy): is it the one installed?
+            if (_package is not null)
             {
-                var same = binaries.Count(name =>
-                    File.Exists(Path.Combine(_packageDir, name)) && File.Exists(P(name))
-                    && Sha256(Path.Combine(_packageDir, name)) == Sha256(P(name)));
-                _r.Check(same == binaries.Length, Strings.PackageMatches(_packageDir), CheckLevel.Warn);
+                var same = Installer.PackageFiles.Count(name =>
+                    File.Exists(P(name)) && _package.Sha256Of(name) == Sha256(P(name)));
+                _r.Check(same == Installer.PackageFiles.Length, Strings.PackageMatches(_package.Path), CheckLevel.Warn);
             }
         }
 

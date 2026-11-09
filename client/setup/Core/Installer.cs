@@ -26,12 +26,14 @@ public sealed record InstallRequest
 public sealed class Installer
 {
     private readonly CountingReport _r;
-    private readonly string _sourceDir;
+    private readonly Package? _package;
 
-    public Installer(IReport report, string sourceDir)
+    /// <param name="package">The package this program carries (Package.OfThisProgram); null: only the steps
+    /// that need no files (pairing, update-config, uninstall).</param>
+    public Installer(IReport report, Package? package)
     {
         _r = new CountingReport(report);
-        _sourceDir = sourceDir;
+        _package = package;
     }
 
     /// <summary>Warnings reported so far (the wizard shows them in its summary).</summary>
@@ -39,9 +41,8 @@ public sealed class Installer
 
     private static string P(string name) => VigilLayout.PathOf(name);
 
-    /// <summary>Installed files that come from the package.</summary>
-    /// <summary>The binaries copied from the package. vigil_setup.exe itself too: the guardian task runs it
-    /// (#65).</summary>
+    /// <summary>The binaries installed from the package. vigil_setup.exe itself too (its first part, without
+    /// the payload): the guardian task runs it (#65).</summary>
     public static readonly string[] PackageFiles = { VigilLayout.WatchdogExe, VigilLayout.UiExe, VigilLayout.SetupExe };
 
     /// <summary>The guardian task's argument: `vigil_setup.exe guardian` (Program.cs, Core/Guardian.cs).</summary>
@@ -88,7 +89,7 @@ public sealed class Installer
         Directory.CreateDirectory(Path.Combine(VigilLayout.InstallDir, VigilLayout.BackupDir));
         foreach (var name in PackageFiles)
         {
-            File.Copy(Path.Combine(_sourceDir, name), P(name), overwrite: true);
+            _package!.Extract(name, P(name));
             _r.Check(CheckLevel.Pass, name);
         }
         File.Copy(P(VigilLayout.WatchdogExe), VigilLayout.BackupWatchdogPath, overwrite: true);
@@ -230,12 +231,16 @@ public sealed class Installer
     private void CheckSourceFiles()
     {
         if (RunningFromInstallDir) throw new SetupException(Strings.RunFromPackage);
-        var missing = PackageFiles.Where(n => !File.Exists(Path.Combine(_sourceDir, n))).ToList();
-        if (missing.Count > 0) throw new SetupException(Strings.SourceFilesMissing(_sourceDir, missing));
+        if (_package is null) throw new SetupException(Strings.NoPackage(Environment.ProcessPath ?? VigilLayout.SetupExe));
+        var missing = _package.Missing(PackageFiles.Where(n => n != VigilLayout.SetupExe)).ToList();
+        if (missing.Count > 0) throw new SetupException(Strings.SourceFilesMissing(_package.Path, missing));
     }
 
-    private bool RunningFromInstallDir =>
-        Path.GetFullPath(_sourceDir).TrimEnd('\\').Equals(VigilLayout.InstallDir, StringComparison.OrdinalIgnoreCase);
+    /// <summary>This program is the copy in the install folder (the guardian's): it cannot replace or delete
+    /// itself.</summary>
+    private static bool RunningFromInstallDir =>
+        Path.GetDirectoryName(Environment.ProcessPath)?.TrimEnd('\\')
+            .Equals(VigilLayout.InstallDir, StringComparison.OrdinalIgnoreCase) == true;
 
     private static void RequireInstalledKey()
     {

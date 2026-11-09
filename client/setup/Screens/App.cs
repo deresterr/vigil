@@ -15,14 +15,22 @@ internal sealed class App
     public LogReport Log { get; }
     /// <summary>-ChildUsername given with the wizard: no question about the account.</summary>
     public string? ChildUserName { get; }
-    public string PackageDir { get; } = AppContext.BaseDirectory;
+    /// <summary>The package this exe carries (#76); null in the installed copy or a damaged download.</summary>
+    public Package? Package { get; }
+    private readonly string? _packageError;
 
     private App(IAnsiConsole console, LogReport log, string? childUserName)
     {
         C = console;
         Log = log;
         ChildUserName = childUserName;
+        try { Package = Package.OfThisProgram(); }
+        catch (SetupException ex) { _packageError = ex.Message; }
     }
+
+    /// <summary>Why there is nothing to install from; null when the package is fine.</summary>
+    public string? PackageProblem => Package is not null ? null
+        : _packageError ?? Strings.NoPackage(Environment.ProcessPath ?? VigilLayout.SetupExe);
 
     public static int Run(Cli cli, LogReport log)
     {
@@ -56,10 +64,6 @@ internal sealed class App
     {
         if (Log.Path is not null) Theme.Hint(C, Strings.UiDetailsInLog(Log.Path));
     }
-
-    /// <summary>Package files missing next to this exe (a lone vigil_setup.exe): nothing to install from.</summary>
-    public List<string> MissingPackageFiles() =>
-        Installer.PackageFiles.Where(n => !File.Exists(Path.Combine(PackageDir, n))).ToList();
 
     // === Shared steps of the wizard and the menu ===
 
@@ -153,7 +157,7 @@ internal sealed class App
             PairingException? pairingError = null;
             var error = StepsView.Run(C, Log, view, report =>
             {
-                var installer = new Installer(report, PackageDir);
+                var installer = new Installer(report, Package);
                 string key;
                 try { key = installer.Pair(serverUrl, code); }
                 catch (PairingException ex) { pairingError = ex; throw; }
@@ -183,7 +187,7 @@ internal sealed class App
     public VerifyView VerifyShort(UserAccount? child)
     {
         C.WriteLine();
-        var view = VerifyView.Run(C, Log, child?.Name ?? ChildUserName);
+        var view = VerifyView.Run(C, Log, child?.Name ?? ChildUserName, Package);
         view.RenderShort(C);
         return view;
     }

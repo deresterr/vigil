@@ -183,7 +183,7 @@ const I18N_EN = /*I18N_EN*/{
   "Vigil nie odzywał się, choć komputer działał": "Vigil was silent while the computer was running",
   "Vigil uruchomiony ponownie": "Vigil restarted",
   "Vigil został zatrzymany i uruchomiony ponownie": "Vigil was stopped and started again",
-  "Ważny do {time}, jednorazowy. Uruchom <code>vigil_setup.exe</code> z paczki na tym komputerze i wpisz ten kod, gdy instalator o niego poprosi.": "Valid until {time}, single use. Run <code>vigil_setup.exe</code> from the package on that computer and enter this code when the installer asks for it.",
+  "Ważny do {time}, jednorazowy. Uruchom <code>vigil_setup.exe</code> na tym komputerze i wpisz ten kod, gdy instalator o niego poprosi.": "Valid until {time}, single use. Run <code>vigil_setup.exe</code> on that computer and enter this code when the installer asks for it.",
   "Wczoraj, {date}": "Yesterday, {date}",
   "Weryfikuj →": "Verify →",
   "Wiele nieudanych logowań do panelu": "Many failed panel logins",

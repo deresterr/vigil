@@ -2,9 +2,10 @@ name: release
 
 # A tag v* (e.g. v0.7.0) publishes:
 #   - the server image to GHCR: ghcr.io/<owner>/vigil-server:<version> and :latest
-#   - the client package (dist/ zipped) as an asset of a GitHub release for that tag
+#   - the client package, one file (#76): vigil_setup.exe as an asset of a GitHub release for that tag
+#     (always the same name: .../releases/latest/download/vigil_setup.exe is the newest client)
 # Tags are pushed from a terminal or created in the GitHub UI (Releases -> Draft a new release ->
-# choose a tag): the workflow then attaches the zip to that release.
+# choose a tag): the workflow then attaches vigil_setup.exe to that release.
 on:
   push:
     tags: ["v*"]
@@ -60,9 +61,7 @@ jobs:
         shell: pwsh
         # The binaries carry the tag's version without the "v" (vigil_setup compares installed and package).
         run: ./build-package.ps1 -Configuration Release -Version ('${{ github.ref_name }}'.TrimStart('v'))
-      # The artifact is dist/ itself: downloaded from the Actions run it is the same as the release asset
-      # (the zip is made in the release job). A zipped artifact downloaded as a zip inside a zip.
-      # Only a hand-over to the release job, which attaches the zip to the release.
+      # Only a hand-over to the release job, which attaches dist/vigil_setup.exe to the release.
       - uses: actions/upload-artifact@v4
         with:
           name: vigil-client-${{ github.ref_name }}
@@ -79,8 +78,6 @@ jobs:
         with:
           name: vigil-client-${{ github.ref_name }}
           path: dist
-      - name: Zip
-        run: cd dist && zip -qr "../vigil-client-${{ github.ref_name }}.zip" .
       - name: Create or update the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -88,9 +85,9 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          notes="Server: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (in \`server/.env\`: \`VIGIL_IMAGE=\`). Client: \`vigil-client-${TAG}.zip\` (the \`dist\\\` package; run \`vigil_setup.exe\`)."
+          notes="Server: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (in \`server/.env\`: \`VIGIL_IMAGE=\`). Client: \`vigil_setup.exe\` (the whole client in one file; run it on the child's PC)."
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "vigil-client-${TAG}.zip" --clobber
+            gh release upload "$TAG" dist/vigil_setup.exe --clobber
           else
-            gh release create "$TAG" "vigil-client-${TAG}.zip" --title "Vigil ${TAG}" --notes "$notes" --generate-notes
+            gh release create "$TAG" dist/vigil_setup.exe --title "Vigil ${TAG}" --notes "$notes" --generate-notes
           fi

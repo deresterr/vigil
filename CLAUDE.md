@@ -99,7 +99,8 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using
   removed: it clashes with WPF (`Application`, `KeyEventArgs`). Alias what you need (`using Forms = …`).
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via
-  `CreateProcessAsUser` (`UiProcessLauncher`).
+  `CreateProcessAsUser` (`UiProcessLauncher`), with the user's `CreateEnvironmentBlock`: without it the process
+  inherits SYSTEM's environment (#72: no ui.log, single-file extraction to `C:\Windows\Temp`).
 - vigil_ui runs with a process DACL that denies the user `PROCESS_TERMINATE`/`WRITE_DAC`: never open the
   own process by PID inside it (e.g. `Process.GetCurrentProcess().MainModule`) — use pseudo-handles or
   `GetModuleHandle(null)`.

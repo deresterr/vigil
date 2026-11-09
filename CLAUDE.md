@@ -1,7 +1,7 @@
 # Vigil — notes for Claude
 
-Self-hosted parental screen-time control for Windows. Owner: Mateusz. **Talk to him in Polish**;
-he knows the stack deeply — be direct, skip basics, fix root causes, apply a fix everywhere it applies.
+Self-hosted parental screen-time control for Windows. Be direct, skip basics, fix root causes, and apply a fix
+everywhere the same problem occurs, not only where it was reported.
 
 ## Layout
 - `server/` — FastAPI + SQLite, one server for many children and their PCs (D7). Entry `app/main.py`,
@@ -16,33 +16,27 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
 - `build-package.ps1 -Version` → `dist\vigil_setup.exe`, the whole client in one file (#76: the watchdog,
   vigil_ui and its native WPF libraries appended, format in `client/setup/Core/Package.cs`) + `build\parts\`
-  (the files on their own). `Build.cmd` runs it.
-  `docs/installer.md` describes the installer, the README the emergency path from WinRE.
+  (the files on their own). `Build.cmd` runs it. `docs/installer.md` describes the installer, the README
+  the emergency path from WinRE.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
-  (server of the same commit on localhost; install → update → one-file package checks →
-  broken installs → re-pair →
-  uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → uninstall,
-  then the wizard and the menu through a key script). Never on a real PC.
+  (server of the same commit on localhost; install → update → one-file package checks → broken installs →
+  re-pair → uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" →
+  uninstall, then the wizard and the menu through a key script). Never on a real PC.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/review-2026-11.md` — known defects, decisions (D1–D22), roadmap (M1–M2 done, M3, M4.1).
-  Other `docs/*.md` are older component notes; code wins.
+- `docs/decisions.md` — the design decisions D1–D26 the code refers to. `docs/installer.md`, `docs/guardian.md`
+  describe those parts. When a doc and the code disagree, the code wins: fix the doc.
 
 ## Verify before saying "done"
 - Server: `cd server && pip install -r requirements-dev.txt && ruff check . && pytest -q`
 - Client: cannot build on Linux; CI (`.github/workflows/ci.yml`, windows-latest) compiles it
   (path-filtered on PRs; every push to main builds everything and is never cancelled).
-  Push the branch and read the CI result instead of guessing. CI uploads `dist/` as an artifact —
-  that package is what Mateusz runs on the Windows VM for runtime tests.
-- **One PR with client changes per VM test session.** VM tests are expensive for Mateusz: batch every client
-  change waiting for a runtime test into one PR (merge the issue branches into it, as #29 did for #9 + #10)
-  and hand over one test checklist with the CI artifact. He runs the server from the same PR branch in the
-  test stack (`docs/test-server.md`). Production (v0.4, container `vigil`, image `vigil:local`, port 8088) runs on
-  the same host: test instructions must never reuse its container or image name.
-  Server-only changes still go one issue per PR. No stacked PRs: every PR targets `main`.
-- **Installer rewrite in C# (D22, #62–#66)** was the exception: each step its own PR, merged once the CI
-  installer e2e was green; VM sessions only at the checkpoints (after #64 and after #66). Anything the e2e
-  cannot see (Windows 10/11 Home, Polish Windows, the child's session: vigil_ui, lock, the console wizard)
-  waits for the next checkpoint.
+  Push the branch and read the CI result instead of guessing. CI uploads `dist/` of a PR as an artifact (kept
+  one day; Re-run jobs brings it back) — that package is what runtime tests on a Windows VM use.
+- **One PR with client changes per VM test session.** VM tests are expensive: batch every client change waiting
+  for a runtime test into one PR and hand over one test checklist with the CI artifact; the server runs from the
+  same PR branch. What the e2e cannot see (Windows 10/11 Home, Polish Windows, the child's session: vigil_ui,
+  the lock, the console wizard) waits for that session. Server-only changes go one issue per PR. No stacked PRs:
+  every PR targets `main`.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 
 ## Invariants (changing any of these is a design decision — ask first)
@@ -70,8 +64,9 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   Admin `sc.exe stop`/`Stop-Service` always fail; killing the process skips the goodbye (server: restart alert).
 
 ## Gotchas that already cost time
-- Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. Mateusz creates
-  releases/tags in the GitHub UI (merged branches are deleted automatically); open PRs with `gh api` (REST).
+- Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. The maintainer
+  merges and creates releases/tags in the GitHub UI (merged branches are deleted automatically); open PRs with
+  `gh api` (REST).
 - PowerShell 5.1: `.ps1` must be UTF-8 **with BOM** + CRLF (see `.editorconfig`), otherwise non-ASCII text breaks.
 - PowerShell: `$PSScriptRoot` is empty inside `param()` defaults — compute it in the body.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.
@@ -114,7 +109,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   `--standalone-test` works only from the command line.
 - Windows logs the session off (closing vigil_ui) before it stops services, also on shutdown, and the service
   hears of it only from the SCM (`VigilServiceLifetime.OnSessionChange`/`OnShutdown`), maybe after vigil_ui is
-  gone. So `UiManager` respawns an exit at once but judges it as a kill only 10 s later (VM 1/2: restarts gave
+  gone. So `UiManager` respawns an exit at once but judges it as a kill only 10 s later (restarts gave
   "exited before connecting"; locked, 1 s ticks could reach 3 exits = a false `lockscreen_killed`).
 - vigil_ui runs with a process DACL that denies the user `PROCESS_TERMINATE`/`WRITE_DAC`: never open the
   own process by PID inside it (e.g. `Process.GetCurrentProcess().MainModule`) — use pseudo-handles or

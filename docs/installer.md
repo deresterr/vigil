@@ -6,13 +6,12 @@ and CI, `verify`, and the guardian task. .NET 8, self-contained, trimmed single 
 
 ## The package: one file
 
-The client is distributed as `vigil_setup.exe` alone (#76): `build-package.ps1` appends `vigil_watchdog.exe`
-and `vigil_ui.exe`, gzipped, after the .NET bundle of `vigil_setup.exe` (the host finds its bundle through an
+The client is distributed as `vigil_setup.exe` alone (#76): `build-package.ps1` appends `vigil_watchdog.exe`,
+`vigil_ui.exe` and its native WPF libraries (D24), gzipped, after the .NET bundle of `vigil_setup.exe` (the host finds its bundle through an
 offset in its header and ignores what follows), with a trailer. Format and the only reader:
 `Core/Package.cs`. Each file carries its SHA-256: a damaged download fails before anything is replaced.
 
-The installer puts in `C:\ProgramData\Vigil` the same three files as before and writes there only the first
-part of itself, without the payload: the guardian task starts a ~12 MB program every 5 minutes. That copy (and
+The installer unpacks them into `C:\ProgramData\Vigil` and writes there only the first part of itself, without the payload: the guardian task starts a ~12 MB program every 5 minutes. That copy (and
 a cut-off download) has no package: install and update refuse, verify and uninstall work.
 
 `Core/` does the work and never touches the console; it reports through `IReport`. `Screens/` (Spectre.Console)

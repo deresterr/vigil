@@ -6,9 +6,9 @@ Self-hosted screen-time control for a child's Windows 10/11 PC.
 A server in Docker on your home network counts the time and decides when to lock; a service on the child's PC
 shows a full-screen lock. The parent manages everything from a browser and unlocks with a TOTP code from their phone.
 
-> **Status: v0.7, before 1.0.** In daily use. A child with administrator rights can get around Vigil — Vigil
+> **Status: before 1.0.** In daily use. A child with administrator rights can get around Vigil — Vigil
 > makes that harder and shows it to the parent, it does not make it impossible (see [Threat model](#threat-model)).
-> Roadmap and decisions (in Polish): [`docs/review-2026-11.md`](docs/review-2026-11.md).
+> Design decisions: [`docs/decisions.md`](docs/decisions.md).
 
 ## What it does
 
@@ -65,7 +65,7 @@ from a USB stick (offline as well), or forged requests sent by an administrator 
 - child's PC: Windows 10/11 x64, Home or Pro; the child's account is the only user account
   and may have administrator rights (the parent maintains the PC from that same account),
 - the parent's phone with a TOTP app (Aegis, Google Authenticator, …),
-- to build the client: Windows with the .NET 8 SDK (or a ready `vigil_setup.exe` from a release or GitHub Actions).
+- to build the client: Windows with the .NET 8 SDK (or a ready `vigil_setup.exe` from a release).
 
 ## Quick start
 
@@ -102,7 +102,8 @@ Build.cmd            → dist\vigil_setup.exe
 ```
 
 `vigil_setup.exe` is the whole client: the installer carries the service and the lock screen. Instead of building
-locally you can download it from the `vigil-client-…` artifact of the latest CI run (Actions tab).
+it you can download it from the latest release:
+[`releases/latest/download/vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe).
 
 **3. Install on the child's PC** — copy `vigil_setup.exe` to the child's PC and run it (it asks for
 administrator rights; a downloaded copy may first get SmartScreen's "Windows protected your PC": More info →
@@ -131,7 +132,7 @@ files Vigil does not start, so there is no lock. For an ordinary lock the parent
 | `client/` | Windows service (`watchdog`), lock screen with a tray icon (`ui`), installer (`setup`) |
 | `client/setup/` | the installer `vigil_setup.exe`: wizard, menu, verify, integrity guardian |
 | `e2e/` | installer end-to-end test (CI, throwaway Windows) |
-| `docs/` | architecture, review and roadmap |
+| `docs/` | architecture, installer, guardian, design decisions |
 
 ## Security
 

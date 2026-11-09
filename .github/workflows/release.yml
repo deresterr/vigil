@@ -61,10 +61,12 @@ jobs:
         run: ./build-package.ps1 -Configuration Release
       # The artifact is dist/ itself: downloaded from the Actions run it is the same as the release asset
       # (the zip is made in the release job). A zipped artifact downloaded as a zip inside a zip.
+      # Only a hand-over to the release job, which attaches the zip to the release.
       - uses: actions/upload-artifact@v4
         with:
           name: vigil-client-${{ github.ref_name }}
           path: dist/
+          retention-days: 1
 
   release:
     needs: [server-image, client-package]

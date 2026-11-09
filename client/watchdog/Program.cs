@@ -10,19 +10,16 @@ using Vigil.Watchdog.Guardian;
 using Vigil.Watchdog.Ui;
 using Vigil.Watchdog.Offline;
 using Vigil.Watchdog.Server;
+using Vigil.Shared;
 
 [assembly: SupportedOSPlatform("windows")]
 
-const string ProgramDataRoot = @"C:\ProgramData\Vigil";
-const string TomlConfigFileName = "vigil.toml";
-const string SigningDatName = "signing.dat";
-
-var configPath = Path.Combine(ProgramDataRoot, TomlConfigFileName);
-var signingPath = Path.Combine(ProgramDataRoot, SigningDatName);
+var configPath = VigilLayout.PathOf(VigilLayout.ConfigFile);
+var signingPath = VigilLayout.PathOf(VigilLayout.SigningFile);
 
 using var bootstrapLoggerFactory = LoggerFactory.Create(b => b.AddConsole().AddEventLog(eventLog =>
 {
-    eventLog.SourceName = "Vigil Watchdog";
+    eventLog.SourceName = VigilLayout.WatchdogEventSource;
     eventLog.LogName = "Application";
 }));
 var bootstrapLogger = bootstrapLoggerFactory.CreateLogger("Bootstrap");
@@ -51,13 +48,13 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddEventLog(eventLog =>
 {
-    eventLog.SourceName = "Vigil Watchdog";
+    eventLog.SourceName = VigilLayout.WatchdogEventSource;
     eventLog.LogName = "Application";
 });
 
 builder.Services.AddWindowsService(options =>
 {
-    options.ServiceName = "vigil_watchdog";
+    options.ServiceName = VigilLayout.ServiceName;
 });
 // Replaces the default lifetime registered above (last registration wins).
 if (WindowsServiceHelpers.IsWindowsService())
@@ -65,13 +62,13 @@ if (WindowsServiceHelpers.IsWindowsService())
 
 builder.Services.AddSingleton(vigilConfig);
 builder.Services.AddSingleton(sp => new TotpSecretStore(
-    Path.Combine(ProgramDataRoot, "totp.dat"), sp.GetRequiredService<ILogger<TotpSecretStore>>()));
+    VigilLayout.PathOf(VigilLayout.TotpFile), sp.GetRequiredService<ILogger<TotpSecretStore>>()));
 builder.Services.AddSingleton<OfflineUnlock>();
 builder.Services.AddSingleton(sp => new HeartbeatClient(
     vigilConfig, signingKey, sp.GetRequiredService<ILogger<HeartbeatClient>>()));
 builder.Services.AddSingleton<SessionDetector>();
 
-builder.Services.AddSingleton(new UiManagerOptions { UiExePath = Path.Combine(ProgramDataRoot, "vigil_ui.exe") });
+builder.Services.AddSingleton(new UiManagerOptions { UiExePath = VigilLayout.PathOf(VigilLayout.UiExe) });
 builder.Services.AddSingleton<NamedPipeIpcServer>();
 builder.Services.AddSingleton<UiProcessLauncher>();
 builder.Services.AddSingleton<IUiManager, UiManager>();

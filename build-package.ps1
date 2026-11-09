@@ -12,6 +12,7 @@
     Output: .\dist\ z plikami:
         vigil_watchdog.exe     (~80 MB self-contained)
         vigil_ui.exe           (~80 MB, lock overlay + tray icon)
+        vigil_setup.exe        (installer/verify w C#, D22; na razie tylko -Mode verify)
         vigil_guardian.ps1
         vigil_install.ps1
         Install.cmd            (launcher bez ExecutionPolicy)
@@ -45,6 +46,7 @@ if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'dist' }
 $projects = @(
     @{ Dir = 'client\watchdog';   Exe = 'vigil_watchdog.exe' }
     @{ Dir = 'client\ui';         Exe = 'vigil_ui.exe' }
+    @{ Dir = 'client\setup';      Exe = 'vigil_setup.exe' }
 )
 
 # === Validation ===

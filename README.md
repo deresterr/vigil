@@ -19,8 +19,7 @@ shows a full-screen lock. The parent manages everything from a browser and unloc
 - a pause the child starts (time is not counted, the screen is locked),
 - fail-closed: no connection to the server = locked,
 - a journal in the parent panel with alerts about attempts to get around it,
-- panel and lock screen in English or Polish, following the browser and Windows language
-  (the installer is Polish only for now).
+- panel, lock screen and installer in English or Polish, following the browser and Windows language.
 
 ## Threat model
 
@@ -105,24 +104,33 @@ Build.cmd            → dist\
 Instead of building locally you can download a ready `dist\` from the `vigil-client-…` artifact of the latest CI run
 (Actions tab).
 
-**3. Install on the child's PC** — in the parent panel: Settings → "Add computer", copy `dist\` to the child's PC
-and run as administrator:
+**3. Install on the child's PC** — copy `dist\` to the child's PC and run `vigil_setup.exe` (it asks for
+administrator rights). The wizard asks for the server address and a pairing code (parent panel: Settings →
+Child's computers → "Add computer") and finds the child's account itself. Run it again later for the menu:
+check, update, change the server address, re-pair, uninstall.
 
 ```
-Install.cmd                 (interactive: server address and pairing code; finds the child's account itself)
-Install.cmd -Mode verify    (checks the installation: service, files, permissions, policies, server connection)
+vigil_setup.exe                  wizard, or the status and menu when installed
+vigil_setup.exe -Mode verify     checks the installation (or, uninstalled, that nothing was left)
+Cleanup.cmd                      uninstalls (same as the menu)
 ```
 
-Uninstall: `Install.cmd -Mode uninstall` or `Cleanup.cmd` (or `vigil-cleanup-offline.cmd` from WinRE when Windows
-does not start). `Install.cmd -Mode verify` after uninstalling checks that nothing was left behind.
+Parameters for scripts and every step of an install: [`docs/installer.md`](docs/installer.md).
+
+**If Windows does not start or Vigil cannot be removed normally:** boot Windows Recovery → Troubleshoot →
+Command Prompt, run `rmdir /s /q D:\ProgramData\Vigil` (the Windows drive is often `D:` there; check with
+`dir D:\ProgramData`), restart normally, then `Cleanup.cmd` and `vigil_setup.exe -Mode verify`. Without its
+files Vigil does not start, so there is no lock. For an ordinary lock the parent's TOTP code is enough.
 
 ## Repository layout
 
 | Folder | Contents |
 |---|---|
 | `server/` | FastAPI + SQLite, parent panel, tests |
-| `client/` | Windows service (`watchdog`), lock screen with a tray icon (`ui`) |
-| `installer/` | install, uninstall and integrity guardian scripts |
+| `client/` | Windows service (`watchdog`), lock screen with a tray icon (`ui`), installer (`setup`) |
+| `client/setup/` | the installer `vigil_setup.exe`: wizard, menu, verify, integrity guardian |
+| `installer/` | `Install.cmd`, `Cleanup.cmd` shortcuts (and the old PowerShell installer used by the CI test) |
+| `e2e/` | installer end-to-end test (CI, throwaway Windows) |
 | `docs/` | architecture, review and roadmap |
 
 ## Security

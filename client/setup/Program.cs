@@ -7,6 +7,12 @@ using Vigil.Setup.Core;
 
 // vigil_setup.exe (D22). Without parameters: the wizard (nothing installed) or the menu. With parameters,
 // as Install.cmd took them (-Mode install -ServerUrl ... -PairingCode ...): for scripts, CI and support.
+// `vigil_setup.exe guardian`: the guardian task.
+
+// The task "Vigil Guardian" (SYSTEM, every 5 min, #65): no console work, no log file in %TEMP%, no pause;
+// its output is the Event Log.
+if (args is [var only] && only.Equals(Installer.GuardianArgument, StringComparison.OrdinalIgnoreCase))
+    return Guardian.Run();
 
 Console.OutputEncoding = Encoding.UTF8;
 Cli cli;

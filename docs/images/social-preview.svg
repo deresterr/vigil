@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <!-- Social preview for the repository (Settings → General → Social preview), exported to PNG at 1280×640. -->
+  <rect width="1280" height="640" fill="#1b1d21"/>
+  <rect x="0" y="0" width="1280" height="8" fill="#4f9cf7"/>
+
+  <!-- Mark: a dial with the elapsed part of the day and a padlock in the middle. -->
+  <g transform="translate(270 320)">
+    <circle r="150" fill="none" stroke="#2c3038" stroke-width="22"/>
+    <path d="M 0 -150 A 150 150 0 1 1 -129.9 75" fill="none" stroke="#4f9cf7" stroke-width="22" stroke-linecap="round"/>
+    <path d="M -34 -12 V -40 A 34 34 0 0 1 34 -40 V -12" fill="none" stroke="#e8eaed" stroke-width="14" stroke-linecap="round"/>
+    <rect x="-56" y="-14" width="112" height="86" rx="14" fill="#e8eaed"/>
+    <circle cx="0" cy="22" r="11" fill="#1b1d21"/>
+    <rect x="-4" y="26" width="8" height="24" rx="3" fill="#1b1d21"/>
+  </g>
+
+  <g font-family="'Segoe UI', 'DejaVu Sans', 'Helvetica Neue', Arial, sans-serif">
+    <text x="490" y="270" font-size="120" font-weight="700" fill="#e8eaed">Vigil</text>
+    <text x="494" y="336" font-size="36" fill="#c4c8cf">Self-hosted screen-time control</text>
+    <text x="494" y="382" font-size="36" fill="#c4c8cf">for a child's Windows PC</text>
+    <text x="494" y="456" font-size="26" fill="#8a909a">Docker server · Windows service · TOTP unlock</text>
+  </g>
+</svg>

@@ -1,0 +1,64 @@
+name: Bug report
+description: Something does not work as the README or docs/ describe.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A way to get around Vigil or to reach the server you should not? Do not file it here: report it privately
+        (Security → Report a vulnerability), see SECURITY.md.
+        Remove server addresses, computer names and children's names from logs and screenshots.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - Server or parent panel
+        - Service, lock screen or tray on the child's PC
+        - Installer (vigil_setup.exe)
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag (e.g. v0.8.0) or commit. The installer menu shows the installed version.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: input
+    id: windows
+    attributes:
+      label: Windows on the child's PC
+      description: Edition, version and display language, e.g. Windows 11 Home 24H2, Polish.
+  - type: dropdown
+    id: account
+    attributes:
+      label: The child's account
+      options:
+        - Administrator
+        - Standard user
+        - Not relevant
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Installer: %TEMP%\vigil_setup_<time>.log (its path is on screen). Lock screen: %LOCALAPPDATA%\Vigil\ui.log.
+        Service: Event Viewer → Application, sources "Vigil Watchdog" and "Vigil Guardian". Server: docker logs vigil.
+      render: text

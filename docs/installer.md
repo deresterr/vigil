@@ -70,9 +70,9 @@ per-user policies go to the Default profile only. Pairing always happens before 
 1. **Stopping**: the service stopped as SYSTEM through a one-off task (a normal stop: the watchdog says
    goodbye) and deleted; vigil_ui killed; the guardian task ended and deleted (it runs the copy of
    `vigil_setup.exe` being replaced).
-2. **Files** to `C:\ProgramData\Vigil`: `vigil_watchdog.exe`, `vigil_ui.exe` (unpacked from the package and
-   checked against their SHA-256), `vigil_setup.exe` (without the payload), `backup\vigil_watchdog.exe`;
-   leftovers of older versions removed (`VigilLayout.LegacyPaths`).
+2. **Files** to `C:\ProgramData\Vigil`: `vigil_watchdog.exe`, `vigil_ui.exe` and its native WPF libraries
+   (`VigilLayout.UiNativeLibraries`, D24; unpacked from the package and checked against their SHA-256),
+   `vigil_setup.exe` (without the payload), `backup\vigil_watchdog.exe`.
 3. **Configuration**: `guardian.dat` (SHA-256 of the watchdog, DPAPI), `vigil.toml` (server address only),
    `signing.dat` (the key, DPAPI with entropy) — kept on `update`, like `totp.dat`.
 4. **Service** `vigil_watchdog`: automatic, quoted path, recovery restart ×3 after 60 s (also on a non-zero
@@ -97,8 +97,6 @@ temporary tasks, SafeBoot, F8), the child's policies, runtime (vigil_ui in the s
 watchdog warnings in the last 15 minutes). Not installed: nothing left (service, folder, tasks, SafeBoot,
 processes, policies, Event Log sources).
 
-An installation from before #65 (guardian `vigil_guardian.ps1`) is a warning: Update/Repair replaces it.
-
 ## Emergency: Windows does not start or Vigil cannot be removed normally
 
 The lock is fail-closed, and the parent unlocks offline with the TOTP code (D4). If the PC itself must be
@@ -115,8 +113,8 @@ Threat model: nothing new — an administrator can do the same from Windows; the
 ## Tests
 
 `e2e/installer-e2e.ps1` runs in CI on a throwaway `windows-latest` runner against the server of the same
-commit: a PowerShell install from before D22 (from `build\parts`, the binaries on their own) → `update` → the
-one-file package (installed files = the parts, the installed copy and a payload-less one refuse to update) →
+commit: install → `update` → the one-file package (installed files = `build\parts`, the installed copy and a
+payload-less one refuse to update) →
 broken installs → re-pair → uninstall → install →
 six guardian repairs reported to the journal → the emergency path above → uninstall, then the wizard and
 the menu through a key script (`-Keys <file>`, not in the usage). What CI cannot see — Windows 10/11 Home,

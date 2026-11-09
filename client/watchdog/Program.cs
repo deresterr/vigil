@@ -29,16 +29,13 @@ byte[] signingKey;
 try
 {
     vigilConfig = VigilConfig.LoadFromFile(configPath);
-    bootstrapLogger.LogInformation("Wczytano vigil.toml: server={Server}", vigilConfig.ServerUrl);
-
-    var dpapiLogger = bootstrapLoggerFactory.CreateLogger<DpapiKeyStore>();
-    var dpapi = new DpapiKeyStore(signingPath, dpapiLogger);
-    signingKey = dpapi.BootstrapOrLoad(args);
-    bootstrapLogger.LogInformation("Signing key załadowany ({Bytes}B)", signingKey.Length);
+    bootstrapLogger.LogInformation("Loaded vigil.toml: server={Server}", vigilConfig.ServerUrl);
+    signingKey = DpapiKeyStore.Load(signingPath);
+    bootstrapLogger.LogInformation("Signing key loaded ({Bytes} B)", signingKey.Length);
 }
 catch (Exception ex)
 {
-    bootstrapLogger.LogCritical(ex, "Bootstrap failed — Vigil się nie uruchomi");
+    bootstrapLogger.LogCritical(ex, "Startup failed: Vigil will not run");
     throw;
 }
 

@@ -9,7 +9,7 @@ namespace Vigil.Setup.Core;
 
 /// <summary>
 /// `vigil_setup.exe guardian`, run by the task "Vigil Guardian" (SYSTEM, at startup + every 5 min): puts back
-/// what keeps vigil_watchdog running and reports every repair. Port of vigil_guardian.ps1 (#65).
+/// what keeps vigil_watchdog running and reports every repair.
 ///
 /// Threat model: friction + detection. An elevated child can disable the task too; until then every change
 /// below is undone and the watchdog reports it to the parent's journal as tamper_guardian_repaired (#36).

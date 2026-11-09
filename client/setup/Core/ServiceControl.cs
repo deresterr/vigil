@@ -8,7 +8,7 @@ namespace Vigil.Setup.Core;
 /// Registering, starting, stopping and deleting vigil_watchdog. The service DACL gives administrators
 /// query/start only, so stop and delete go through a one-off SYSTEM task (SY: GenericAll): a normal SCM
 /// stop, the watchdog says goodbye and the server logs tamper_service_stopped instead of a restart. Killing
-/// the process is only the fallback. Port of Invoke-ScAsSystem / Stop-VigilService (#45).
+/// the process is only the fallback.
 /// </summary>
 internal static class ServiceControl
 {
@@ -37,7 +37,7 @@ internal static class ServiceControl
     /// or the time is up.</summary>
     private static bool ScAsSystem(string args, Func<ServiceControllerStatus?, bool> waitUntil, int seconds)
     {
-        var task = $"_vigil_sc_{Random.Shared.Next(100_000, 999_999)}";
+        var task = $"{VigilLayout.TempTaskPrefix}{Random.Shared.Next(100_000, 999_999)}";
         ScheduledTasks.Create(task, ScheduledTasks.OneOffSystemTaskXml("sc.exe", args));
         try
         {
@@ -87,8 +87,7 @@ internal static class ServiceControl
     }
 
     /// <summary>
-    /// CreateService through sc.exe: the path quoted (the quotes reach sc.exe intact from .NET, unlike
-    /// PowerShell 5.1), automatic start, recovery restart ×3 after 60 s without reboot (a crash at start
+    /// CreateService through sc.exe: the path quoted, automatic start, recovery restart ×3 after 60 s without reboot (a crash at start
     /// must not become a reboot loop), recovery on a non-zero exit too.
     /// </summary>
     public static void Create(IReport r)

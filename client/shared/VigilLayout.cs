@@ -22,8 +22,17 @@ public static class VigilLayout
     public const string WatchdogExe = "vigil_watchdog.exe";
     public const string UiExe = "vigil_ui.exe";
     public const string SetupExe = "vigil_setup.exe";
-    /// <summary>The PowerShell guardian before #65; now `vigil_setup.exe guardian`, the script a leftover.</summary>
-    public const string GuardianScript = "vigil_guardian.ps1";
+
+    /// <summary>
+    /// WPF's native libraries, next to vigil_ui.exe instead of extracted to the child's %TEMP% at run time
+    /// (D24: a DLL planted there would load into the lock screen). The package carries them;
+    /// build-package.ps1 fails when the publish output differs from this list.
+    /// </summary>
+    public static readonly string[] UiNativeLibraries =
+    {
+        "D3DCompiler_47_cor3.dll", "PenImc_cor3.dll", "PresentationNative_cor3.dll", "vcruntime140_cor3.dll",
+        "wpfgfx_cor3.dll",
+    };
     public const string ConfigFile = "vigil.toml";
     /// <summary>The device's signing key, DPAPI LocalMachine with <see cref="SigningKeyEntropy"/>.</summary>
     public const string SigningFile = "signing.dat";
@@ -41,16 +50,6 @@ public static class VigilLayout
 
     public static string PathOf(string name) => Path.Combine(InstallDir, name);
     public static string BackupWatchdogPath => Path.Combine(InstallDir, BackupDir, WatchdogExe);
-
-    /// <summary>Left by older versions; removed on install, reported by verify.</summary>
-    public static readonly string[] LegacyPaths =
-    {
-        PathOf("emergency.dat"),          // emergency password before v0.5 (#9)
-        PathOf("vigil_lockscreen.exe"),   // lock screen and tray before D8 (#35)
-        PathOf("vigil_tray.exe"),
-        @"C:\Users\Public\Vigil",         // bypass.flag before v0.5 (#9)
-        PathOf(GuardianScript),           // the PowerShell guardian before #65
-    };
 
     // === Service ===
 
@@ -79,8 +78,8 @@ public static class VigilLayout
     public const string IfeoKey =
         @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\" + WatchdogExe;
 
-    /// <summary>Every process name of ours, old ones included (verify: none left after uninstall).</summary>
-    public static readonly string[] ProcessNames = { "vigil_watchdog", "vigil_ui", "vigil_lockscreen", "vigil_tray" };
+    /// <summary>Every process name of ours (verify: none left after uninstall).</summary>
+    public static readonly string[] ProcessNames = { "vigil_watchdog", "vigil_ui" };
 
     // === Event Log (Application) ===
 
@@ -104,10 +103,8 @@ public static class VigilLayout
     // === Scheduled tasks ===
 
     public const string GuardianTaskName = "Vigil Guardian";
-    /// <summary>Started the tray at logon before D8 (#35).</summary>
-    public const string LegacyTrayTaskName = "Vigil Tray";
-    /// <summary>One-off SYSTEM tasks (stop/delete of the service), now and in older versions; none may stay.</summary>
-    public static readonly string[] TempTaskPrefixes = { "_vigil_sc_", "_pc_", "VigilCleanup_" };
+    /// <summary>One-off SYSTEM tasks (stop/delete of the service, ServiceControl.ScAsSystem); none may stay.</summary>
+    public const string TempTaskPrefix = "_vigil_sc_";
 
     // === Per-user policies (HKCU of the child's account and of the Default profile) ===
 
@@ -133,15 +130,6 @@ public static class VigilLayout
         new(PrecisionTouchPad, "FourFingerSlideEnabled", RegistryValueKind.DWord, 0, 1),
         new(PrecisionTouchPad, "ThreeFingerTapEnabled", RegistryValueKind.DWord, 0, 1),
         new(PrecisionTouchPad, "FourFingerTapEnabled", RegistryValueKind.DWord, 0, 1),
-    };
-
-    /// <summary>Set before v0.6, dropped in #37; removed on install and uninstall. DisableRegistryTools
-    /// first: it blocks reg.exe.</summary>
-    public static readonly UserPolicy[] LegacyUserPolicies =
-    {
-        new(PoliciesSystem, "DisableRegistryTools", RegistryValueKind.DWord, 1, null),
-        new(PoliciesSystem, "DisableLockWorkstation", RegistryValueKind.DWord, 1, null),
-        new(@"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer", "NoLogoff", RegistryValueKind.DWord, 1, null),
     };
 
     private const string PoliciesSystem = @"Software\Microsoft\Windows\CurrentVersion\Policies\System";

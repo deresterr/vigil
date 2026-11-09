@@ -15,7 +15,9 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Nothing extracted at run time (D24); build-package.ps1 fails if a native library would be left over. -->
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <StartupHookSupport>false</StartupHookSupport>
     <!-- A console tool, unlike the WPF/WinForms exes: trimmed and compressed it stays small. Partial: only
          assemblies marked trimmable (the framework) are trimmed, our code and packages are kept whole. -->
     <PublishTrimmed>true</PublishTrimmed>

@@ -2,13 +2,11 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
-    <!-- ShutdownMode=OnExplicitShutdown: aplikacja zamyka się dopiero przy jawnym Shutdown(),
-         nie przy zamknięciu pierwszego okna. Potrzebne bo zarządzamy multi-monitor i
-         okna mogą być rekreowane przy DisplaySettingsChanged. -->
+    <!-- ShutdownMode=OnExplicitShutdown: the app ends only on Shutdown(), not with its first window; the lock
+         windows (one per monitor) are recreated on DisplaySettingsChanged. -->
     <Application.Resources>
-        <!-- Kolory — paleta "night mode": czarne tło + stłumione napisy.
-             Cel: monitor w nocy nie ma oświetlać pokoju gdy dziecko zaśnie z włączoną blokadą.
-             Wszystkie napisy mają wystarczający kontrast do czytelności ale nie emitują dużo światła. -->
+        <!-- Night palette: black background, muted text. A locked screen at night must not light up the
+             room; the text stays readable without emitting much light. -->
         <SolidColorBrush x:Key="BackgroundDarkBrush" Color="#000000"/>
         <SolidColorBrush x:Key="ForegroundLightBrush" Color="#9a9a9a"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#707070"/>

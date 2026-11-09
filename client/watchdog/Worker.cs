@@ -12,11 +12,11 @@ using Vigil.Watchdog.Server;
 namespace Vigil.Watchdog;
 
 /// <summary>
-/// Główna pętla watchdoga. Co 5s:
-/// 1. Zbierz session/idle/foreground state
-/// 2. Wyślij heartbeat
-/// 3. Aplikuj response (lock/unlock, aktualizuj tray)
-/// 4. Fail-closed jeśli brak heartbeatu > grace_seconds
+/// The watchdog's loop, every tick (docs/architecture.md):
+/// 1. vigil_ui running and connected in the active session
+/// 2. session state → heartbeat
+/// 3. apply the response (lock / unlock, tray)
+/// 4. fail-closed when the server has been silent longer than the grace period
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class Worker : BackgroundService
@@ -40,15 +40,11 @@ public sealed class Worker : BackgroundService
     private int _failedAttempts;
     private DateTime _lastSuccessfulHeartbeat = DateTime.MinValue;
 
-    // Tick interval:
-    //  - normalny (sesja aktywna lub nie zalogowany) — 5s. Server odbiera heartbeat, akumuluje czas.
-    //  - gdy lockscreen JEST AKTYWNY — 1s. Krótszy bo:
-    //     * po unlock chcemy szybko zauważyć (dziecko nie powinno czekać 5s)
-    //     * jeśli vigil_ui zniknie, respawn nastąpi pod sekundę zamiast 5s nieosłoniętego desktopu
+    // Tick interval: 5 s normally; 1 s while locked, so an unlock shows at once and a vanished vigil_ui
+    // is back within a second instead of leaving the desktop open for 5 s.
     private static readonly TimeSpan _tickIntervalNormal = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan _tickIntervalLocked = TimeSpan.FromSeconds(1);
-    // Adaptive interval sugerowany przez serwer (next_check_seconds).
-    // Gdy sesja nieaktywna serwer odpowiada 30s — redukuje load gdy dziecko niezalogowane.
+    // Unlocked: the server's next_check_seconds (30 s while nobody is logged on), clamped to 5–60 s.
     private TimeSpan _tickIntervalAdaptive = TimeSpan.FromSeconds(5);
 
     public Worker(
@@ -90,7 +86,7 @@ public sealed class Worker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Nie udało się wysłać pause_toggle (resume from lockscreen)");
+            _logger.LogWarning(ex, "pause_toggle failed (resume from the lock screen)");
         }
     }
 
@@ -106,13 +102,13 @@ public sealed class Worker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Nie udało się wysłać pause_toggle (z tray)");
+            _logger.LogWarning(ex, "pause_toggle failed (from the tray)");
         }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Vigil uruchomiony. Server: {Server}", _config.ServerUrl);
+        _logger.LogInformation("Vigil started. Server: {Server}", _config.ServerUrl);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -126,7 +122,7 @@ public sealed class Worker : BackgroundService
             }
             catch (Exception ex)
             {
-                // Nigdy nie pozwalamy crash z tick zabić cały service. Log + continue.
+                // A failed tick never ends the service.
                 _logger.LogError(ex, "Tick failed");
                 // Fail-closed must not depend on the tick finishing: whatever broke it, still lock
                 // once the server has been silent for longer than the grace period.
@@ -139,11 +135,7 @@ public sealed class Worker : BackgroundService
 
             try
             {
-                // Czekaj N sekund ALBO do sygnału retry z lockscreen — co przyjdzie pierwsze.
-                // Po wyjściu z WaitAsync semafor jest "zerowany" (skonsumowany), kolejny
-                // retry musi wywołać Release ponownie.
-                // Krótszy interval gdy lockscreen jest aktywny — szybszy unlock + szybszy respawn
-                // jeśli dziecko zabije process.
+                // The interval, or earlier when the lock screen asks to retry (each Release wakes one wait).
                 var interval = _ui.IsLocked ? _tickIntervalLocked : _tickIntervalAdaptive;
                 await _retrySignal.WaitAsync(interval, stoppingToken).ConfigureAwait(false);
             }
@@ -199,7 +191,7 @@ public sealed class Worker : BackgroundService
 
         var (sessionActive, _) = _sessions.DetectActiveSession();
 
-        // Brak idle/foreground tracking — server akumuluje czas gdy sesja aktywna i heartbeat dochodzi.
+        // No idle detection (D16): the server counts time while a session is active and heartbeats arrive.
         var userActive = sessionActive;
 
         var req = BuildRequest(sessionActive, userActive);
@@ -225,14 +217,12 @@ public sealed class Worker : BackgroundService
         {
             _failedAttempts++;
             _logger.LogWarning(ex,
-                "Heartbeat failed (last success: {Ago:F0}s temu)",
+                "Heartbeat failed (last success {Ago:F0} s ago)",
                 (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds);
         }
 
         if (serverOk && response is not null)
         {
-            // Adaptuj interwał do sugestii serwera gdy nie locked.
-            // Serwer wysyła 30s gdy sesja nieaktywna — redukuje load gdy dziecko niezalogowane.
             if (!_ui.IsLocked && response.NextCheckSeconds > 0)
                 _tickIntervalAdaptive = TimeSpan.FromSeconds(
                     Math.Clamp(response.NextCheckSeconds, 5, 60));
@@ -264,7 +254,6 @@ public sealed class Worker : BackgroundService
         }
         else if (timeSinceLastSuccess > graceSeconds)
         {
-            // Fail-closed: server unreachable + grace minął
             var canUnlock = _offline.HasSecret;
             _offlineLocked = true;
             await _ui.EnsureLockedAsync(new LockState(
@@ -277,7 +266,7 @@ public sealed class Worker : BackgroundService
                 CurrentTimeDisplay: DateTime.Now.ToString("HH:mm")),
                 ct).ConfigureAwait(false);
         }
-        // Inaczej: w grace period, nic nie rób, czekaj na recovery
+        // Otherwise: still within the grace period.
     }
 
     private async Task ApplyResponseAsync(HeartbeatResponse response, CancellationToken ct)
@@ -297,7 +286,7 @@ public sealed class Worker : BackgroundService
                 CurrentTimeDisplay: ui?.CurrentTimeDisplay),
                 ct).ConfigureAwait(false);
 
-            // Tray: pauza aktywna → "paused" icon; inne blokady → "locked" icon
+            // Tray: paused during a pause, no pause button under any other lock
             await _ui.SendTrayStateAsync(paused: isPause, canPause: false, response.MinutesRemaining, ct)
                 .ConfigureAwait(false);
             return;
@@ -310,7 +299,7 @@ public sealed class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Forward TOTP attempt z lockscreen UI do servera, zwróć rezultat z powrotem do UI.
+    /// A TOTP code from the lock screen: to the server, or checked here while locked offline (#9).
     /// </summary>
     private async Task<TotpResult> HandleTotpFromLockscreenAsync(
         TotpFromLockscreen attempt, CancellationToken ct)

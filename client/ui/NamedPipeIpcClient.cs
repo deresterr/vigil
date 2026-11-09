@@ -9,15 +9,12 @@ using System.Threading.Tasks;
 namespace Vigil.Ui;
 
 /// <summary>
-/// Pipe client łączący się z vigil_watchdog. Bidirectional pipe, JSON line-delimited.
-///
-/// Architektura:
-/// - Connect na startup; jeśli failed → application można uruchomić w standalone-test mode
-/// - Background reader task ciągle czyta liny i emituje przez OnMessage
-/// - SendAsync zsynchronizowane przez SemaphoreSlim
-/// - SendTotpAsync używa TaskCompletionSource do korelacji request → response
-///   (na pipe nie ma natywnego request/response — IpcTotpResponse to "kolejny message",
-///   więc trzymamy pending TCS w polu i resolving go z reader thread)
+/// The pipe to vigil_watchdog: bidirectional, one JSON message per line.
+/// - connected at startup (no watchdog: vigil_ui quits)
+/// - a background reader raises OnMessage for each line
+/// - SendAsync serialized by a SemaphoreSlim
+/// - SendTotpAsync pairs a request with its IpcTotpResponse through a pending TaskCompletionSource that the
+///   reader completes (the pipe itself has no request/response)
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class NamedPipeIpcClient : IDisposable
@@ -34,10 +31,10 @@ public sealed class NamedPipeIpcClient : IDisposable
 
     private bool _disposed;
 
-    /// <summary>Wywoływany dla każdego received message (poza TOTP response który idzie do TCS).</summary>
+    /// <summary>Raised for every message except a TOTP response (that completes the pending request).</summary>
     public event Action<object>? OnMessage;
 
-    /// <summary>Wywoływany gdy pipe się rozerwie (broken connection). UI może pokazać błąd.</summary>
+    /// <summary>Raised when the pipe breaks.</summary>
     public event Action? OnDisconnected;
 
     public bool IsConnected => _pipe.IsConnected;
@@ -77,8 +74,7 @@ public sealed class NamedPipeIpcClient : IDisposable
     }
 
     /// <summary>
-    /// Wyślij TOTP attempt i czekaj na response. Jeden TOTP w locie naraz —
-    /// wyrzuca jeśli już jest pending.
+    /// Sends a TOTP code and waits for the answer. One at a time: throws while another is pending.
     /// </summary>
     public async Task<IpcTotpResponse> SendTotpAsync(string code, int minutes, CancellationToken ct)
     {
@@ -87,7 +83,7 @@ public sealed class NamedPipeIpcClient : IDisposable
         {
             if (_pendingTotp is not null && !_pendingTotp.Task.IsCompleted)
             {
-                throw new InvalidOperationException("Już jest TOTP attempt w locie.");
+                throw new InvalidOperationException("A TOTP attempt is already pending");
             }
             _pendingTotp = new TaskCompletionSource<IpcTotpResponse>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -96,7 +92,7 @@ public sealed class NamedPipeIpcClient : IDisposable
 
         await SendAsync(new IpcTotpAttempt { Code = code, Minutes = minutes }, ct).ConfigureAwait(false);
 
-        // Czekaj na response z timeout (server może być zajęty, ale 30s wystarczy)
+        // 30 s for the answer
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
         try
@@ -147,7 +143,7 @@ public sealed class NamedPipeIpcClient : IDisposable
         catch (OperationCanceledException) { /* expected */ }
         catch
         {
-            // Cicho — UI tak czy inaczej zobaczy disconnect przez event
+            // Quiet: OnDisconnected tells the UI anyway
         }
         finally
         {

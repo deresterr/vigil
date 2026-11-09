@@ -14,17 +14,17 @@
         Cursor="Arrow">
 
     <Window.Resources>
-        <!-- BoolToVisibility converter (built-in nie ma w app resources, tworzymy lokalnie) -->
+        <!-- BooleanToVisibilityConverter is not in the app resources: declared here -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <!-- Phase visibility helpers (przez DataTrigger) -->
+        <!-- Phase visibility (DataTrigger) -->
         <Style x:Key="PhasePanel" TargetType="StackPanel">
             <Setter Property="Visibility" Value="Collapsed"/>
         </Style>
     </Window.Resources>
 
     <Grid>
-        <!-- Zegar w prawym górnym rogu, font 72pt — czytelne z drugiego końca pokoju -->
+        <!-- Clock, top right, 72 pt: readable across the room -->
         <TextBlock Text="{Binding CurrentTime}"
                    FontSize="72"
                    FontWeight="Light"
@@ -33,7 +33,7 @@
                    Margin="0,40,60,0"
                    Foreground="{StaticResource MutedBrush}"/>
 
-        <!-- Centralny panel — zawartość zależy od Phase -->
+        <!-- Centre panel: content by Phase -->
         <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="900">
 
             <!-- === PHASE: Locked === -->
@@ -49,8 +49,8 @@
                     </Style>
                 </StackPanel.Style>
 
-                <!-- Główny komunikat — odrobinę jaśniejszy niż default Foreground bo to duży napis (48pt)
-                     i potrzebuje kontrastu do czytelności, ale wciąż stłumiony żeby nie świecić nocą -->
+                <!-- Main message (48 pt): a little brighter than the default foreground for contrast, still
+                     muted so it does not glow at night -->
                 <TextBlock Text="{Binding MainMessage}"
                            FontSize="48"
                            FontWeight="Light"
@@ -96,7 +96,7 @@
                         Visibility="{Binding ShowRetryButton, Converter={StaticResource BoolToVis}}"
                         Click="Retry_Click"/>
 
-                <!-- Czas pozostały — widoczny tylko w trybie pauzy i tylko gdy > 0 -->
+                <!-- Time left: during a pause only, when > 0 -->
                 <TextBlock Text="{Binding MinutesRemainingText}"
                            FontSize="32"
                            FontWeight="Light"
@@ -128,8 +128,7 @@
                         Visibility="{Binding ShowResumeButton, Converter={StaticResource BoolToVis}}"
                         Click="ResumeFromPause_Click"/>
 
-                <!-- Status komunikat (np. zły TOTP / lockout) — stłumiony czerwony,
-                     wyróżnia błąd ale nie emituje światła w trybie nocnym -->
+                <!-- Status (wrong code, lockout): a muted red that marks the error without glowing at night -->
                 <TextBlock Text="{Binding StatusMessage}"
                            Foreground="#a05858"
                            FontSize="20"
@@ -188,7 +187,7 @@
 
         </Grid>
 
-        <!-- Wyłącz komputer — prawy dolny róg, dyskretnie -->
+        <!-- Shut down: bottom right, unobtrusive -->
         <Button Content="{x:Static ui:Strings.ShutDown}"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Bottom"

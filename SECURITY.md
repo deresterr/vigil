@@ -26,9 +26,12 @@ mechanism belongs to:
 | **Detects** | alerts in the Journal | an administrator disables Vigil so that **no alert appears** in the panel, and the README does not list it under "Does not detect" |
 
 Also a vulnerability: anything that lets someone on the same network (without access to the child's PC) affect the
-server — read secrets, change settings, impersonate the child's computer.
+server — read secrets, change settings, impersonate the child's computer — other than by reading or altering plain
+HTTP traffic (below).
 
 **Not vulnerabilities** (listed in the README as known limits): an administrator getting past an "Impedes"
 mechanism, an administrator reading secrets from the PC's disk (the signing key, the TOTP secret for offline
 unlocking), booting another system from a USB stick, a service stopped for good, which shows in the panel as an
-offline computer.
+offline computer, and anything done by reading or altering the traffic of a server run without TLS — it speaks
+plain HTTP, the pairing response carries the PC's key and the panel login its password ("Network" in the
+[threat model](README.md#threat-model); put a reverse proxy with TLS in front of it).

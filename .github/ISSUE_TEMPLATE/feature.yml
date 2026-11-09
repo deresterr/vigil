@@ -1,0 +1,34 @@
+name: Feature request
+description: An idea or a change in how Vigil works.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What do you need that Vigil does not do today? Describe the situation in your family or setup.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How it could work, from the parent's or the child's side.
+    validations:
+      required: true
+  - type: dropdown
+    id: group
+    attributes:
+      label: Threat model group
+      description: If the idea is about getting around Vigil — which group would it belong to (README, Threat model)?
+      options:
+        - Not about getting around Vigil
+        - Protects (state on the server, holds against an administrator)
+        - Impedes (stops a non-administrator)
+        - Detects (an alert in the Journal)
+        - Not sure
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use today or other ways you considered.

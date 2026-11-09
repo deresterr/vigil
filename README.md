@@ -1,39 +1,77 @@
 # Vigil
 
+[![ci](https://github.com/deresterr/vigil/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/deresterr/vigil/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/deresterr/vigil)](https://github.com/deresterr/vigil/releases/latest)
+[![license](https://img.shields.io/github/license/deresterr/vigil)](LICENSE)
+
 **English** · [Polski](README.pl.md)
 
-Self-hosted screen-time control for a child's Windows 10/11 PC.
-A server in Docker on your home network counts the time and decides when to lock; a service on the child's PC
-shows a full-screen lock. The parent manages everything from a browser and unlocks with a TOTP code from their phone.
+Self-hosted screen-time control for a child's Windows 10/11 PC. A small server in Docker on your home network
+counts the time and decides when to lock; a service on the child's PC shows a full-screen lock, and the parent
+manages everything from a browser and unlocks with a TOTP code from their phone.
 
-> **Status: before 1.0.** In daily use. A child with administrator rights can get around Vigil — Vigil
-> makes that harder and shows it to the parent, it does not make it impossible (see [Threat model](#threat-model)).
-> Design decisions: [`docs/decisions.md`](docs/decisions.md).
+<p align="center">
+  <img src="docs/images/panel-status.png" alt="Parent panel: today's time and actions" width="300">
+  &nbsp;
+  <img src="docs/images/lock-screen-en.png" alt="Lock screen on the child's PC" width="520">
+</p>
 
-## What it does
+> **Before 1.0, in daily use.** A child with administrator rights can get around Vigil. Vigil makes that harder
+> and shows it to the parent; it does not make it impossible — see the [threat model](#threat-model).
 
-- several children on one server, each with any number of PCs (time counted across all of them),
-- a weekly schedule: daily time limit and night time for each day of the week and each child,
-- manual lock from the panel, extra time from the panel or with a TOTP code typed on the lock screen,
-- unlocking with the phone code also works when the server is unreachable,
-- a pause the child starts (time is not counted, the screen is locked),
-- fail-closed: no connection to the server = locked,
-- a journal in the parent panel with alerts about attempts to get around it,
-- panel, lock screen and installer in English or Polish, following the browser and Windows language.
+## How it works
+
+```mermaid
+flowchart LR
+    parent["Parent<br/>browser + TOTP app"]
+    subgraph home["Home server (Docker)"]
+        server["Vigil server<br/>FastAPI + SQLite<br/>time, schedule, locks"]
+    end
+    subgraph pc["Child's PC (Windows 10/11)"]
+        watchdog["vigil_watchdog<br/>Windows service (SYSTEM)"]
+        ui["vigil_ui<br/>tray icon + lock screen"]
+        guardian["Vigil Guardian<br/>task, every 5 min"]
+    end
+    parent -- "panel /admin" --> server
+    watchdog -- "signed heartbeat" --> server
+    server -- "lock or not, minutes left" --> watchdog
+    watchdog <-- "named pipe" --> ui
+    guardian -. "repairs, reported as alerts" .-> watchdog
+```
+
+- The service on the PC sends a signed heartbeat every few seconds (every second while locked).
+- The server adds the time to the child — summed over all of the child's PCs — and decides whether to lock:
+  manual lock, night time, daily limit or a pause, in that order.
+- The service shows or removes the full-screen lock in the child's session.
+- No answer from the server for 30 s means locked (fail-closed). The parent's TOTP code unlocks it even then.
+- A guardian task puts back what keeps the service running; every repair and every other sign of tampering
+  ends up as an alert in the parent panel.
+
+Details: [`docs/architecture.md`](docs/architecture.md).
+
+## Features
+
+- Several children on one server, each with any number of PCs; time counts across all of them.
+- Weekly schedule: a daily limit and night time for each day of the week and each child.
+- Manual lock and extra time from the panel; extra time also with a TOTP code typed on the lock screen.
+- Unlocking with the phone code works without a connection to the server.
+- A pause the child starts from the tray: time is not counted, the screen is locked.
+- Journal in the parent panel with alerts about attempts to get around Vigil, confirmed by the parent.
+- Panel, lock screen and installer in English or Polish, following the browser and Windows language.
+- The client is one file, `vigil_setup.exe`: a console wizard to install, a menu to check, update, re-pair or uninstall.
 
 ## Threat model
 
-We assume the child **may have an administrator account** — that is how most families use their PCs.
+Vigil assumes the child **may have an administrator account** — that is how most families use their PCs.
 An administrator can run code as SYSTEM, read any file and disable any service, so nothing on the PC itself is
-tamper-proof. Every mechanism in Vigil belongs to one of three groups:
+tamper-proof. Every mechanism belongs to one of three groups.
 
 **Protects** — holds even against an administrator, because the state lives on the server:
 - limits, night time, the manual lock and the time counter are on the server; the PC cannot change them,
-  at most feed it false data (see "Does not detect"),
+  only feed it false data (see "Does not detect"),
 - PCs are paired with a one-time code from the panel; every pairing issues a new key and the previous PC
   loses access,
-- a TOTP code works only once; after wrong codes unlocking pauses for minutes, so the child cannot lock
-  the parent out for long,
+- a TOTP code works only once; after wrong codes unlocking pauses for minutes,
 - a limit on login attempts to the parent panel.
 
 **Impedes** — stops a process without administrator rights and casual attempts; an administrator gets past it:
@@ -41,102 +79,112 @@ tamper-proof. Every mechanism in Vigil belongs to one of three groups:
 - no connection to the server = locked (fail-closed),
 - a service an administrator cannot stop with a plain command; a guardian undoes disabling the service,
   replacing its file and other changes to the installation every 5 minutes; the service also runs in Safe Mode,
-- the lock screen covers every monitor, shortcuts are blocked (Win, Alt+Tab, Alt+F4), Task Manager and
-  changing the account password are disabled — these two policies apply to the parent too, as it is the same account,
-- Vigil's process in the child's session cannot be closed without administrator rights; closing it
-  repeatedly (e.g. from an elevated PowerShell) logs the user off,
+- the lock screen covers every monitor and blocks shortcuts (Win, Alt+Tab, Alt+F4); Task Manager and changing
+  the account password are disabled — for the parent too, as it is the same account,
+- the lock screen process cannot be closed without administrator rights; closing it repeatedly logs the user off,
 - offline unlocking with the TOTP code: the secret is on the PC's disk and an administrator can read it.
 
-**Detects** — shows an alert to confirm in the Journal tab:
-- the Vigil service stopped, Vigil restarted without a system restart,
-- Vigil frozen or suspended while the computer was running,
+**Detects** — an alert to confirm in the Journal:
+- the service stopped, or restarted without a system restart,
+- the service frozen or suspended while the computer was running,
 - the lock screen closed repeatedly,
-- every repair by the guardian (e.g. a disabled service, a replaced file),
+- every repair by the guardian (a disabled service, a replaced file, …),
 - runs of wrong TOTP codes, failed panel logins, an invalidated pairing code.
 
-Offline unlocks and periods without a connection show in the Journal as ordinary entries.
+**Does not detect:** a service stopped for good (the panel shows the PC as offline), another system booted from
+a USB stick (offline as well), or forged requests from an administrator who read the key from the disk.
 
-**Does not detect:** a service stopped for good (the panel only shows the PC as offline), another system booted
-from a USB stick (offline as well), or forged requests sent by an administrator who read the key from the disk.
+**Network:** the server speaks plain HTTP. Requests and responses are signed, but the pairing response carries the
+PC's key in the clear, and the panel password travels unencrypted too: whoever can read that traffic can act as
+that PC or as the parent. On a network you do not trust, put a reverse proxy with TLS in front of the server.
 
-## Requirements
-
-- server: any Linux with Docker on the same network as the child's PC (or reachable over a VPN),
-- child's PC: Windows 10/11 x64, Home or Pro; the child's account is the only user account
-  and may have administrator rights (the parent maintains the PC from that same account),
-- the parent's phone with a TOTP app (Aegis, Google Authenticator, …),
-- to build the client: Windows with the .NET 8 SDK (or a ready `vigil_setup.exe` from a release).
+What counts as a vulnerability under this model: [`SECURITY.md`](SECURITY.md).
 
 ## Quick start
 
-Every release (the **Releases** tab) has both parts ready: the server image
-`ghcr.io/deresterr/vigil-server:<version>` and `vigil_setup.exe`, the whole client for the child's PC in one file.
-With them you build nothing: in step 1 set `VIGIL_IMAGE=ghcr.io/deresterr/vigil-server:<version>` in `server/.env`
-and run `docker compose pull && docker compose up -d`; the downloaded `vigil_setup.exe` replaces step 2.
+You need a Linux host with Docker on the same network as the child's PC (or reachable over a VPN), and a TOTP
+app on the parent's phone (Aegis, Google Authenticator, …).
 
-**1. Server**
+**1. Server.** In an empty folder, create `compose.yaml`:
+
+```yaml
+services:
+  vigil:
+    image: ghcr.io/deresterr/vigil-server:latest   # or a version, e.g. :0.8.0
+    container_name: vigil
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./data:/data        # the SQLite database: keep it in your backups
+```
 
 ```bash
-cd server
-cp .env.example .env          # port, optionally a ready image
 docker compose up -d
 ```
 
-Open `http://<server-ip>:8088/setup` and go through the wizard (parent password, TOTP, limits, server address).
-Set the limit and night time for each day of the week later in the panel (Settings → Weekly schedule).
-The wizard is open without a login until it is completed — do it right after starting the server.
+Open `http://<server-ip>:8088/setup` right away — the wizard is open without a login until it is completed:
+the child's name, the parent password, TOTP, the time zone and limits, and the address the PCs will use.
+Set each day of the week later in the panel: Settings → Weekly schedule.
 
-**2. Package for the child's PC** (on Windows, in the repo folder)
+**2. Child's PC.** Download [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe)
+from the latest release and run it on the child's PC. It asks for administrator rights; a downloaded copy may
+first get SmartScreen's "Windows protected your PC" (More info → Run anyway). The wizard asks for the server
+address and a pairing code (panel: Settings → Child's computers → Add computer) and finds the child's account
+itself. Nothing on the PC changes before you confirm the summary.
 
-You need the .NET 8 SDK — only on the machine that builds; the package is self-contained, the child's PC does
-not need it:
+Run `vigil_setup.exe` again later for the status and the menu: check, update, change the server address,
+re-pair, uninstall. Parameters for scripts: [`docs/installer.md`](docs/installer.md).
 
-```
-winget install Microsoft.DotNet.SDK.8
-```
+<details>
+<summary>More screenshots</summary>
 
-Then (in a new window, so that `dotnet` is on the PATH):
+| | |
+|---|---|
+| ![Journal with an alert](docs/images/journal-alert.png) | ![Weekly schedule](docs/images/panel-schedule.png) |
+| ![Installer wizard](docs/images/setup-wizard.png) | ![Installer menu](docs/images/setup-menu.png) |
 
-```
-Build.cmd            → dist\vigil_setup.exe
-```
+</details>
 
-`vigil_setup.exe` is the whole client: the installer carries the service and the lock screen. Instead of building
-it you can download it from the latest release:
-[`releases/latest/download/vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe).
+### Updating
 
-**3. Install on the child's PC** — copy `vigil_setup.exe` to the child's PC and run it (it asks for
-administrator rights; a downloaded copy may first get SmartScreen's "Windows protected your PC": More info →
-Run anyway). The wizard asks for the server address and a pairing code (parent panel: Settings →
-Child's computers → "Add computer") and finds the child's account itself. Run it again later for the menu:
-check, update, change the server address, re-pair, uninstall.
+- Server: `docker compose pull && docker compose up -d`. The database schema is updated at start; back up `data/` first.
+- Child's PC: run the new `vigil_setup.exe` → **Update to …**. The address and the key stay.
 
-```
-vigil_setup.exe                  wizard, or the status and menu when installed (menu: Uninstall)
-vigil_setup.exe -Mode verify     checks the installation (or, uninstalled, that nothing was left)
-vigil_setup.exe -Mode uninstall  uninstalls without the menu
-```
+### If Windows does not start or Vigil cannot be removed
 
-Parameters for scripts and every step of an install: [`docs/installer.md`](docs/installer.md).
+For an ordinary lock the parent's TOTP code is enough, also offline. If the PC itself must be freed from outside
+Windows: Windows Recovery → Troubleshoot → Command Prompt → `rmdir /s /q D:\ProgramData\Vigil` (the Windows
+drive is often `D:` there; check with `dir D:\ProgramData`), restart, then uninstall from the menu and run
+`vigil_setup.exe -Mode verify`. Without its files Vigil does not start, so there is no lock.
+Step by step: [`docs/installer.md`](docs/installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally).
 
-**If Windows does not start or Vigil cannot be removed normally:** boot Windows Recovery → Troubleshoot →
-Command Prompt, run `rmdir /s /q D:\ProgramData\Vigil` (the Windows drive is often `D:` there; check with
-`dir D:\ProgramData`), restart normally, then uninstall (menu → Uninstall) and run `vigil_setup.exe -Mode verify`. Without its
-files Vigil does not start, so there is no lock. For an ordinary lock the parent's TOTP code is enough.
+## Requirements
 
-## Repository layout
+- **Server:** Docker on Linux. The release image is built for x86-64 (amd64); elsewhere build it from `server/`.
+- **Child's PC:** Windows 10/11 x64, Home or Pro. The child's account is the only user account and may be an
+  administrator; the parent maintains the PC from that same account.
+- **Parent:** a browser and a TOTP app on the phone.
+
+## Building from source
+
+- Server: `cd server && cp .env.example .env && docker compose up -d` builds the image locally
+  (`VIGIL_PORT` and the time zone of the logs in `.env`). Tests: `pip install -r requirements-dev.txt && ruff check . && pytest -q`.
+- Client: Windows with the .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`), then `Build.cmd` →
+  `dist\vigil_setup.exe`. The package is self-contained; the child's PC does not need .NET.
 
 | Folder | Contents |
 |---|---|
 | `server/` | FastAPI + SQLite, parent panel, tests |
-| `client/` | Windows service (`watchdog`), lock screen with a tray icon (`ui`), installer (`setup`) |
-| `client/setup/` | the installer `vigil_setup.exe`: wizard, menu, verify, integrity guardian |
-| `e2e/` | installer end-to-end test (CI, throwaway Windows) |
-| `docs/` | architecture, installer, guardian, design decisions |
+| `client/` | Windows service (`watchdog`), lock screen and tray (`ui`), installer and guardian (`setup`) |
+| `e2e/` | installer end-to-end test, run in CI on a throwaway Windows runner |
+| `docs/` | [architecture](docs/architecture.md), [installer](docs/installer.md), [guardian](docs/guardian.md), [design decisions](docs/decisions.md) |
+
+Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md). Changes: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Security
 
-Report vulnerabilities privately — how, and what falls within the threat model: [`SECURITY.md`](SECURITY.md).
+Report vulnerabilities privately (Security → Report a vulnerability) — details in [`SECURITY.md`](SECURITY.md).
 
 ## License
 

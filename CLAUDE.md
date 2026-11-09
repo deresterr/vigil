@@ -67,6 +67,9 @@ everywhere the same problem occurs, not only where it was reported.
 - Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. The maintainer
   merges and creates releases/tags in the GitHub UI (merged branches are deleted automatically); open PRs with
   `gh api` (REST).
+- GHCR: a `vigil-server` package created outside the release workflow is not writable by it — the manifest push
+  ends with `denied`. Fix: package settings → Manage Actions access → this repository with the Write role,
+  then re-run the failed job.
 - PowerShell 5.1: `.ps1` must be UTF-8 **with BOM** + CRLF (see `.editorconfig`), otherwise non-ASCII text breaks.
 - PowerShell: `$PSScriptRoot` is empty inside `param()` defaults — compute it in the body.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.
@@ -131,3 +134,8 @@ everywhere the same problem occurs, not only where it was reported.
 - PowerShell: `Write-Step/OK/Warn/Skip` helpers, `$ErrorActionPreference = 'Stop'`.
 - One issue = one branch = one PR, except client changes batched for one VM session (see above).
   Update this file in the same PR when an invariant or gotcha changes.
+- User-visible changes get a line under `## [Unreleased]` in `CHANGELOG.md` in the same PR; at a release the
+  maintainer moves it under the version, and the release notes are written from that section.
+- `README.md` and `README.pl.md` carry the same content; change both. `CONTRIBUTING.md` is the human version of
+  this file's rules — keep them in step. Nothing from the maintainer's environment (addresses, host names, paths,
+  test data) goes into the repo, issues, PRs or release notes.

@@ -14,6 +14,8 @@
         -> vigil_setup install
         -> C:\ProgramData\Vigil deleted with the watchdog stopped (the README's emergency path from WinRE)
         -> vigil_setup uninstall -> nothing left
+        -> the wizard (key script): unreachable address, wrong code, install -> verify
+        -> the menu (key script): check, uninstall -> nothing left
 
     Every verify runs twice: the PowerShell one (installer\vigil_install.ps1, the oracle, not in the package
     since #64) and vigil_setup.exe's; both must give the expected exit code at every point.
@@ -53,7 +55,8 @@ $ServerDir = (Resolve-Path $ServerDir).Path
 
 $ServerUrl = "http://127.0.0.1:$Port"
 $Installer = (Resolve-Path (Join-Path $PSScriptRoot '..\installer\vigil_install.ps1')).Path
-$Setup = Join-Path $PackageDir 'vigil_setup.exe'
+# Not $Setup: PowerShell names are case-insensitive and the scenario has a $setup (the wizard's JSON).
+$SetupExe = Join-Path $PackageDir 'vigil_setup.exe'
 $InstallDir = 'C:\ProgramData\Vigil'
 $WorkDir = Join-Path ([IO.Path]::GetTempPath()) "vigil-e2e-$PID"
 New-Item -Path $WorkDir -ItemType Directory -Force | Out-Null
@@ -90,8 +93,18 @@ function Invoke-Installer {
 function Invoke-Setup {
     # vigil_setup.exe from the package, parameter mode (input redirected: the wizard can never start).
     Write-Host "> vigil_setup.exe $($args -join ' ')" -ForegroundColor DarkGray
-    $null | & $Setup @args | Out-Host
+    $null | & $SetupExe @args | Out-Host
     return $LASTEXITCODE
+}
+
+function Invoke-Screens([string]$What, [string[]]$Keys) {
+    # vigil_setup.exe without -Mode: the wizard or the menu, driven by a key script (-Keys, Screens/Scripted.cs).
+    # The screens go to the CI log as plain text. A script that runs out ends the run with exit code 3.
+    $file = Join-Path $WorkDir "keys-$([guid]::NewGuid().ToString('N')).txt"
+    Set-Content -Path $file -Value $Keys -Encoding UTF8
+    Write-Host "> vigil_setup.exe -Keys ($($Keys -join ' | '))" -ForegroundColor DarkGray
+    $null | & $SetupExe -Keys $file -ChildUsername $ChildUsername | Out-Host
+    Assert-That ($LASTEXITCODE -eq 0) "${What}: exit code 0 (got $LASTEXITCODE)"
 }
 
 function Assert-Setup([string]$What) {
@@ -278,6 +291,38 @@ try {
     Assert-Verify 1 'service registered, folder gone'
     Assert-Setup 'uninstall of what is left' -Mode uninstall
     Assert-Verify 0 'after uninstall (nothing left)'
+
+    Write-Section 'The wizard (key script)'
+    $code = New-PairingCode @{ device_id = (Get-Device).id }
+    $wrong = ([int]::Parse($code.Substring(0, 1)) + 1) % 10
+    $wrong = "$wrong$($code.Substring(1))"
+    Invoke-Screens 'wizard install' @(
+        '127.0.0.1:1'           # 1: nothing listens there -> the same screen with an error
+        '{Esc}'                 #    clear the field
+        ($ServerUrl -replace '^http://', '')
+        $wrong                  # 2: a wrong code: accepted as 8 digits, used only after the summary
+        '{1}'                   # summary: Install -> pairing fails (401), nothing changed -> the code again
+        $code
+        '{Enter}'               # installed, verify table -> the menu
+        '{0}'                   # menu: Exit
+    )
+    $failedPairing = @((Invoke-Admin Get 'journal?days=2').days | ForEach-Object { $_.entries } |
+        Where-Object { $_.type -eq 'pairing_failed' }).Count
+    Assert-That ($failedPairing -ge 1) 'the wrong code reached the server (pairing_failed)'
+    Wait-Heartbeat 'the PC is online after the wizard'
+    Assert-Verify 0 'installed by the wizard'
+
+    Write-Section 'The menu (key script): check, uninstall'
+    $stopsBefore = Get-ServiceStopCount
+    Invoke-Screens 'menu check and uninstall' @(
+        '{1}'                   # Check the installation (full list)
+        '{Enter}'               # back to the menu
+        '{5}'                   # Uninstall
+        '{1}'                   # confirm
+        '{Enter}'               # exit
+    )
+    Wait-Until { (Get-ServiceStopCount) -gt $stopsBefore } 20 'the server logged a normal service stop (goodbye)'
+    Assert-Verify 0 'after uninstall from the menu (nothing left)'
 
     $failed = $false
     Write-Host "`nInstaller e2e: PASSED" -ForegroundColor Green

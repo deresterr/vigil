@@ -6,7 +6,7 @@
 // Plurals: 'pl one|pl few|pl many' -> 'en one|en other' (Intl.PluralRules).
 const I18N_EN = /*I18N_EN*/{
   "Adres serwera Vigil": "Vigil server address",
-  "Adres, który wpisujesz do <code>Install.cmd</code>. Musi być osiągalny z PC dziecka. Jeśli używasz DNS rewritingu w przeglądarce (np. <em>kontrola.test</em>), wpisz tu bezpośredni adres IP serwera.": "The address you enter in <code>Install.cmd</code>. The child's PC must be able to reach it. If your browser uses a rewritten DNS name (e.g. <em>control.test</em>), enter the server's direct IP address here.",
+  "Adres, który wpisujesz w instalatorze (<code>vigil_setup.exe</code>). Musi być osiągalny z PC dziecka. Jeśli używasz DNS rewritingu w przeglądarce (np. <em>kontrola.test</em>), wpisz tu bezpośredni adres IP serwera.": "The address you enter in the installer (<code>vigil_setup.exe</code>). The child's PC must be able to reach it. If your browser uses a rewritten DNS name (e.g. <em>control.test</em>), enter the server's direct IP address here.",
   "Akcje": "Actions",
   "Anuluj kod": "Cancel code",
   "Blokady": "Locks",
@@ -183,7 +183,7 @@ const I18N_EN = /*I18N_EN*/{
   "Vigil nie odzywał się, choć komputer działał": "Vigil was silent while the computer was running",
   "Vigil uruchomiony ponownie": "Vigil restarted",
   "Vigil został zatrzymany i uruchomiony ponownie": "Vigil was stopped and started again",
-  "Ważny do {time}, jednorazowy. Uruchom <code>Install.cmd</code> na tym komputerze jako administrator i wpisz ten kod, gdy instalator o niego poprosi.": "Valid until {time}, single use. Run <code>Install.cmd</code> on that computer as administrator and enter this code when the installer asks for it.",
+  "Ważny do {time}, jednorazowy. Uruchom <code>vigil_setup.exe</code> z paczki na tym komputerze i wpisz ten kod, gdy instalator o niego poprosi.": "Valid until {time}, single use. Run <code>vigil_setup.exe</code> from the package on that computer and enter this code when the installer asks for it.",
   "Wczoraj, {date}": "Yesterday, {date}",
   "Weryfikuj →": "Verify →",
   "Wiele nieudanych logowań do panelu": "Many failed panel logins",

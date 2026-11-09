@@ -1,6 +1,7 @@
-# Architecture (as of v0.6)
+# Architecture
 
-Describes the system as it is. Planned changes live in `review-2026-11.md`.
+How the system works today. The decisions behind it (D1–D26) are in [`decisions.md`](decisions.md), the
+installer in [`installer.md`](installer.md), the guardian in [`guardian.md`](guardian.md).
 
 ```
  Parent: browser (/admin) + TOTP app on phone
@@ -23,7 +24,7 @@ Protocol v2. Request headers: `X-Timestamp` (unix ms), `X-Nonce` (16 random byte
 `X-Signature = base64(HMAC-SHA256(signing_key, METHOD\nPATH\nTIMESTAMP\nNONCE\nhex(sha256(body))))`,
 where PATH is the API route (`/v1/heartbeat`) without any reverse-proxy prefix. Server rejects (401, unsigned):
 bad signature, age > `max_request_age_seconds` (60), > 5 s in the future, reused nonce (`used_nonces`,
-pruned after `nonce_cache_seconds`). A rejected request never stores its nonce. No bearer token (removed in v2).
+pruned after `nonce_cache_seconds`). A rejected request never stores its nonce.
 Against an admin child this is friction: the key is in `signing.dat`, readable by an elevated process.
 
 Which device (D7): every paired PC has its own key (`devices.signing_key`). Requests carry no device id; the
@@ -53,12 +54,13 @@ Request bodies are Pydantic models in `app/models.py` (strict types, unknown fie
 `minutes` and (night) `until_local`. Each UI words them in its own environment's language — the panel by the
 browser (`static/i18n.js`), the lock screen and tray by the child's Windows (`vigil_ui`, `Strings.cs`; the watchdog
 runs as SYSTEM and does not know it, so the IPC carries codes too: `lock_reason` + `show_totp_field`, TOTP `mode`,
-`minutes`, `until_local`). Polish and English; the installer stays Polish until it is rewritten.
+`minutes`, `until_local`). Polish and English; `vigil_setup` follows Windows too (`client/setup/Strings.cs`).
 
 ## Children, devices and time accounting (`heartbeat.py`, D7)
 
 One server, many children, each with any number of PCs. The weekly schedule (`child_schedule`, #48) and all
-locks (limit, night, manual, pause) are **per child**: a lock or pause applies to every PC of the child. Time is the **sum over the child's devices** (two PCs at once count twice).
+locks (limit, night, manual, pause) are **per child**: a lock or pause applies to every PC of the child.
+Time is the **sum over the child's devices** (two PCs at once count twice).
 
 Per heartbeat of a device:
 1. `delta = now − devices.last_heartbeat_utc`, clamped to `0..heartbeat_delta_max` (15 s).
@@ -82,7 +84,7 @@ the first `night_end` after that, so "Friday 23:00–09:00" covers Friday 23:00 
 One TOTP secret for all children (one `totp_lockout` row, one `totp_last_step`).
 
 Schema changes only through `migrations.py` (`PRAGMA user_version` = migrations applied, one transaction
-each; a database newer than the code is refused). Config is read from SQLite on every request, no cache;
+each; a database newer than the code is refused; migration 1 is the v0.8 schema, D26). Config is read from SQLite on every request, no cache;
 missing keys fall back to `CONFIG_DEFAULTS`.
 
 Other tables: `config` (server-wide key/value incl. secrets: `totp_secret`,
@@ -103,7 +105,6 @@ Compared with the same device's previous heartbeat (`devices.wd_*`, reset when i
 | same instance, awake gap > 90 s, retries | `watchdog_offline` (info) |
 | new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
 | vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not; respawned at once, judged 10 s later — an exit with a logoff of its session or a shutdown reported by the SCM around it is the session ending, not a kill | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
-
 | the guardian repaired something (Event Log 7001–7006) | `tamper_guardian_repaired` (`check`, `repaired`), stamped with the repair time; sent by `GuardianReporter` every minute, deduped by record id + time |
 
 `tamper_*` = alerts for the parent. Not detected: a watchdog that is stopped and never comes back
@@ -115,10 +116,8 @@ First start: `bootstrap.py` generates secrets; `setup_complete=0` ⇒ `setup_gua
 everything to `/setup` (unauthenticated wizard: first child's name and limits, parent password, TOTP, server URL).
 In the panel the parent pairs PCs: a code for "new PC of child X named Y" or "re-pair device Z" (only its
 hash is stored, with its target: `pairing_*` config keys); `vigil_setup.exe` sends it to `/v1/pair` and stores the
-returned key in `signing.dat`. Re-pairing replaces that device's key (the old install fails closed); "Odłącz"
+returned key in `signing.dat`. Re-pairing replaces that device's key (the old install fails closed); Unpair
 deletes the device row, so its key stops working. There is no way to read a device key in the panel.
-
-Schema: `migrations.py`, migration 1 = the v0.8 schema (D26: databases of earlier versions are not migrated).
 
 Journal tab (`endpoints/journal.py`, `GET /admin/api/journal?days=&before=&child_id=`): per local day, newest first
 by `ts_utc` (not insertion order: `watchdog_offline` and `offline_unlock` arrive on reconnect and carry the
@@ -127,7 +126,7 @@ PC on/off (`watchdog_*`), lock starts (`lock_started`, logged by the heartbeat w
 to limit/night), pause (on/off paired into one entry), parent actions that change locking, and alerts.
 Alerts = `tamper_*` + `totp_lockout`, `admin_login_locked`, `pairing_code_invalidated`; unconfirmed ones are
 highlighted and counted on the tab (`alerts_unacked` in `/status`), confirmed via `POST /admin/api/alerts/ack`
-(`events.acked_utc`). Polish wording and filters live in `admin.html`.
+(`events.acked_utc`). The wording (Polish source text, English in `i18n.js`) and the filters live in `admin.html`.
 
 Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cookie `vigil_session`
 (24 h, HttpOnly, SameSite=Strict, path `/admin`). Password: argon2id.
@@ -148,20 +147,25 @@ kill it. The watchdog creates the pipe first, then waits ≤ 10 s for the connec
 dies) and accepts only the PID it spawned. After a respawn it re-sends the lock and tray state, because
 a new UI starts unlocked. Lock = `set_state`, unlock = `unlock`; the UI hides the taskbar while locked
 and restores it on unlock and on start (an instance killed while locked leaves it hidden). Orphans in
-the session (a previous watchdog instance's vigil_ui) are killed before a spawn. Its environment (D24) is
-built by the watchdog from a fixed list (system values, the profile folders from the token,
-`DOTNET_EnableDiagnostics=0`), nothing from the child's own (`HKCU\Environment` is writable without
-elevation); its native WPF libraries sit next to it in ProgramData, nothing is extracted at run time. The UI quits when the pipe connect fails and 30 s after losing the pipe.
-Diagnostics: `%LOCALAPPDATA%\Vigil\ui.log`.
+the session (a previous watchdog instance's vigil_ui) are killed before a spawn. The UI quits when the pipe
+connect fails and 30 s after losing the pipe. Diagnostics: `%LOCALAPPDATA%\Vigil\ui.log`.
+
+Its environment (D24) is built by the watchdog from a fixed list (system values, the profile folders from the
+token, `DOTNET_EnableDiagnostics=0`), nothing from the child's own: `HKCU\Environment` is writable without
+elevation, and the .NET runtime would take startup hooks or a profiler from it. Its native WPF libraries sit
+next to it in ProgramData; nothing is extracted at run time. `vigil_ui.exe --standalone-test [--mode=night|
+limit|manual|pause|server_unreachable] [--lang=en|pl] [--no-keyboard-blocker] [--exit-after=SECONDS]` shows the
+overlay without a watchdog, for UI work; only from the command line.
 
 The TOTP field accepts only digits (typed or pasted, max 6) and regains focus after each check.
 
 Lock overlay hardening: fullscreen on every monitor, `TopmostEnforcer` (500 ms), `KeyboardBlocker`
-(WH_KEYBOARD_LL: Win, Alt+Tab, Alt+F4, Ctrl+Esc), `TaskbarHider`. Ctrl+Alt+Del cannot be blocked;
-the installer's per-user policies close what it offers: `DisableTaskMgr` (Task Manager over the overlay)
-and `DisableChangePassword` (the shared account's password), plus accessibility hotkeys and touchpad
-gestures off. Nothing else (D12: they hit the parent too); older installs' `DisableRegistryTools`,
-`DisableLockWorkstation` and `NoLogoff` are removed on install.
+(WH_KEYBOARD_LL: Win, Alt+Tab, Alt+Esc, Alt+F4, Ctrl+Esc, Ctrl+Shift+Esc, F1, F11, F12), `TaskbarHider`.
+Ctrl+Alt+Del cannot be blocked; the installer's per-user policies close what it offers: `DisableTaskMgr`
+(Task Manager over the overlay) and `DisableChangePassword` (the shared account's password), plus
+accessibility hotkeys and touchpad gestures off. Nothing else (D12: they hit the parent too). The overlay is
+an ordinary topmost window on `WinSta0\Default`, not a separate secure desktop (WPF needs the DWM, which a
+desktop of its own does not have): friction, like the rest of the overlay.
 
 ## IPC (JSON, one message per line)
 
@@ -182,8 +186,7 @@ heartbeat response whenever the watchdog's `totp_fp` (sha256[:16]) differs — a
 regeneration — and is stored in `totp.dat` (DPAPI LocalMachine, entropy `Vigil-Totp-v1`, SYSTEM full /
 Administrators read). Grants are queued and sent as `offline_grants` with the next successful heartbeat;
 the server logs `offline_unlock` (journal) and burns the step. Friction + detection: an admin child can
-read `totp.dat`. Installs before v0.5 used `emergency.dat` + `C:\Users\Public\Vigil\bypass.flag`;
-the installer removes both.
+read `totp.dat`.
 
 ## Windows footprint
 

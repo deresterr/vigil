@@ -179,6 +179,12 @@ public sealed class Worker : BackgroundService
                 .ConfigureAwait(false);
             _logger.LogInformation("Goodbye sent ({Reason})", reason);
         }
+        catch (KeyRejectedException)
+        {
+            // Re-pairing replaces the key on the server before the installer stops this service: the
+            // server already knows, nothing to warn about (it was a warning in every verify after re-pairing).
+            _logger.LogInformation("Goodbye refused: the key was replaced or the device removed ({Reason})", reason);
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Goodbye not delivered ({Reason})", reason);

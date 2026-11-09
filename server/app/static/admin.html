@@ -183,8 +183,7 @@
       z-index: 100;
       max-width: calc(100vw - 32px);
       box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-      /* visibility + opacity zapobiegają wystawaniu pustego diva nad dolną krawędź ekranu
-         (transform translateY(120%) chowa tylko ~5px wysokości, reszta widoczna). */
+      /* visibility + opacity: translateY(120%) alone left a strip of the empty box above the bottom edge. */
       opacity: 0;
       visibility: hidden;
       transition: transform 0.25s ease, opacity 0.25s ease, visibility 0s linear 0.25s;
@@ -1127,7 +1126,7 @@ async function unpairDevice(id) {
 // === Helpers do modali z secret-display ===
 
 function copyText(text, btn) {
-  // Clipboard API z fallback na execCommand (działa też na HTTP w LAN bez secure context)
+  // Clipboard API, with execCommand as the fallback over plain HTTP (no secure context)
   const ok = (msg) => {
     if (btn) {
       const orig = btn.textContent;
@@ -1146,7 +1145,7 @@ function copyText(text, btn) {
 }
 
 function fallbackCopy(text, ok, fail) {
-  // execCommand działa na HTTP. Tworzymy ukryty textarea, select, copy.
+  // execCommand works over HTTP: a hidden textarea, select, copy.
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.position = 'fixed';
@@ -1160,15 +1159,13 @@ function fallbackCopy(text, ok, fail) {
   document.body.removeChild(ta);
 }
 
-function secretRow(label, value) {
-  // Buduję bezpiecznie — escape value przez textContent
-  const escId = 'sec_' + Math.random().toString(36).slice(2, 9);
+// A copyable secret: the markup has an empty <pre id>; the caller puts the value in with textContent.
+function secretRow(label, id) {
   return '<p class="secret-label">' + label + '</p>' +
          '<div class="secret-row">' +
-         '<pre id="' + escId + '"></pre>' +
-         '<button class="copy-btn" onclick="copyFromPre(\'' + escId + '\', this)">' + t('Kopiuj') + '</button>' +
-         '</div>' +
-         '<script>document.getElementById("' + escId + '").textContent=' + JSON.stringify(value) + ';<\/script>';
+         '<pre id="' + id + '"></pre>' +
+         '<button class="copy-btn" onclick="copyFromPre(\'' + id + '\', this)">' + t('Kopiuj') + '</button>' +
+         '</div>';
 }
 
 function copyFromPre(id, btn) {
@@ -1195,8 +1192,9 @@ async function regenTotp() {
     showModal(t('Nowy kod TOTP'),
       '<p class="muted">' + t('Zeskanuj QR w aplikacji Aegis. <strong>Stary kod już nie działa.</strong>') + '</p>' +
       '<div class="qr-box"><img src="data:image/png;base64,' + r.qr_png_base64 + '" alt="QR"></div>' +
-      secretRow('Secret', r.secret)
+      secretRow('Secret', 'totpSecret')
     );
+    document.getElementById('totpSecret').textContent = r.secret;
   } catch (e) { fail(e); }
 }
 
@@ -1204,12 +1202,6 @@ function showModal(title, body) {
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML = body;
   document.getElementById('modal').classList.add('show');
-  // Wykonaj <script> tagi w innerHTML (innerHTML ich nie wykonuje automatycznie)
-  document.getElementById('modalBody').querySelectorAll('script').forEach(oldScript => {
-    const newScript = document.createElement('script');
-    newScript.textContent = oldScript.textContent;
-    oldScript.parentNode.replaceChild(newScript, oldScript);
-  });
 }
 function closeModal() {
   document.getElementById('modal').classList.remove('show');

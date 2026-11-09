@@ -43,7 +43,7 @@ _heartbeat_counter = 0
 
 
 def _maybe_cleanup_events(conn: sqlite3.Connection, cfg: dict) -> None:
-    """Co 100 heartbeatów usuń events starsze niż retention (sekcja 6.6)."""
+    """Every 100 heartbeats: delete events older than events_retention_days."""
     global _heartbeat_counter
     _heartbeat_counter += 1
     if _heartbeat_counter % 100 != 0:

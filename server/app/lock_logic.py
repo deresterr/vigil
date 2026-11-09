@@ -1,7 +1,6 @@
-"""Wspólna logika wyznaczania lock_reason + helper funkcje datetime.
+"""The lock reason and its datetime helpers: one implementation for heartbeat, totp and admin_api.
 
-Wywoływana z heartbeat, totp i admin_api — jedna implementacja zamiast kopii.
-Kolejność priorytetów (spec sekcja 6.3): manual > night > limit.
+Priority: manual > night > limit > pause.
 
 Also the weekly schedule (#48): per-day limit and the night window that belongs to each evening.
 Helpers live here rather than in heartbeat.py to avoid a heartbeat <-> lock_logic import cycle.
@@ -20,7 +19,7 @@ from .db import ensure_child_day
 
 
 def utc_iso(dt: datetime) -> str:
-    """ISO 8601 z 'Z' suffix (zgodnie ze przykładami w spec sekcji 5.2)."""
+    """ISO 8601 UTC with a 'Z' suffix, milliseconds."""
     return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
@@ -123,9 +122,9 @@ def compute_lock_reason(
     state: dict,
     cfg: dict,
 ) -> str | None:
-    """Wyznacza aktualny lock_reason bez modyfikowania stanu DB.
+    """The current lock reason, without changing the database.
 
-    Zwraca: 'manual' | 'night' | 'limit' | 'pause' | None (brak blokady).
+    Returns 'manual' | 'night' | 'limit' | 'pause' | None (not locked).
 
     cfg: load_lock_config(conn, child_id).
     """
@@ -146,7 +145,7 @@ def compute_lock_reason(
     if state["seconds_used"] // 60 >= daily_limit(cfg, today_local) + state["limit_override_minutes"]:
         return "limit"
 
-    # Pauza — najniższy priorytet. Aktywna tylko gdy dziecko ma jeszcze czas.
+    # Pause: the lowest priority, only while the child still has time left.
     if state.get("pause_active"):
         return "pause"
 

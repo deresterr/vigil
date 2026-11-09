@@ -1,11 +1,9 @@
-"""Middleware: HMAC-SHA256 podpis każdej odpowiedzi po pomyślnym auth.
+"""Middleware: HMAC-SHA256 signature of every response to an authenticated request.
 
-Pokrywa: request_nonce + response_body_bytes (sekcja 5.1).
-Header: `X-Signature: <base64>`.
+Signed: the request's nonce + the response body. Header `X-Signature: <base64>`.
 
-Vigil watchdog weryfikuje przed zaakceptowaniem odpowiedzi (fail-closed gdy mismatch).
-Odpowiedzi bez przejścia przez authenticate_request (np. /health, lub błędy auth) NIE są podpisywane —
-watchdog traktuje brak podpisu tak samo jak server unreachable.
+The watchdog checks it before trusting a response. Responses that did not pass authenticate_request
+(/health, authentication errors) are not signed, and the watchdog treats them like an unreachable server.
 """
 
 from __future__ import annotations
@@ -29,11 +27,11 @@ class HmacSigningMiddleware(BaseHTTPMiddleware):
         if not nonce or not signing_key:
             return response
 
-        # Read body — body_iterator jest "consumable" tylko raz
+        # The body iterator can be consumed once
         chunks = [chunk async for chunk in response.body_iterator]
         body = b"".join(chunks)
 
-        # HMAC: signing_key, message = nonce_bytes + response_body_bytes
+        # HMAC with signing_key over nonce + body
         sig = hmac.new(
             signing_key,
             nonce.encode("ascii") + body,
@@ -41,7 +39,7 @@ class HmacSigningMiddleware(BaseHTTPMiddleware):
         ).digest()
         sig_b64 = base64.b64encode(sig).decode("ascii")
 
-        # Rebuild response — content-length musi być przeliczone, body_iterator został zużyty
+        # A new response: the iterator is spent and content-length is recomputed
         new_headers = dict(response.headers)
         new_headers.pop("content-length", None)
         new_headers["X-Signature"] = sig_b64

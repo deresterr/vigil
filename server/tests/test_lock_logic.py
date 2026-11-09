@@ -76,8 +76,8 @@ def test_night_window_crosses_midnight():
     assert not locked_at(CFG, WED, 12, 0)
 
 
-def test_migrated_week_keeps_friday_as_weekend():
-    """week_schedule = the week before #48: Mon–Thu one limit, Fri–Sun the other."""
+def test_wizard_week_counts_friday_as_weekend():
+    """week_schedule (the setup wizard's two limits): Mon–Thu one limit, Fri–Sun the other."""
     assert [daily_limit(CFG, d) for d in (MON, TUE, WED, THU, FRI, SAT, SUN)] == [120] * 4 + [240] * 3
 
 

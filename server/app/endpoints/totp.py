@@ -1,12 +1,10 @@
-"""POST /v1/totp_attempt — TOTP grant z auto-trybem (extend_limit/extend_night/manual_unlock)
-i progresywnym lockoutem (sekcja 5.3, 5.4).
+"""POST /v1/totp_attempt: a TOTP code typed on the lock screen, with a growing lockout after wrong codes.
 
-Server sam wybiera tryb na podstawie aktualnego lock_reason:
-- lock=limit  → extend_limit (dodaje minutes_to_grant do limit_override)
-- lock=night  → extend_night (przelicza per sekcja 4.5: until = night_start + minutes)
-- lock=manual → manual_unlock (zdejmuje manual_lock; minutes ignorowane — interpretacja
-                własna, spec milczy o tym przypadku)
-- lock=None   → noop (TOTP nie ma sensu bez aktywnej blokady)
+The server picks the mode from the current lock reason:
+- limit  → extend_limit (minutes_to_grant added to the day's limit override)
+- night  → extend_night (minutes of use inside the night, see _compute_night_extension_until)
+- manual → manual_unlock (the manual lock is lifted; minutes ignored: the parent's code ends it)
+- none   → noop
 """
 
 from __future__ import annotations
@@ -39,7 +37,7 @@ _RESET_AFTER_SECONDS = 86400  # failure counter resets 24 h after the first fail
 
 
 def _check_lockout(conn: sqlite3.Connection, now_utc: datetime) -> int | None:
-    """Zwraca pozostałe sekundy lockoutu lub None jeśli brak aktywnego lockoutu."""
+    """Seconds left of an active lockout, or None."""
     row = conn.execute(
         "SELECT lockout_until_utc FROM totp_lockout WHERE id = 1"
     ).fetchone()
@@ -52,7 +50,7 @@ def _check_lockout(conn: sqlite3.Connection, now_utc: datetime) -> int | None:
 
 
 def _record_failure(conn: sqlite3.Connection, now_utc: datetime) -> tuple[int, int]:
-    """Zwiększa licznik nieudanych prób, ustawia lockout jeśli próg osiągnięty.
+    """Counts a failed attempt and starts a lockout when the threshold is reached.
 
     Returns: (new_attempts_count, lockout_seconds_remaining)
     """
@@ -65,7 +63,7 @@ def _record_failure(conn: sqlite3.Connection, now_utc: datetime) -> tuple[int, i
         new_first = now_utc
     else:
         first_attempt = parse_iso_utc(row["first_attempt_utc"])
-        # Reset licznika po 24h ciszy (sekcja 5.4)
+        # The count starts over after a quiet day
         if (now_utc - first_attempt).total_seconds() > _RESET_AFTER_SECONDS:
             new_count = 1
             new_first = now_utc
@@ -99,7 +97,7 @@ def _record_failure(conn: sqlite3.Connection, now_utc: datetime) -> tuple[int, i
 
 
 def _reset_lockout(conn: sqlite3.Connection) -> None:
-    """Po pierwszej udanej próbie kasujemy rekord (sekcja 5.4)."""
+    """A correct code clears the failure count and any lockout."""
     conn.execute("DELETE FROM totp_lockout WHERE id = 1")
 
 
@@ -113,10 +111,9 @@ def _compute_night_extension_until(
     lock_cfg: dict,
     current_extension_utc: datetime | None = None,
 ) -> tuple[datetime, datetime]:
-    """Bonus = "ile minut grania PODCZAS ciszy nocnej". Pierwszy grant liczy się od początku
-    ciszy nocnej (trwającej albo najbliższej). Kolejne granty (gdy istnieje aktywne extension) DODAJĄ
-    się do końca poprzedniego extension — wielokrotne klikanie "+60 min" akumuluje się
-    (3 × +60 = 3h przedłużenia, nie 1h).
+    """The grant is minutes of use inside the night. The first one counts from the start of the night (in
+    progress or next); further ones while an extension is active add to its end, so three "+60 min" give
+    three hours, not one.
 
     Which night: the one in progress or the next (lock_logic.current_or_next_night_start), so after
     midnight it is the night of the previous evening (#48).
@@ -125,10 +122,8 @@ def _compute_night_extension_until(
     """
     now_local = now_utc.astimezone(tz)
 
-    # Baza do dopisania bonusu: aktualny extension jeśli istnieje i jest w przyszłości,
-    # inaczej max(teraz, początek nocy).
-    # max() chroni przed ustawieniem extension w przeszłości — gdy poprzedni extension
-    # wygasł (np. był do 22:30, teraz 22:35), base = teraz, nie początek nocy.
+    # Base: the active extension if it is still ahead, otherwise max(now, start of the night); max() keeps a
+    # new extension from starting in the past (previous one until 22:30, now 22:35 → from now).
     if current_extension_utc is not None and current_extension_utc > now_utc:
         base_local = current_extension_utc.astimezone(tz)
     else:
@@ -155,7 +150,7 @@ async def totp_attempt(
     now_utc = datetime.now(timezone.utc)
     tz = ZoneInfo(get_config_value(db, "timezone"))
 
-    # === 0. TOTP enabled check — spójnie z heartbeat.py: sprawdzamy sekret ===
+    # === 0. TOTP configured (as heartbeat.py checks it: the secret) ===
     totp_secret = get_config_value(db, "totp_secret") or ""
     if not totp_secret:
         return JSONResponse({"ok": False, "reason": "totp_not_configured"}, status_code=200)
@@ -211,7 +206,7 @@ async def totp_attempt(
         }
 
     if current_lock == "night":
-        # Stackowanie: wielokrotne TOTP-grant'y dodają się do końca poprzedniego extension.
+        # Grants stack: each adds to the end of an extension still ahead.
         current_ext_utc = None
         if state.get("night_extension_until_utc"):
             try:
@@ -237,8 +232,7 @@ async def totp_attempt(
         }
 
     if current_lock == "manual":
-        # Spec nie precyzuje tego case'u (sekcja 4.4 wymienia tylko limit/night).
-        # Defensywna interpretacja: TOTP w trybie manual_lock = rodzic zdejmuje blokadę.
+        # The parent's code lifts the parent's manual lock.
         update_child_day(db, device.child_id, today_local, manual_lock=0)
         log_event(db, "manual_unlock", {"via": "totp"}, **ids)
         return {
@@ -246,7 +240,7 @@ async def totp_attempt(
             "mode": "manual_unlock",
         }
 
-    # current_lock is None — TOTP bez aktywnej blokady (nie powinno się zdarzyć w normalnym flow)
+    # No lock (not reached in normal use: the field shows only while locked)
     return {
         "ok": True,
         "mode": "noop",

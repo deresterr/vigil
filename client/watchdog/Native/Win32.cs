@@ -4,14 +4,13 @@ using System.Runtime.Versioning;
 namespace Vigil.Watchdog.Native;
 
 /// <summary>
-/// P/Invoke do Windows API. Zgrupowane w jednym pliku dla łatwości audytu.
-/// LibraryImport (source-generated marshalling) tam gdzie się da, klasyczny DllImport dla
-/// sygnatur ze struct-string fields (generator nie umie zmarshalować, SYSLIB1051).
+/// Windows API P/Invoke, in one file so it is easy to audit. LibraryImport (source-generated marshalling)
+/// where possible, classic DllImport for signatures with string fields in structs (SYSLIB1051).
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static partial class Win32
 {
-    // === Stałe ===
+    // === Constants ===
 
     public const int WTS_CURRENT_SERVER_HANDLE = 0;
 
@@ -34,11 +33,11 @@ public static partial class Win32
 
     public enum WTS_CONNECTSTATE_CLASS
     {
-        WTSActive = 0,         // user logged on, w aktywnej sesji
-        WTSConnected = 1,      // user logged on, sesja w tle
+        WTSActive = 0,         // user logged on, active session
+        WTSConnected = 1,      // user logged on, session in the background
         WTSConnectQuery = 2,
         WTSShadow = 3,
-        WTSDisconnected = 4,   // user logged on, ale sesja odłączona (np. lock screen)
+        WTSDisconnected = 4,   // user logged on, session disconnected (e.g. fast user switching)
         WTSIdle = 5,
         WTSListen = 6,
         WTSReset = 7,
@@ -91,8 +90,8 @@ public static partial class Win32
 
     // === wtsapi32.dll ===
 
-    // WTSEnumerateSessions istnieje tylko jako WTSEnumerateSessionsW (Unicode) / *A (ANSI).
-    // Bez explicit EntryPoint LibraryImport rzuca EntryPointNotFoundException przy starcie.
+    // WTSEnumerateSessions exists only as WTSEnumerateSessionsW / *A: without an explicit EntryPoint
+    // LibraryImport throws EntryPointNotFoundException at start.
     [LibraryImport("wtsapi32.dll", EntryPoint = "WTSEnumerateSessionsW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool WTSEnumerateSessions(
@@ -121,8 +120,8 @@ public static partial class Win32
         int TokenType,
         out IntPtr phNewToken);
 
-    // CreateProcessAsUser: klasyczny DllImport bo STARTUPINFO ma string fields których
-    // source-generator nie umie zmarshalować (SYSLIB1051).
+    // CreateProcessAsUser: classic DllImport, STARTUPINFO has string fields the source generator
+    // cannot marshal (SYSLIB1051).
     [DllImport("advapi32.dll", SetLastError = true, EntryPoint = "CreateProcessAsUserW",
         CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -141,15 +140,10 @@ public static partial class Win32
 
     // === userenv.dll ===
 
-    /// <summary>The environment of the token's user (USERPROFILE, TEMP, LOCALAPPDATA…), as at logon.</summary>
-    [LibraryImport("userenv.dll", SetLastError = true)]
+    /// <summary>The profile folder of the token's user, from ProfileList (not from the user's environment).</summary>
+    [LibraryImport("userenv.dll", EntryPoint = "GetUserProfileDirectoryW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool CreateEnvironmentBlock(
-        out IntPtr lpEnvironment, IntPtr hToken, [MarshalAs(UnmanagedType.Bool)] bool bInherit);
-
-    [LibraryImport("userenv.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool DestroyEnvironmentBlock(IntPtr lpEnvironment);
+    public static unsafe partial bool GetUserProfileDirectory(IntPtr hToken, char* lpProfileDir, ref uint lpcchSize);
 
     // === kernel32.dll ===
 

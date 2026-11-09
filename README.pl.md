@@ -129,7 +129,6 @@ Bez swoich plików Vigil nie startuje, więc nie ma blokady. Na zwykłą blokad�
 | `server/` | FastAPI + SQLite, panel rodzica, testy |
 | `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`), instalator (`setup`) |
 | `client/setup/` | instalator `vigil_setup.exe`: kreator, menu, verify, strażnik integralności |
-| `installer/` | stary instalator PowerShell, używany tylko przez test w CI jako instalacja sprzed wersji w C# |
 | `e2e/` | test end-to-end instalatora (CI, jednorazowy Windows) |
 | `docs/` | architektura, przegląd i roadmapa |
 

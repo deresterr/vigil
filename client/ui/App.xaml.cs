@@ -18,13 +18,17 @@ namespace Vigil.Ui;
 ///   exit       → quit (service stopping)
 /// Without the watchdog it quits: on a failed connect at once, after a lost pipe within 30 s
 /// (a restarted watchdog kills it anyway and spawns a fresh one).
-/// --standalone-test (or VIGIL_LOCKSCREEN_STANDALONE=1) shows the overlay without a watchdog, for UI work;
+/// --standalone-test shows the overlay without a watchdog, for UI work (only from the command line: the
+/// watchdog starts vigil_ui without it, and nothing in the environment switches it on, D24);
 /// there --mode=night|limit|manual|pause|server_unreachable, --lang=en|pl (instead of the Windows language) and
 /// --exit-after=SECONDS (closes itself and restores the taskbar; a killed process cannot).
 /// </summary>
 [SupportedOSPlatform("windows")]
 public partial class App : Application
 {
+    /// <summary>Started with --standalone-test (UI work without a watchdog).</summary>
+    public static bool IsStandalone { get; } = Environment.GetCommandLineArgs().Contains("--standalone-test");
+
     private static readonly TimeSpan PipeLossExit = TimeSpan.FromSeconds(30);
     // The grant message lives on the overlay, which goes as soon as the watchdog sends unlock (its next
     // heartbeat, 0-5 s later): keep it readable. Only the unlock waits, so fail-closed is unaffected.
@@ -62,9 +66,7 @@ public partial class App : Application
         _clockTimer.Tick += (_, _) => ViewModel.CurrentTime = DateTime.Now.ToString("HH:mm");
         _clockTimer.Start();
 
-        var standalone = Array.Exists(e.Args, a => a == "--standalone-test")
-            || Environment.GetEnvironmentVariable("VIGIL_LOCKSCREEN_STANDALONE") == "1";
-        if (standalone)
+        if (IsStandalone)
         {
             ApplyArgvStandalone(e.Args);
             return;

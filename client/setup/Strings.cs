@@ -183,7 +183,7 @@ public static class Strings
     public static string UiStatusVersion => T("Wersja", "Version");
     public static string UiStatusVersionValue(string installed, string package) => T(
         $"{installed} (w paczce: {package})", $"{installed} (in this package: {package})");
-    public static string UiVersionOld => T("sprzed v0.8", "before v0.8");
+    public static string UiVersionUnknown => T("nieznana", "unknown");
     public static string UiStatusServer => T("Serwer", "Server");
     public static string UiStatusResponds => T("odpowiada", "responds");
     public static string UiStatusNoAnswer => T("nie odpowiada", "does not respond");
@@ -255,8 +255,8 @@ public static class Strings
     public static string ServiceStatus(string status) => T($"Stan: {status}", $"Status: {status}");
     public static string ServiceStart(string start) => T($"Start: {start}", $"Start: {start}");
     public static string ServicePath(string path, bool unquoted) => T(
-        $"Ścieżka: {path}" + (unquoted ? " (bez cudzysłowów — zainstalowane przed #47, bez spacji nieszkodliwe)" : ""),
-        $"Path: {path}" + (unquoted ? " (unquoted — installed before #47, harmless without a space)" : ""));
+        $"Ścieżka: {path}" + (unquoted ? " (bez cudzysłowów)" : ""),
+        $"Path: {path}" + (unquoted ? " (unquoted)" : ""));
     public static string ServiceRecovery(bool nonCrash) => T(
         "Recovery: restart×3" + (nonCrash ? "" : ", bez FailureActionsOnNonCrashFailures"),
         "Recovery: restart×3" + (nonCrash ? "" : ", without FailureActionsOnNonCrashFailures"));
@@ -267,16 +267,12 @@ public static class Strings
     public static string FilesComplete(IReadOnlyCollection<string?> missing) => T(
         "Komplet plików" + (missing.Count > 0 ? $" — brak: {List(missing)}" : ""),
         "All files present" + (missing.Count > 0 ? $" — missing: {List(missing)}" : ""));
-    public static string NoLegacyFiles(IReadOnlyCollection<string> legacy) => T(
-        "Brak pozostałości starszych wersji" + (legacy.Count > 0 ? $": {List(legacy)}" : ""),
-        "No leftovers of older versions" + (legacy.Count > 0 ? $": {List(legacy)}" : ""));
     public static string BackupMatches => T("backup\\vigil_watchdog.exe = vigil_watchdog.exe", "backup\\vigil_watchdog.exe = vigil_watchdog.exe");
     public static string GuardianHashMatches => T("guardian.dat: hash zgodny z vigil_watchdog.exe", "guardian.dat: hash matches vigil_watchdog.exe");
     public static string DoesNotDecrypt(string file, string error) => T($"{file} nie odszyfrowuje się: {error}", $"{file} does not decrypt: {error}");
     public static string PackageMatches(string path) => T($"Zainstalowane binarki = paczka {path}", $"Installed binaries = package {path}");
     public static string SigningKeyDecrypted(int bytes) => T($"signing.dat: klucz odszyfrowany ({bytes} B)", $"signing.dat: key decrypted ({bytes} B)");
     public static string ConfigServerUrl(string? url) => T($"vigil.toml: server_url = {url}", $"vigil.toml: server_url = {url}");
-    public static string ConfigNoBearer => T("vigil.toml: bez bearer_token (protokół v1)", "vigil.toml: no bearer_token (protocol v1)");
     public static string FolderAcl(string? diff) => T(
         "ACL katalogu (SYSTEM full, Admin modify, AuthUsers r+x)" + (diff is null ? "" : $" — {diff}"),
         "Folder ACL (SYSTEM full, Admin modify, AuthUsers r+x)" + (diff is null ? "" : $" — {diff}"));
@@ -288,13 +284,9 @@ public static class Strings
     public static string TaskAsSystem => T("  jako SYSTEM, najwyższe uprawnienia", "  as SYSTEM, highest privileges");
     public static string TaskEnabled(bool enabled) => T($"  stan: {(enabled ? "włączone" : "wyłączone")}", $"  state: {(enabled ? "enabled" : "disabled")}");
     public static string TaskTriggers => T("  wyzwalacze: przy starcie + co 5 min", "  triggers: at startup + every 5 min");
-    public static string TaskOldGuardian(string script) => T(
-        $"  uruchamia starego guardiana {script} — Napraw/Zaktualizuj wymieni go na vigil_setup.exe",
-        $"  runs the old guardian {script} — Repair/Update replaces it with vigil_setup.exe");
     public static string TaskRuns(string what) => T($"  uruchamia {what}", $"  runs {what}");
     public static string TaskNotRunYet => T("  jeszcze nie uruchomione (pierwsze uruchomienie w ciągu 5 min)", "  not run yet (first run within 5 min)");
     public static string TaskLastResult(int result, string time) => T($"  ostatni wynik: 0x{result:X} ({time})", $"  last result: 0x{result:X} ({time})");
-    public static string NoLegacyTrayTask(string name) => T($"Brak starego zadania '{name}'", $"No old task '{name}'");
     public static string NoTempTasks(IReadOnlyCollection<string> left) => T(
         "Brak tymczasowych zadań SYSTEM" + (left.Count > 0 ? $": {List(left)}" : ""),
         "No temporary SYSTEM tasks" + (left.Count > 0 ? $": {List(left)}" : ""));
@@ -412,8 +404,6 @@ public static class Strings
 
     public static string ProcessStopped(string name, int pid) => T($"Zamknięto {name} (pid {pid})", $"Closed {name} (pid {pid})");
     public static string ProcessStopFailed(string name, string error) => T($"Nie udało się zamknąć {name}: {error}", $"Could not close {name}: {error}");
-    public static string LegacyRemoved(string path) => T($"Usunięto pozostałość starszej wersji: {path}", $"Removed a leftover of an older version: {path}");
-    public static string LegacyRemoveFailed(string path, string error) => T($"Nie udało się usunąć {path}: {error}", $"Could not remove {path}: {error}");
 
     public static string GuardianHashWritten(string prefix) => T($"guardian.dat: SHA-256 {prefix}… (DPAPI)", $"guardian.dat: SHA-256 {prefix}… (DPAPI)");
     public static string ConfigWritten(string url) => T($"vigil.toml: server_url = {url}", $"vigil.toml: server_url = {url}");

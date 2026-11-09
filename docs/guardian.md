@@ -37,8 +37,6 @@ Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Vigil 
 
 - Instalacja (także `update` i „Napraw”) kończy działającą instancję i usuwa zadanie przed kopiowaniem plików
   (guardian trzyma `vigil_setup.exe` otwarty i „naprawiałby” wymienianą usługę), potem zakłada je od nowa.
-- `vigil_guardian.ps1` (guardian sprzed #65) jest pozostałością: instalacja go usuwa, gdy `vigil_setup.exe`
-  już leży w ProgramData. Verify na instalacji ze starym guardianem daje ostrzeżenie, nie błąd.
 
 ## Czego nie robi
 

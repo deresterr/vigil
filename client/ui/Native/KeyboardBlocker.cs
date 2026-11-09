@@ -7,27 +7,17 @@ using System.Windows.Input;
 namespace Vigil.Ui.Native;
 
 /// <summary>
-/// Niskopoziomowy keyboard hook (WH_KEYBOARD_LL) blokujący kombinacje umożliwiające ucieczkę
-/// z lockscreen:
-/// - Win (LeftWindows / RightWindows) — wszystkie kombinacje Win+X
-/// - Alt+Tab, Win+Tab (task switcher)
-/// - Alt+F4 (close window)
-/// - Alt+Esc (switch window)
-/// - Ctrl+Esc (start menu)
-/// - Ctrl+Shift+Esc (Task Manager DIRECT — pomija DisableTaskMgr policy w niektórych Windows)
-/// - F1 (Help — może otworzyć Edge browser z online help)
-/// - F11 (full-screen toggle — w niektórych appkach pomaga uciec)
-/// - PrintScreen / Pause (zablokowane defensywnie — niezgrabne ucieczki rzadkie)
+/// Low-level keyboard hook (WH_KEYBOARD_LL) swallowing the keys that lead away from the lock screen:
+/// - Win (both keys), so every Win+… combination
+/// - Alt+Tab, Alt+Esc (switch window), Alt+F4 (close window)
+/// - Ctrl+Esc (Start) and Ctrl+Shift+Esc (Task Manager without the SAS screen)
+/// - F1 (Help can open a browser), F11 (full screen toggle), F12 (developer tools)
 ///
-/// CTRL+ALT+DEL nie da się zablokować (kernel SAS). Pokazuje Windows secure attention sequence
-/// z opcjami "Lock", "Switch user", "Sign out", "Task Manager", "Change password".
-/// Część z nich blokowana przez registry (DisableTaskMgr, NoLogoff) ustawione przez installer.
+/// Ctrl+Alt+Del cannot be blocked (the secure attention sequence); of what its screen offers, the installer's
+/// per-user policies close Task Manager and Change password (DisableTaskMgr, DisableChangePassword).
 ///
-/// Hook musi być callbackowany w tym samym threadzie co GetMessage loop. WPF Application
-/// queue ma własne pump, więc callback działa naturalnie z Application.Current.Dispatcher.
-///
-/// IMPORTANT: hook jest globalny (system-wide). Trzeba pamiętać żeby Unhook przy zamykaniu,
-/// inaczej zostanie zombie.
+/// The hook runs on the thread with the message loop (WPF's dispatcher). It is system-wide: Dispose
+/// unhooks it.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class KeyboardBlocker : IDisposable
@@ -41,7 +31,7 @@ public sealed class KeyboardBlocker : IDisposable
     private const uint LLKHF_ALTDOWN = 0x20;
 
     private IntPtr _hookId = IntPtr.Zero;
-    private readonly LowLevelKeyboardProc _proc;  // GC pin — bez tego callback by zniknął
+    private readonly LowLevelKeyboardProc _proc;  // keeps the delegate alive for the native callback
     private bool _disposed;
 
     public KeyboardBlocker()
@@ -59,7 +49,7 @@ public sealed class KeyboardBlocker : IDisposable
         {
             throw new System.ComponentModel.Win32Exception(
                 Marshal.GetLastWin32Error(),
-                "Nie udało się zainstalować low-level keyboard hook.");
+                "Could not install the low-level keyboard hook");
         }
     }
 
@@ -76,7 +66,7 @@ public sealed class KeyboardBlocker : IDisposable
     {
         if (nCode < 0) return CallNextHookEx(_hookId, nCode, wParam, lParam);
 
-        // Tylko key-down/sys-key-down — key-up nie blokujemy (źle działa z modyfierami)
+        // Key-down only: swallowing key-up confuses the modifier state
         var msg = wParam.ToInt32();
         if (msg != WM_KEYDOWN && msg != WM_SYSKEYDOWN)
         {
@@ -86,38 +76,35 @@ public sealed class KeyboardBlocker : IDisposable
         var info = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
         var key = KeyInterop.KeyFromVirtualKey((int)info.vkCode);
 
-        // Win key (osobny modifier — nie pojawia się w Modifiers properties dla low-level)
+        // Win key (not among the low-level hook's modifiers)
         if (key == Key.LWin || key == Key.RWin)
         {
             return (IntPtr)1;  // 1 = swallow
         }
 
-        // Alt down? Sprawdzamy przez flag w hook info (LLKHF_ALTDOWN) bo Keyboard.Modifiers
-        // w callbacku z low-level hook nie zawsze zwraca prawdę.
+        // Alt from the hook's own flag (LLKHF_ALTDOWN): Keyboard.Modifiers is not reliable in this callback
         var altDown = (info.flags & LLKHF_ALTDOWN) != 0;
         var ctrlDown = (GetKeyState(0x11) & 0x8000) != 0;  // VK_CONTROL
 
-        // Alt+Tab, Alt+F4, Alt+Esc (przełącznik aplikacji)
+        // Alt+Tab, Alt+F4, Alt+Esc
         if (altDown && (key == Key.Tab || key == Key.F4 || key == Key.Escape))
         {
             return (IntPtr)1;
         }
 
-        // Ctrl+Esc (start menu) i Ctrl+Shift+Esc (Task Manager bez SAS)
+        // Ctrl+Esc (Start) and Ctrl+Shift+Esc (Task Manager)
         if (ctrlDown && key == Key.Escape)
         {
             return (IntPtr)1;
         }
 
-        // F1 (Help — w niektórych kontekstach otwiera Edge browser online), F11 (full-screen
-        // toggle), F12 (dev tools w przeglądarkach — irrelevant w lockscreen ale defensywnie).
+        // F1 (Help can open a browser), F11 (full screen toggle), F12 (developer tools)
         if (key == Key.F1 || key == Key.F11 || key == Key.F12)
         {
             return (IntPtr)1;
         }
 
-        // PrintScreen — zostawiamy, bo screenshot nie pomaga w obejściu lockscreen,
-        // a dziecko z dostępem do tego wciąż nie ma jak zrobić nic z obrazem.
+        // PrintScreen stays: a screenshot is no way out.
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
     }

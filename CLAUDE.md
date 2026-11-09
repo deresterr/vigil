@@ -14,13 +14,12 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   run as SYSTEM from the copy the installer puts in `C:\ProgramData\Vigil`, see `docs/guardian.md`),
   `shared/` linked into the projects that need it: `IpcMessages.cs` (watchdog + ui), `VigilLayout.cs` (paths,
   file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
-- `installer/` — `vigil_install.ps1` + `vigil_guardian.ps1` (the old installer and guardian: only the e2e's
-  "install from before D22", not in the package; no .cmd shortcuts since #66, vigil_setup.exe does it all).
-  `build-package.ps1 -Version` → `dist\vigil_setup.exe`, the whole client in one file (#76: the watchdog and
-  vigil_ui appended, format in `client/setup/Core/Package.cs`) + `build\parts\` (the binaries on their own).
+- `build-package.ps1 -Version` → `dist\vigil_setup.exe`, the whole client in one file (#76: the watchdog,
+  vigil_ui and its native WPF libraries appended, format in `client/setup/Core/Package.cs`) + `build\parts\`
+  (the files on their own). `Build.cmd` runs it.
   `docs/installer.md` describes the installer, the README the emergency path from WinRE.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
-  (server of the same commit on localhost; PowerShell install → vigil_setup update → one-file package checks →
+  (server of the same commit on localhost; install → update → one-file package checks →
   broken installs → re-pair →
   uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → uninstall,
   then the wizard and the menu through a key script). Never on a real PC.
@@ -43,9 +42,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - **Installer rewrite in C# (D22, #62–#66)** was the exception: each step its own PR, merged once the CI
   installer e2e was green; VM sessions only at the checkpoints (after #64 and after #66). Anything the e2e
   cannot see (Windows 10/11 Home, Polish Windows, the child's session: vigil_ui, lock, the console wizard)
-  waits for the next checkpoint. The old `vigil_install.ps1 -Mode verify` was the oracle until the C# one matched
-  it at every e2e point (#63, #64); since #65 (C# guardian) the C# verify is the reference and the PowerShell one
-  checks only the e2e's PowerShell install.
+  waits for the next checkpoint.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 
 ## Invariants (changing any of these is a design decision — ask first)
@@ -59,7 +56,7 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   (`night_start` before 12:00 = after midnight); `lock_logic.night_window` is the only place that resolves it.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
   names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs. They live in
-  `client/shared/VigilLayout.cs` (the old PowerShell installer, kept for the e2e, has its own copy).
+  `client/shared/VigilLayout.cs`. No compatibility with installs from before v0.8 (D23).
 - **Threat model**: the child MAY have an administrator account. Against an admin nothing on the PC is
   tamper-proof, so every mechanism is one of: protection (holds even against admin, e.g. server-side state),
   friction (stops a non-elevated process / casual attempt), or detection (reports tampering to the parent panel).
@@ -75,17 +72,13 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 ## Gotchas that already cost time
 - Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. Mateusz creates
   releases/tags in the GitHub UI (merged branches are deleted automatically); open PRs with `gh api` (REST).
-- PowerShell 5.1: `.ps1` must be UTF-8 **with BOM** + CRLF (see `.editorconfig`), otherwise Polish text breaks.
+- PowerShell 5.1: `.ps1` must be UTF-8 **with BOM** + CRLF (see `.editorconfig`), otherwise non-ASCII text breaks.
 - PowerShell: `$PSScriptRoot` is empty inside `param()` defaults — compute it in the body.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.
-- PowerShell 5.1: embedded quotes in native arguments are lost (`sc.exe create binPath= "`"$exe`""` registered an
-  unquoted path). Use the cmdlet/API (`New-Service`) or `\"` escaping. Variable names are case-insensitive:
-  a local `$want` overwrites a `[hashtable]$Want` parameter.
-- PowerShell/icacls: use SIDs (`*S-1-5-32-544`), never group names — Polish Windows localizes them.
-- PowerShell 5.1 + `$ErrorActionPreference='Stop'`: `& native.exe 2>&1` turns stderr into a terminating error
-  (fatal in `finally`). Call `reg.exe` only via `Invoke-RegExe` in `vigil_install.ps1`.
-- One account (D12): policies the installer sets in HKCU (e.g. `DisableRegistryTools` → blocks `reg.exe`) also
-  hit the installer itself on uninstall/reinstall. Edit user hives via the PowerShell registry provider first.
+- PowerShell: variable names are case-insensitive (a local `$want` overwrites a `[hashtable]$Want` parameter).
+- PowerShell 5.1 + `$ErrorActionPreference='Stop'`: `& native.exe 2>&1` turns stderr into a terminating error.
+- One account (D12): per-user policies the installer sets in HKCU hit the parent and the installer too; it edits
+  hives through the registry API, never `reg.exe`.
 - `.ps1` syntax is checked in CI with Windows PowerShell 5.1; locally a Linux `pwsh` can run the same parser.
 - C#: never filter with `when (ex is not OperationCanceledException)` — an `HttpClient` timeout is a
   `TaskCanceledException` and slipped past the fail-closed check (#31). Filter on the caller's token:
@@ -112,8 +105,13 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using
   removed: it clashes with WPF (`Application`, `KeyEventArgs`). Alias what you need (`using Forms = …`).
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via
-  `CreateProcessAsUser` (`UiProcessLauncher`), with the user's `CreateEnvironmentBlock`: without it the process
-  inherits SYSTEM's environment (#72: no ui.log, single-file extraction to `C:\Windows\Temp`).
+  `CreateProcessAsUser` (`UiProcessLauncher`).
+- vigil_ui's environment (D24) is built by `UiProcessLauncher` from a fixed list, never the child's own
+  (`CreateEnvironmentBlock` read `HKCU\Environment`, which a standard user writes: `DOTNET_STARTUP_HOOKS`, a
+  profiler, a test-mode switch), with `DOTNET_EnableDiagnostics=0`. No project extracts native libraries at
+  run time (a planted DLL in the child's `%TEMP%` would load): vigil_ui's sit next to it, listed in
+  `VigilLayout.UiNativeLibraries` and `build-package.ps1`, which fails when the publish output differs.
+  `--standalone-test` works only from the command line.
 - Windows logs the session off (closing vigil_ui) before it stops services, also on shutdown, and the service
   hears of it only from the SCM (`VigilServiceLifetime.OnSessionChange`/`OnShutdown`), maybe after vigil_ui is
   gone. So `UiManager` respawns an exit at once but judges it as a kill only 10 s later (VM 1/2: restarts gave
@@ -123,14 +121,13 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   `GetModuleHandle(null)`.
 
 ## Conventions
-- New code, comments, commit messages: English. Existing Polish comments: leave unless touching the code.
+- Code, comments, logs, commit messages: English.
 - i18n (D21): each UI speaks its environment's language (Polish or English); the server and the watchdog send
   codes and numbers, never sentences. Panel: Polish source text marked `t('…')` / `tn(n, '…')` / `data-i18n`,
   English in `server/app/static/i18n.js` — `tests/test_i18n.py` fails on a missing or unused entry.
-  `vigil_setup` speaks Windows' display language (`CurrentUICulture`), every text in `client/setup/Strings.cs`;
-  the old PowerShell installer (e2e only) stays Polish.
+  `vigil_setup` speaks Windows' display language (`CurrentUICulture`), every text in `client/setup/Strings.cs`.
 - Versions: one for every client binary, `build-package.ps1 -Version` (release: the tag without "v"; CI:
-  `0.0.0-ci.<run>`; local: `0.0.0-dev`). Binaries of v0.7 and older carry the SDK default 1.0.0 = "before v0.8".
+  `0.0.0-ci.<run>`; local: `0.0.0-dev`).
 - Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;
   panel bodies next to their endpoints); config through `get_config_value()`/`get_config_values()`, defaults in
   `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`

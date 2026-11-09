@@ -27,10 +27,10 @@ public interface IUiManager
     /// <summary>TOTP code typed on the overlay. Handler → server (or offline check) → result to the UI.</summary>
     event Func<TotpFromLockscreen, CancellationToken, Task<TotpResult>> OnTotpAttempt;
 
-    /// <summary>"Spróbuj ponownie" on the server_unreachable overlay.</summary>
+    /// <summary>The Retry button on the server_unreachable overlay.</summary>
     event Func<CancellationToken, Task> OnRetryRequest;
 
-    /// <summary>"Jestem z powrotem" on the pause overlay.</summary>
+    /// <summary>The "I'm back" button on the pause overlay.</summary>
     event Func<CancellationToken, Task> OnResumeFromPause;
 
     /// <summary>Left click on the tray icon.</summary>

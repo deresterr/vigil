@@ -19,9 +19,8 @@ public sealed record InstallRequest
 }
 
 /// <summary>
-/// install / update / update-config / uninstall: port of vigil_install.ps1 (same files, values, service,
-/// tasks and policies; verify of both installers must pass on the result). Each step reports a short title
-/// for the parent (IReport.Section) and its technical details (Check/Info).
+/// install / update / update-config / uninstall. Each step reports a short title for the parent
+/// (IReport.Section) and its technical details (Check/Info); Verify checks the result.
 /// </summary>
 public sealed class Installer
 {
@@ -41,9 +40,11 @@ public sealed class Installer
 
     private static string P(string name) => VigilLayout.PathOf(name);
 
-    /// <summary>The binaries installed from the package. vigil_setup.exe itself too (its first part, without
-    /// the payload): the guardian task runs it (#65).</summary>
-    public static readonly string[] PackageFiles = { VigilLayout.WatchdogExe, VigilLayout.UiExe, VigilLayout.SetupExe };
+    /// <summary>The binaries installed from the package: the watchdog, vigil_ui with its native libraries (D24),
+    /// and vigil_setup.exe itself (its first part, without the payload): the guardian task runs it (#65).</summary>
+    public static readonly string[] PackageFiles =
+        new[] { VigilLayout.WatchdogExe, VigilLayout.UiExe }.Concat(VigilLayout.UiNativeLibraries)
+            .Append(VigilLayout.SetupExe).ToArray();
 
     /// <summary>The guardian task's argument: `vigil_setup.exe guardian` (Program.cs, Core/Guardian.cs).</summary>
     public const string GuardianArgument = "guardian";
@@ -94,7 +95,6 @@ public sealed class Installer
         }
         File.Copy(P(VigilLayout.WatchdogExe), VigilLayout.BackupWatchdogPath, overwrite: true);
         _r.Check(CheckLevel.Pass, $@"{VigilLayout.BackupDir}\{VigilLayout.WatchdogExe}");
-        RemoveLegacyFiles();
 
         _r.Section(Strings.StepConfig);
         WriteGuardianHash();
@@ -112,7 +112,6 @@ public sealed class Installer
         ScheduledTasks.Create(VigilLayout.GuardianTaskName,
             ScheduledTasks.GuardianTaskXml(P(VigilLayout.SetupExe), GuardianArgument));
         _r.Check(CheckLevel.Pass, Strings.GuardianTaskCreated(VigilLayout.GuardianTaskName));
-        RemoveTask(VigilLayout.LegacyTrayTaskName);
         DisableBootMenu();
         if (req.DisableWinRE) DisableWinRE();
 
@@ -156,10 +155,8 @@ public sealed class Installer
         InstallAcls.Reclaim(VigilLayout.InstallDir);
         try
         {
-            // Always rewritten: drops bearer_token of protocol v0 installs.
             WriteConfig(serverUrl);
             if (signingKey is not null) WriteSigningKey(signingKey);
-            RemoveLegacyFiles();
         }
         finally
         {
@@ -199,9 +196,8 @@ public sealed class Installer
         Step(Strings.StepTasks, () =>
         {
             RemoveTask(VigilLayout.GuardianTaskName);
-            RemoveTask(VigilLayout.LegacyTrayTaskName);
             foreach (var name in ScheduledTasks.AllNames().Where(n =>
-                         VigilLayout.TempTaskPrefixes.Any(p => n.StartsWith(p, StringComparison.OrdinalIgnoreCase))))
+                         n.StartsWith(VigilLayout.TempTaskPrefix, StringComparison.OrdinalIgnoreCase)))
                 RemoveTask(name);
             foreach (var key in VigilLayout.SafeBootKeys)
                 Registry.LocalMachine.DeleteSubKeyTree(key, throwOnMissingSubKey: false);
@@ -249,11 +245,11 @@ public sealed class Installer
             throw new SetupException(Strings.NothingToUpdate);
     }
 
-    /// <summary>vigil_ui (and the lock screen and tray of versions before D8) hold their exe open.
-    /// An elevated installer may kill them despite their process DACL (BA full).</summary>
+    /// <summary>vigil_ui (and a watchdog that did not stop) hold their exe open. An elevated installer may kill
+    /// them despite their process DACL (BA full).</summary>
     private void StopUiProcesses()
     {
-        foreach (var name in new[] { "vigil_ui", "vigil_lockscreen", "vigil_tray", "vigil_watchdog" })
+        foreach (var name in VigilLayout.ProcessNames)
         foreach (var p in Process.GetProcessesByName(name))
         {
             using (p)
@@ -266,29 +262,6 @@ public sealed class Installer
                 }
                 catch (Exception ex) { _r.Check(CheckLevel.Warn, Strings.ProcessStopFailed(name, ex.Message)); }
             }
-        }
-    }
-
-    /// <summary>Before v0.5: emergency.dat and a forgeable bypass.flag (#9); before D8: two exes (#35). The old
-    /// exes only once vigil_ui.exe is in place: update-config keeps the installed binaries, and on an install
-    /// from before D8 they are still the lock screen.</summary>
-    private void RemoveLegacyFiles()
-    {
-        var uiInstalled = File.Exists(P(VigilLayout.UiExe));
-        var setupInstalled = File.Exists(P(VigilLayout.SetupExe));
-        foreach (var path in VigilLayout.LegacyPaths)
-        {
-            if (!uiInstalled && path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
-            // The PowerShell guardian's task still points at it until vigil_setup.exe takes over (#65).
-            if (!setupInstalled && path.Equals(P(VigilLayout.GuardianScript), StringComparison.OrdinalIgnoreCase)) continue;
-            try
-            {
-                if (File.Exists(path)) File.Delete(path);
-                else if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
-                else continue;
-                _r.Check(CheckLevel.Pass, Strings.LegacyRemoved(path));
-            }
-            catch (Exception ex) { _r.Check(CheckLevel.Warn, Strings.LegacyRemoveFailed(path, ex.Message)); }
         }
     }
 
@@ -305,7 +278,7 @@ public sealed class Installer
     private void WriteConfig(string serverUrl)
     {
         File.WriteAllText(P(VigilLayout.ConfigFile),
-            "# Vigil config. Brak sekretów: klucz podpisu jest w signing.dat (DPAPI, tylko SYSTEM).\r\n\r\n" +
+            "# Vigil configuration. No secrets: the signing key is in signing.dat (DPAPI, SYSTEM only).\r\n\r\n" +
             $"server_url = \"{serverUrl}\"\r\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         _r.Check(CheckLevel.Pass, Strings.ConfigWritten(serverUrl));
     }

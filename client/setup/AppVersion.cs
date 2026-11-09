@@ -5,8 +5,7 @@ namespace Vigil.Setup;
 
 /// <summary>
 /// Versions of the package (this program) and of the installation. Set by the build (build-package.ps1
-/// -Version: the tag in a release, 0.0.0-ci.&lt;run&gt; in CI, client/Directory.Build.props 0.0.0-dev locally);
-/// binaries built before that (v0.7 and older) carry the SDK default 1.0.0.
+/// -Version: the tag in a release, 0.0.0-ci.&lt;run&gt; in CI, client/Directory.Build.props 0.0.0-dev locally).
 /// </summary>
 public static class AppVersion
 {
@@ -20,9 +19,6 @@ public static class AppVersion
         try { return File.Exists(exe) ? Clean(FileVersionInfo.GetVersionInfo(exe).ProductVersion) : null; }
         catch (Exception) { return null; }
     }
-
-    /// <summary>The SDK default: a build from before versioned packages.</summary>
-    public static bool IsUnversioned(string? version) => version is null or "1.0.0" or "1.0.0.0";
 
     /// <summary>
     /// Semantic version order: 0.8.0 &gt; 0.8.0-ci.12 &gt; 0.8.0-ci.9 &gt; 0.7.1. Pre-release identifiers compare

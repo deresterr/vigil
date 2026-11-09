@@ -1,5 +1,4 @@
-// Global using directives dla vigil-watchdog.
-// Wpisuję jawnie, żeby jedna zmiana flagi ImplicitUsings nie rozwaliła całego buildu.
+// Explicit global usings: a change of the ImplicitUsings default must not break the build.
 
 global using System;
 global using System.Collections.Generic;

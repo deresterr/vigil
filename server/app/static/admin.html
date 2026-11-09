@@ -650,7 +650,7 @@ const fmtSec = s => s >= 60 ? Math.round(s / 60) + ' min' : s + ' s';
 const VIA = d => d.via === 'admin_ui' ? t('Z panelu') : t('Kod z telefonu wpisany na ekranie blokady');
 
 // type -> {cat, icon, title, sub}. Wording lives only here (Polish source, English in i18n.js).
-// vigil_guardian.ps1 checks (#36), keys as in server GUARDIAN_CHECKS.
+// The guardian's checks (#36), keys as in server GUARDIAN_CHECKS.
 const GUARDIAN_CHECKS = {
   service_not_running: t('Usługa Vigil była zatrzymana'),
   service_disabled:    t('Usługa Vigil była wyłączona z autostartu'),

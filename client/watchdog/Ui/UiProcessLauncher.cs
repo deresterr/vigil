@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Native;
 
@@ -19,13 +20,26 @@ namespace Vigil.Watchdog.Ui;
 /// the child cannot just rewrite the DACL either. Taskkill, Stop-Process and Task Manager from a
 /// non-elevated session get "access denied". An elevated admin is in BA (and has SeDebugPrivilege)
 /// and can still kill it; the kill loop then logs the session off (UiManager).
+///
+/// Environment (D24): built here from a fixed list, nothing taken from the child's own environment. The
+/// child may set user variables (HKCU\Environment) without elevation, and the .NET runtime reads several of
+/// them (startup hooks, profilers) — a way to run code inside the lock screen that the process DACL closes
+/// otherwise. System values come from the service's environment (machine-wide, admin-only), the profile
+/// folders from the token's profile (ProfileList), and diagnostics are off: no debugger, profiler or
+/// EventPipe IPC channel a same-user process could attach through. Friction, like the DACL.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class UiProcessLauncher : IDisposable
 {
     public const string ProcessName = "vigil_ui";
-    // Processes of earlier versions (separate lockscreen + tray, before D8) killed as orphans too.
-    private static readonly string[] OrphanNames = { ProcessName, "vigil_lockscreen", "vigil_tray" };
+    /// <summary>Copied from the service's (SYSTEM) environment: machine-wide values only admins can set.</summary>
+    private static readonly string[] SystemVariables =
+    {
+        "SystemRoot", "windir", "SystemDrive", "ComSpec", "PATH", "PATHEXT", "ProgramData", "ALLUSERSPROFILE",
+        "PUBLIC", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles",
+        "CommonProgramFiles(x86)", "CommonProgramW6432", "NUMBER_OF_PROCESSORS", "OS", "PROCESSOR_ARCHITECTURE",
+        "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION",
+    };
 
     // 0x121410 = READ_CONTROL | SYNCHRONIZE | PROCESS_QUERY_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ
     private const string ProcessSddl = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x121410;;;AU)(A;;0x121410;;;OW)";
@@ -90,16 +104,7 @@ public sealed class UiProcessLauncher : IDisposable
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "DuplicateTokenEx failed");
             }
 
-            // The child's own environment (#72): without it vigil_ui inherited SYSTEM's — its ui.log went to
-            // the system profile, where it may not write, and the single-file extraction to C:\Windows\Temp.
-            // A lock screen without its log beats none: on failure launch as before and say so.
-            if (!Win32.CreateEnvironmentBlock(out environment, primaryToken, bInherit: false))
-            {
-                _logger.LogWarning(new Win32Exception(Marshal.GetLastWin32Error()),
-                    "CreateEnvironmentBlock failed for session {Session}; vigil_ui gets the service's environment",
-                    sessionId);
-                environment = IntPtr.Zero;
-            }
+            environment = Marshal.StringToHGlobalUni(EnvironmentBlock(ProfileDirectory(primaryToken)));
 
             processSa = AllocSecurityAttributes(ProcessSddl);
             threadSa = AllocSecurityAttributes(ThreadSddl);
@@ -116,8 +121,7 @@ public sealed class UiProcessLauncher : IDisposable
                 null,
                 processSa, threadSa,
                 bInheritHandles: false,
-                dwCreationFlags: Win32.NORMAL_PRIORITY_CLASS
-                    | (environment != IntPtr.Zero ? Win32.CREATE_UNICODE_ENVIRONMENT : 0),
+                dwCreationFlags: Win32.NORMAL_PRIORITY_CLASS | Win32.CREATE_UNICODE_ENVIRONMENT,
                 lpEnvironment: environment,
                 lpCurrentDirectory: Path.GetDirectoryName(exePath),
                 lpStartupInfo: ref si,
@@ -133,7 +137,7 @@ public sealed class UiProcessLauncher : IDisposable
         }
         finally
         {
-            if (environment != IntPtr.Zero) Win32.DestroyEnvironmentBlock(environment);
+            if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
             FreeSecurityAttributes(processSa);
             FreeSecurityAttributes(threadSa);
             if (impersonationToken != IntPtr.Zero) Win32.CloseHandle(impersonationToken);
@@ -167,40 +171,78 @@ public sealed class UiProcessLauncher : IDisposable
         }
     }
 
-    /// <summary>
-    /// Kills UI processes we do not track in the target session: survivors of a previous watchdog
-    /// instance, or the separate lockscreen/tray of an earlier version still running after an upgrade.
-    /// </summary>
+    /// <summary>Kills vigil_ui processes we do not track in the target session (survivors of a previous
+    /// watchdog instance).</summary>
     private void KillOrphans(uint sessionId)
     {
-        foreach (var name in OrphanNames)
+        Process[] candidates;
+        try { candidates = Process.GetProcessesByName(ProcessName); }
+        catch (Exception ex)
         {
-            Process[] candidates;
-            try { candidates = Process.GetProcessesByName(name); }
+            _logger.LogDebug(ex, "GetProcessesByName({Name}) failed", ProcessName);
+            return;
+        }
+        foreach (var p in candidates)
+        {
+            try
+            {
+                if ((uint)p.SessionId != sessionId) continue;
+                _logger.LogInformation("Killing orphan {Name} pid={Pid}", ProcessName, p.Id);
+                p.Kill();
+                p.WaitForExit(2000);
+            }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "GetProcessesByName({Name}) failed", name);
-                continue;
+                _logger.LogDebug(ex, "Could not kill orphan pid={Pid}", p.Id);
             }
-            foreach (var p in candidates)
+            finally
             {
-                try
-                {
-                    if ((uint)p.SessionId != sessionId) continue;
-                    _logger.LogInformation("Killing orphan {Name} pid={Pid}", name, p.Id);
-                    p.Kill();
-                    p.WaitForExit(2000);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Could not kill orphan pid={Pid}", p.Id);
-                }
-                finally
-                {
-                    p.Dispose();
-                }
+                p.Dispose();
             }
         }
+    }
+
+    /// <summary>The user's profile folder from the token (ProfileList), or null.</summary>
+    private unsafe string? ProfileDirectory(IntPtr token)
+    {
+        uint size = 0;
+        Win32.GetUserProfileDirectory(token, null, ref size);
+        if (size == 0) return null;
+        var buffer = new char[size];
+        fixed (char* p = buffer)
+        {
+            if (!Win32.GetUserProfileDirectory(token, p, ref size))
+            {
+                _logger.LogWarning(new Win32Exception(Marshal.GetLastWin32Error()), "GetUserProfileDirectory failed");
+                return null;
+            }
+        }
+        return new string(buffer, 0, (int)size - 1);
+    }
+
+    /// <summary>
+    /// A Unicode environment block: NAME=value entries, each ending in NUL, sorted, one more NUL at the end.
+    /// Without a profile folder vigil_ui still starts: only its log needs it.
+    /// </summary>
+    internal static string EnvironmentBlock(string? profile)
+    {
+        var vars = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in SystemVariables)
+            if (Environment.GetEnvironmentVariable(name) is { Length: > 0 } value) vars[name] = value;
+        if (profile is not null)
+        {
+            var local = Path.Combine(profile, "AppData", "Local");
+            vars["USERPROFILE"] = profile;
+            vars["APPDATA"] = Path.Combine(profile, "AppData", "Roaming");
+            vars["LOCALAPPDATA"] = local;
+            vars["TEMP"] = vars["TMP"] = Path.Combine(local, "Temp");
+        }
+        // Debugger, profiler and EventPipe off: the runtime opens no diagnostic IPC channel.
+        vars["DOTNET_EnableDiagnostics"] = "0";
+
+        var block = new StringBuilder();
+        foreach (var (name, value) in vars) block.Append(name).Append('=').Append(value).Append('\0');
+        return block.Append('\0').ToString();
     }
 
     private static IntPtr AllocSecurityAttributes(string sddl)

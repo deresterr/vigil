@@ -373,7 +373,7 @@ class PairingCodeBody(_Body):
 
 @router.post("/pairing_code")
 async def new_pairing_code(body: PairingCodeBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """One-time code for Install.cmd. Generating a new one invalidates the previous one."""
+    """One-time code for vigil_setup.exe. Generating a new one invalidates the previous one."""
     now = datetime.now(timezone.utc)
     if body.device_id is not None:
         device = _device_or_404(db, body.device_id)

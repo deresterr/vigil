@@ -268,12 +268,19 @@ try {
 
     Write-Section 'Re-pair (vigil_setup update-config)'
     $keyBefore = Get-KeyHash
+    $repairStart = Get-Date
     $code = New-PairingCode @{ device_id = (Get-Device).id }
     Assert-Setup 'update-config' -Mode update-config -PairingCode $code
     Assert-That ((Get-KeyHash) -ne $keyBefore) 'signing.dat rewritten with the new key'
     # The old key stopped working when the code was used, before the service restarted; a heartbeat
     # newer than that can only be signed with the new key.
     Wait-Heartbeat 'heartbeats with the new key'
+    # The old key dies when the code is used, before the stop: the refused goodbye is expected, not a
+    # warning (it showed in every verify after re-pairing, VM 1 of #64).
+    $goodbyeWarnings = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'Application'; ProviderName = 'Vigil Watchdog'; Level = 2, 3; StartTime = $repairStart
+        } -ErrorAction SilentlyContinue | Where-Object { $_.Message -like '*Goodbye not delivered*' }).Count
+    Assert-That ($goodbyeWarnings -eq 0) "no goodbye warning after re-pairing (got $goodbyeWarnings)"
     Assert-Verify 0 'after re-pairing'
 
     Write-Section 'vigil_setup uninstall'

@@ -28,7 +28,9 @@ public sealed class LogReport : IReport, IDisposable
         Line($"   {level switch { CheckLevel.Pass => "OK  ", CheckLevel.Warn => "WARN", _ => "FAIL" }} {message}");
     public void Info(string message) => Line($"   ..   {message}");
 
-    public void Error(Exception ex) => Line($"!! {ex}");
+    /// <summary>An expected failure (SetupException: a wrong code, a server that does not answer) is its
+    /// message; anything else gets the stack trace.</summary>
+    public void Error(Exception ex) => Line(ex is SetupException ? $"!! {ex.Message}" : $"!! {ex}");
 
     private void Line(string text)
     {

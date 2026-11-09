@@ -14,8 +14,6 @@ and the parameter mode (`Program.cs`) are two front ends on the same calls.
 | `vigil_setup.exe` (double click) | nothing installed → **wizard**; installed → **status and menu** |
 | `vigil_setup.exe -Mode …` | parameter mode (below); exit code 0 done, 1 failed (verify: a failure), 2 wrong parameters |
 | `vigil_setup.exe guardian` | the guardian task only (`docs/guardian.md`) |
-| `Install.cmd` | shortcut to `vigil_setup.exe` with the same parameters |
-| `Cleanup.cmd` | `vigil_setup.exe -Mode uninstall` |
 
 Without parameters and with stdin/stdout redirected it prints the usage instead of waiting for keys. Every
 run writes a log to `%TEMP%\vigil_setup_<time>.log` (its path is on screen) — the thing to attach to a report.
@@ -98,7 +96,7 @@ freed from outside Windows:
 2. Find the Windows drive (in WinRE it is often `D:`): `dir D:\ProgramData`.
 3. `rmdir /s /q D:\ProgramData\Vigil` — without its files the watchdog and the guardian cannot start, and
    without the watchdog there is no lock.
-4. Restart normally, then uninstall (`Cleanup.cmd` or the menu) and check with `vigil_setup.exe -Mode verify`.
+4. Restart normally, then uninstall (the menu or `-Mode uninstall`) and check with `vigil_setup.exe -Mode verify`.
 
 Threat model: nothing new — an administrator can do the same from Windows; the panel only sees the PC offline.
 
@@ -106,6 +104,6 @@ Threat model: nothing new — an administrator can do the same from Windows; the
 
 `e2e/installer-e2e.ps1` runs in CI on a throwaway `windows-latest` runner against the server of the same
 commit: a PowerShell install from before D22 → `update` → broken installs → re-pair → uninstall → install →
-six guardian repairs reported to the journal → the emergency path above → `Cleanup.cmd`, then the wizard and
+six guardian repairs reported to the journal → the emergency path above → uninstall, then the wizard and
 the menu through a key script (`-Keys <file>`, not in the usage). What CI cannot see — Windows 10/11 Home,
 Polish Windows, the child's session, the console look — is tested on a VM.

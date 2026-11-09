@@ -110,16 +110,16 @@ Child's computers → "Add computer") and finds the child's account itself. Run 
 check, update, change the server address, re-pair, uninstall.
 
 ```
-vigil_setup.exe                  wizard, or the status and menu when installed
+vigil_setup.exe                  wizard, or the status and menu when installed (menu: Uninstall)
 vigil_setup.exe -Mode verify     checks the installation (or, uninstalled, that nothing was left)
-Cleanup.cmd                      uninstalls (same as the menu)
+vigil_setup.exe -Mode uninstall  uninstalls without the menu
 ```
 
 Parameters for scripts and every step of an install: [`docs/installer.md`](docs/installer.md).
 
 **If Windows does not start or Vigil cannot be removed normally:** boot Windows Recovery → Troubleshoot →
 Command Prompt, run `rmdir /s /q D:\ProgramData\Vigil` (the Windows drive is often `D:` there; check with
-`dir D:\ProgramData`), restart normally, then `Cleanup.cmd` and `vigil_setup.exe -Mode verify`. Without its
+`dir D:\ProgramData`), restart normally, then uninstall (menu → Uninstall) and run `vigil_setup.exe -Mode verify`. Without its
 files Vigil does not start, so there is no lock. For an ordinary lock the parent's TOTP code is enough.
 
 ## Repository layout
@@ -129,7 +129,7 @@ files Vigil does not start, so there is no lock. For an ordinary lock the parent
 | `server/` | FastAPI + SQLite, parent panel, tests |
 | `client/` | Windows service (`watchdog`), lock screen with a tray icon (`ui`), installer (`setup`) |
 | `client/setup/` | the installer `vigil_setup.exe`: wizard, menu, verify, integrity guardian |
-| `installer/` | `Install.cmd`, `Cleanup.cmd` shortcuts (and the old PowerShell installer used by the CI test) |
+| `installer/` | the old PowerShell installer, used only by the CI test as an installation from before the C# one |
 | `e2e/` | installer end-to-end test (CI, throwaway Windows) |
 | `docs/` | architecture, review and roadmap |
 

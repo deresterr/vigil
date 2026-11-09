@@ -109,16 +109,16 @@ Komputery dziecka → „Dodaj komputer”), konto dziecka znajduje sam. Uruchom
 sprawdzenie, aktualizacja, zmiana adresu serwera, ponowne parowanie, odinstalowanie.
 
 ```
-vigil_setup.exe                  kreator, a gdy Vigil jest zainstalowany: stan i menu
+vigil_setup.exe                  kreator, a gdy Vigil jest zainstalowany: stan i menu (menu: Odinstaluj)
 vigil_setup.exe -Mode verify     sprawdza instalację (albo, po deinstalacji, czy nic nie zostało)
-Cleanup.cmd                      odinstalowuje (to samo co w menu)
+vigil_setup.exe -Mode uninstall  odinstalowuje bez menu
 ```
 
 Parametry dla skryptów i każdy krok instalacji: [`docs/installer.md`](docs/installer.md).
 
 **Gdy Windows nie startuje albo Vigila nie da się usunąć normalnie:** uruchom Windows Recovery → Rozwiąż
 problemy → Wiersz polecenia, wpisz `rmdir /s /q D:\ProgramData\Vigil` (dysk z Windows to tam często `D:`;
-sprawdź `dir D:\ProgramData`), uruchom komputer normalnie, potem `Cleanup.cmd` i `vigil_setup.exe -Mode verify`.
+sprawdź `dir D:\ProgramData`), uruchom komputer normalnie, odinstaluj (menu → Odinstaluj) i uruchom `vigil_setup.exe -Mode verify`.
 Bez swoich plików Vigil nie startuje, więc nie ma blokady. Na zwykłą blokadę wystarczy kod TOTP rodzica.
 
 ## Struktura repo
@@ -128,7 +128,7 @@ Bez swoich plików Vigil nie startuje, więc nie ma blokady. Na zwykłą blokad�
 | `server/` | FastAPI + SQLite, panel rodzica, testy |
 | `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`), instalator (`setup`) |
 | `client/setup/` | instalator `vigil_setup.exe`: kreator, menu, verify, strażnik integralności |
-| `installer/` | skróty `Install.cmd`, `Cleanup.cmd` (i stary instalator PowerShell używany przez test w CI) |
+| `installer/` | stary instalator PowerShell, używany tylko przez test w CI jako instalacja sprzed wersji w C# |
 | `e2e/` | test end-to-end instalatora (CI, jednorazowy Windows) |
 | `docs/` | architektura, przegląd i roadmapa |
 

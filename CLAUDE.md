@@ -14,13 +14,13 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   run as SYSTEM from the copy the installer puts in `C:\ProgramData\Vigil`, see `docs/guardian.md`),
   `shared/` linked into the projects that need it: `IpcMessages.cs` (watchdog + ui), `VigilLayout.cs` (paths,
   file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
-- `installer/` — `Install.cmd` (shortcut to `vigil_setup.exe`, same parameters), `Cleanup.cmd`
-  (`vigil_setup.exe -Mode uninstall`), `vigil_install.ps1` + `vigil_guardian.ps1` (the old installer and guardian:
-  only the e2e's "install from before D22", not in the package). `build-package.ps1 -Version` → `dist/`.
+- `installer/` — `vigil_install.ps1` + `vigil_guardian.ps1` (the old installer and guardian: only the e2e's
+  "install from before D22", not in the package; no .cmd shortcuts since #66, vigil_setup.exe does it all).
+  `build-package.ps1 -Version` → `dist/` (three exes).
   `docs/installer.md` describes the installer, the README the emergency path from WinRE.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
   (server of the same commit on localhost; PowerShell install → vigil_setup update → broken installs → re-pair →
-  uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → Cleanup.cmd,
+  uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → uninstall,
   then the wizard and the menu through a key script). Never on a real PC.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
 - `docs/review-2026-11.md` — known defects, decisions (D1–D22), roadmap (M1–M2 done, M3, M4.1).

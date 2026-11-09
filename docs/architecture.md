@@ -114,7 +114,7 @@ Compared with the same device's previous heartbeat (`devices.wd_*`, reset when i
 First start: `bootstrap.py` generates secrets; `setup_complete=0` ⇒ `setup_guard` middleware redirects
 everything to `/setup` (unauthenticated wizard: first child's name and limits, parent password, TOTP, server URL).
 In the panel the parent pairs PCs: a code for "new PC of child X named Y" or "re-pair device Z" (only its
-hash is stored, with its target: `pairing_*` config keys); `Install.cmd` sends it to `/v1/pair` and stores the
+hash is stored, with its target: `pairing_*` config keys); `vigil_setup.exe` sends it to `/v1/pair` and stores the
 returned key in `signing.dat`. Re-pairing replaces that device's key (the old install fails closed); "Odłącz"
 deletes the device row, so its key stops working. There is no way to read a device key in the panel.
 

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Wykonuje 'dotnet publish' dla kazdego projektu (single-file, self-contained, win-x64),
-    kopiuje wszystkie .exe + launchery .cmd do jednego katalogu output.
+    kopiuje wszystkie .exe do jednego katalogu output.
 
     Uruchom z root projektu (repo root):
         .\build-package.ps1
@@ -14,8 +14,6 @@
         vigil_ui.exe           (~80 MB, lock overlay + tray icon)
         vigil_setup.exe        (instalator w C#, D22: kreator/menu bez parametrow, -Mode ... dla skryptow;
                                 kopiowany do ProgramData, uruchamia go zadanie Vigil Guardian, #65)
-        Install.cmd            (skrot do vigil_setup.exe z tymi samymi parametrami)
-        Cleanup.cmd            (skrot do vigil_setup.exe -Mode uninstall)
 
     vigil_install.ps1 i vigil_guardian.ps1 zostaja w repo (installer\) tylko dla e2e (instalacja sprzed D22),
     poza paczka.
@@ -120,8 +118,6 @@ foreach ($p in $projects) {
 
 # === Skopiuj non-build artifacts ===
 $extras = @(
-    @{ From = 'installer\Install.cmd';          To = 'Install.cmd' }
-    @{ From = 'installer\Cleanup.cmd';          To = 'Cleanup.cmd' }
 )
 foreach ($e in $extras) {
     $src = Join-Path $PSScriptRoot $e.From

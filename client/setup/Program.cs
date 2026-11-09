@@ -6,7 +6,7 @@ using Vigil.Setup.Core;
 [assembly: SupportedOSPlatform("windows")]
 
 // vigil_setup.exe (D22). Without parameters: the wizard (nothing installed) or the menu. With parameters,
-// as Install.cmd took them (-Mode install -ServerUrl ... -PairingCode ...): for scripts, CI and support.
+// as Install.cmd and vigil_install.ps1 took them (-Mode install -ServerUrl ... -PairingCode ...): for scripts, CI and support.
 // `vigil_setup.exe guardian`: the guardian task.
 
 // The task "Vigil Guardian" (SYSTEM, every 5 min, #65): no console work, no log file in %TEMP%, no pause;

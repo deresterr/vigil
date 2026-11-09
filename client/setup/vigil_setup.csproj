@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- vigil_setup.exe: installer (wizard, menu, parameter mode), verify and (later) the guardian, D22.
+  <!-- vigil_setup.exe: installer (wizard, menu, parameter mode), verify and the guardian task, D22.
        Console, run elevated (app.manifest). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

@@ -10,16 +10,17 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   child's session, started and kept alive by the watchdog), `setup` (`vigil_setup.exe`, the C# installer of D22:
   console, trimmed, `requireAdministrator`; core in `Core/` never touches the console, `IReport` gets the output;
   without parameters `Screens/` shows the wizard or the status + menu on Spectre.Console, with `-Mode ...` the
-  parameter mode for scripts and CI — both only call the core),
+  parameter mode for scripts and CI — both only call the core; `vigil_setup.exe guardian` is the guardian task,
+  run as SYSTEM from the copy the installer puts in `C:\ProgramData\Vigil`, see `docs/guardian.md`),
   `shared/` linked into the projects that need it: `IpcMessages.cs` (watchdog + ui), `VigilLayout.cs` (paths,
   file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
-- `installer/` — `Install.cmd` (shortcut to `vigil_setup.exe`, same parameters), `vigil_install.ps1` (the old
-  installer: verify oracle and "install from before D22" in the e2e, not in the package), `vigil-cleanup.ps1` +
-  `Cleanup.cmd` (until #66), `vigil_guardian.ps1` (until #65). `build-package.ps1 -Version` → `dist/`.
+- `installer/` — `Install.cmd` (shortcut to `vigil_setup.exe`, same parameters), `vigil_install.ps1` +
+  `vigil_guardian.ps1` (the old installer and guardian: only the e2e's "install from before D22", not in the
+  package), `vigil-cleanup.ps1` + `Cleanup.cmd` (until #66). `build-package.ps1 -Version` → `dist/`.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
   (server of the same commit on localhost; PowerShell install → vigil_setup update → broken installs → re-pair →
-  uninstall → install → folder deleted "from WinRE" → uninstall, then the wizard and the menu through a key
-  script). Both verifies at every point. Never on a real PC.
+  uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → uninstall,
+  then the wizard and the menu through a key script). Never on a real PC.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
 - `docs/review-2026-11.md` — known defects, decisions (D1–D22), roadmap (M1–M2 done, M3, M4.1).
   Other `docs/*.md` are older component notes; code wins.
@@ -39,7 +40,9 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - **Installer rewrite in C# (D22, #62–#66)** is the exception: each step is its own PR and merges once the CI
   installer e2e is green; VM sessions only at the checkpoints (after #64 and after #66). Anything the e2e
   cannot see (Windows 10/11 Home, Polish Windows, the child's session: vigil_ui, lock, the console wizard)
-  waits for the next checkpoint. The old `vigil_install.ps1 -Mode verify` is the oracle until the C# one matches it.
+  waits for the next checkpoint. The old `vigil_install.ps1 -Mode verify` was the oracle until the C# one matched
+  it at every e2e point (#63, #64); since #65 (C# guardian) the C# verify is the reference and the PowerShell one
+  checks only the e2e's PowerShell install.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 
 ## Invariants (changing any of these is a design decision — ask first)
@@ -89,6 +92,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   APIs, task XML, CSV columns by position, exit codes. The SCM keeps its own copy of a service's config until a
   reboot: a `Start` edited in the registry is not what `Get-Service` shows.
 - `vigil_setup` is trimmed: no built-in COM (Task Scheduler goes through `schtasks.exe`), no `dynamic`.
+- The guardian task runs `C:\ProgramData\Vigil\vigil_setup.exe` (holding it open, up to 75 s on a stopped service)
+  and would "repair" a service being replaced: install/update end and delete the task before copying files,
+  uninstall before deleting the folder. Anything else that deletes the folder on purpose (the e2e's emergency
+  path) disables the task first.
 - `vigil_setup` screens: Spectre's SelectionPrompt and live displays need ANSI, and its ReadLine spins forever on
   a null key. Menus and fields go through `Screens/Prompts.cs` (digits work without ANSI too); the CI drives
   them with `-Keys <file>` (`ScriptedConsole`: plain-text output, throws when the script runs out — exit 3).

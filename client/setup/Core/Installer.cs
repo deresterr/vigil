@@ -40,7 +40,12 @@ public sealed class Installer
     private static string P(string name) => VigilLayout.PathOf(name);
 
     /// <summary>Installed files that come from the package.</summary>
-    public static readonly string[] PackageFiles = { VigilLayout.WatchdogExe, VigilLayout.UiExe, VigilLayout.GuardianScript };
+    /// <summary>The binaries copied from the package. vigil_setup.exe itself too: the guardian task runs it
+    /// (#65).</summary>
+    public static readonly string[] PackageFiles = { VigilLayout.WatchdogExe, VigilLayout.UiExe, VigilLayout.SetupExe };
+
+    /// <summary>The guardian task's argument: `vigil_setup.exe guardian` (Program.cs, Core/Guardian.cs).</summary>
+    public const string GuardianArgument = "guardian";
 
     public static bool IsInstalled() => ServiceControl.Status() is not null || Directory.Exists(VigilLayout.InstallDir);
 
@@ -73,6 +78,9 @@ public sealed class Installer
             _r.Check(CheckLevel.Pass, Strings.OldServiceRemoved);
         }
         StopUiProcesses();
+        // The guardian runs vigil_setup.exe from the folder (holding it open) and would "repair" the service
+        // this install is replacing; it gets its task back below.
+        RemoveTask(VigilLayout.GuardianTaskName);
 
         _r.Section(Strings.StepFiles);
         Directory.CreateDirectory(VigilLayout.InstallDir);
@@ -98,9 +106,10 @@ public sealed class Installer
         ServiceControl.RestrictDacl(_r);
 
         _r.Section(Strings.StepProtection);
-        AddSafeBoot();
-        ScheduledTasks.Create(VigilLayout.GuardianTaskName, ScheduledTasks.GuardianTaskXml("powershell.exe",
-            $"-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{P(VigilLayout.GuardianScript)}\""));
+        SafeBoot.Write();
+        _r.Check(CheckLevel.Pass, Strings.SafeBootAdded);
+        ScheduledTasks.Create(VigilLayout.GuardianTaskName,
+            ScheduledTasks.GuardianTaskXml(P(VigilLayout.SetupExe), GuardianArgument));
         _r.Check(CheckLevel.Pass, Strings.GuardianTaskCreated(VigilLayout.GuardianTaskName));
         RemoveTask(VigilLayout.LegacyTrayTaskName);
         DisableBootMenu();
@@ -168,6 +177,8 @@ public sealed class Installer
     /// </summary>
     public bool Uninstall()
     {
+        // The copy in the folder (the guardian's) cannot delete itself while it runs.
+        if (RunningFromInstallDir) throw new SetupException(Strings.RunFromPackage);
         var failsBefore = _r.Fail;
         void Step(string title, Action body)
         {
@@ -210,11 +221,13 @@ public sealed class Installer
 
     private void CheckSourceFiles()
     {
+        if (RunningFromInstallDir) throw new SetupException(Strings.RunFromPackage);
         var missing = PackageFiles.Where(n => !File.Exists(Path.Combine(_sourceDir, n))).ToList();
         if (missing.Count > 0) throw new SetupException(Strings.SourceFilesMissing(_sourceDir, missing));
-        if (Path.GetFullPath(_sourceDir).TrimEnd('\\').Equals(VigilLayout.InstallDir, StringComparison.OrdinalIgnoreCase))
-            throw new SetupException(Strings.RunFromPackage);
     }
+
+    private bool RunningFromInstallDir =>
+        Path.GetFullPath(_sourceDir).TrimEnd('\\').Equals(VigilLayout.InstallDir, StringComparison.OrdinalIgnoreCase);
 
     private static void RequireInstalledKey()
     {
@@ -249,9 +262,12 @@ public sealed class Installer
     private void RemoveLegacyFiles()
     {
         var uiInstalled = File.Exists(P(VigilLayout.UiExe));
+        var setupInstalled = File.Exists(P(VigilLayout.SetupExe));
         foreach (var path in VigilLayout.LegacyPaths)
         {
             if (!uiInstalled && path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
+            // The PowerShell guardian's task still points at it until vigil_setup.exe takes over (#65).
+            if (!setupInstalled && path.Equals(P(VigilLayout.GuardianScript), StringComparison.OrdinalIgnoreCase)) continue;
             try
             {
                 if (File.Exists(path)) File.Delete(path);
@@ -293,21 +309,29 @@ public sealed class Installer
         _r.Check(CheckLevel.Pass, Strings.SigningKeyWritten);
     }
 
-    private void AddSafeBoot()
-    {
-        foreach (var key in VigilLayout.SafeBootKeys)
-        {
-            using var k = Registry.LocalMachine.CreateSubKey(key, writable: true);
-            k.SetValue("", "Service");
-        }
-        _r.Check(CheckLevel.Pass, Strings.SafeBootAdded);
-    }
-
+    /// <summary>A running instance is ended first: the guardian holds vigil_setup.exe in the folder open.</summary>
     private void RemoveTask(string name)
     {
         if (!ScheduledTasks.Exists(name)) return;
+        ScheduledTasks.End(name);
+        WaitForOtherSetupExit();
         if (ScheduledTasks.Delete(name)) _r.Check(CheckLevel.Pass, Strings.TaskRemoved(name));
         else _r.Check(CheckLevel.Warn, Strings.TaskRemoveFailed(name));
+    }
+
+    /// <summary>An ended task's process takes a moment to go; another vigil_setup (a parent's second window)
+    /// is left alone after 5 s.</summary>
+    private static void WaitForOtherSetupExit()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            var others = Process.GetProcessesByName("vigil_setup");
+            var any = others.Any(p => p.Id != Environment.ProcessId);
+            foreach (var p in others) p.Dispose();
+            if (!any) return;
+            Thread.Sleep(250);
+        }
     }
 
     private void DisableBootMenu()

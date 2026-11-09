@@ -76,6 +76,7 @@ public sealed class UiProcessLauncher : IDisposable
 
         IntPtr primaryToken = IntPtr.Zero;
         IntPtr processSa = IntPtr.Zero, threadSa = IntPtr.Zero;
+        IntPtr environment = IntPtr.Zero;
         try
         {
             if (!Win32.DuplicateTokenEx(
@@ -87,6 +88,17 @@ public sealed class UiProcessLauncher : IDisposable
                     out primaryToken))
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "DuplicateTokenEx failed");
+            }
+
+            // The child's own environment (#72): without it vigil_ui inherited SYSTEM's — its ui.log went to
+            // the system profile, where it may not write, and the single-file extraction to C:\Windows\Temp.
+            // A lock screen without its log beats none: on failure launch as before and say so.
+            if (!Win32.CreateEnvironmentBlock(out environment, primaryToken, bInherit: false))
+            {
+                _logger.LogWarning(new Win32Exception(Marshal.GetLastWin32Error()),
+                    "CreateEnvironmentBlock failed for session {Session}; vigil_ui gets the service's environment",
+                    sessionId);
+                environment = IntPtr.Zero;
             }
 
             processSa = AllocSecurityAttributes(ProcessSddl);
@@ -104,8 +116,9 @@ public sealed class UiProcessLauncher : IDisposable
                 null,
                 processSa, threadSa,
                 bInheritHandles: false,
-                dwCreationFlags: Win32.NORMAL_PRIORITY_CLASS,
-                lpEnvironment: IntPtr.Zero,
+                dwCreationFlags: Win32.NORMAL_PRIORITY_CLASS
+                    | (environment != IntPtr.Zero ? Win32.CREATE_UNICODE_ENVIRONMENT : 0),
+                lpEnvironment: environment,
                 lpCurrentDirectory: Path.GetDirectoryName(exePath),
                 lpStartupInfo: ref si,
                 out var pi);
@@ -120,6 +133,7 @@ public sealed class UiProcessLauncher : IDisposable
         }
         finally
         {
+            if (environment != IntPtr.Zero) Win32.DestroyEnvironmentBlock(environment);
             FreeSecurityAttributes(processSa);
             FreeSecurityAttributes(threadSa);
             if (impersonationToken != IntPtr.Zero) Win32.CloseHandle(impersonationToken);

@@ -336,6 +336,12 @@ public static class Strings
     public static string StepStart => T("Uruchamianie Vigila", "Starting Vigil");
     public static string StepProcesses => T("Zamykanie okien Vigila", "Closing Vigil's windows");
     public static string StepTasks => T("Usuwanie zadań i wpisów rozruchu", "Removing tasks and boot entries");
+    public static string StepEventSources => T("Usuwanie źródeł Dziennika zdarzeń", "Removing Event Log sources");
+    public static string EventSourceRemoved(string source) => T($"Źródło '{source}' usunięte", $"Source '{source}' removed");
+    public static string NoEventSources(IReadOnlyCollection<string> left) => left.Count == 0
+        ? T("Brak źródeł Dziennika zdarzeń Vigila", "No Vigil Event Log sources")
+        : T($"Zostały źródła Dziennika zdarzeń: {string.Join(", ", left)} (nieszkodliwe; odinstalowanie je usuwa)",
+            $"Event Log sources left: {string.Join(", ", left)} (harmless; uninstall removes them)");
     public static string StepFilesRemove => T("Usuwanie plików", "Removing files");
 
     // === ... and their details ===

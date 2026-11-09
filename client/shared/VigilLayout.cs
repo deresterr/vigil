@@ -86,6 +86,8 @@ public static class VigilLayout
 
     public const string WatchdogEventSource = "Vigil Watchdog";
     public const string GuardianEventSource = "Vigil Guardian";
+    /// <summary>Both sources, removed on uninstall (the writers create them again on their first entry).</summary>
+    public static readonly string[] EventSources = { WatchdogEventSource, GuardianEventSource };
 
     /// <summary>The guardian's findings: event ID → check code sent to the server (GUARDIAN_CHECKS).
     /// Warning = repaired, Error = repair failed.</summary>

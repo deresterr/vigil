@@ -1,238 +1,109 @@
-# vigil-installer
+# vigil_setup.exe — the installer
 
-PowerShell installer dla wszystkich PC components: `vigil_watchdog.exe`, `vigil_ui.exe`,
-`vigil_guardian.ps1`.
+One program (`client/setup`, D22): the wizard and the menu for the parent, the parameter mode for scripts
+and CI, `verify`, and the guardian task. .NET 8, self-contained, trimmed single file (~12 MB), console,
+`requireAdministrator` (UAC). It speaks Windows' display language (Polish or English, `Strings.cs`).
 
-## Pliki
+`Core/` does the work and never touches the console; it reports through `IReport`. `Screens/` (Spectre.Console)
+and the parameter mode (`Program.cs`) are two front ends on the same calls.
 
-- `vigil_install.ps1` / `Install.cmd` — main installer z 5 trybami (install / uninstall / update-config / reinstall / verify)
-- `vigil-cleanup.ps1` — nuclear-option uninstall, działa też offline z Windows Recovery
-  (gdy Windows nie startuje albo `Cleanup.cmd` z jakiegoś powodu nie idzie).
-  Patrz sekcja "Cleanup z Recovery" poniżej.
+## Running it
 
-## Tryby
+| | |
+|---|---|
+| `vigil_setup.exe` (double click) | nothing installed → **wizard**; installed → **status and menu** |
+| `vigil_setup.exe -Mode …` | parameter mode (below); exit code 0 done, 1 failed (verify: a failure), 2 wrong parameters |
+| `vigil_setup.exe guardian` | the guardian task only (`docs/guardian.md`) |
 
-| Mode | Opis | Wymaga binarek? |
-|------|------|------------------|
-| `install` | Fresh install | Tak (z `-SourceDir`) |
-| `uninstall` | Remove all | Nie |
-| `update-config` | Update server_url (vigil.toml) / signing_key (signing.dat) | Nie |
-| `reinstall` | Uninstall + install | Tak |
-| `verify` | Sprawdza instalację (albo, gdy nic nie jest zainstalowane, czy deinstalacja nic nie zostawiła): PASS/FAIL, kod wyjścia 1 przy FAIL. Niczego nie zmienia | Nie |
+Without parameters and with stdin/stdout redirected it prints the usage instead of waiting for keys. Every
+run writes a log to `%TEMP%\vigil_setup_<time>.log` (its path is on screen) — the thing to attach to a report.
 
-## Quick start
+### Wizard
 
-### Fresh install (pełen, z nazwą konta dziecka)
+Server address (checked against `/health`, asked again until it answers) → pairing code (8 digits; the
+panel: Settings → Child's computers → Add computer) → the child's account (only when there are several) →
+summary → install → a short verify table → the menu. **Nothing changes on the PC before "Install" on the
+summary**: the code goes to the server only then, and a wrong or expired one asks again with the system untouched.
 
-```powershell
-# Skopiuj na docelowy PC: zawartość dist\ na PC dziecka
+### Menu
 
-# Kod parowania z panelu rodzica (Ustawienia → „Dodaj komputer”)
-Install.cmd -Mode install `
-    -ServerUrl 'http://192.168.0.2:8088' `
-    -PairingCode '1234 5678'
+Header: installed version vs this package, server address and whether it answers, service state, the
+computer's key, the child's account. Items:
+
+- **Check the installation** — verify, every check.
+- **Update to X / Repair / Install the older version** — the package's files over the installation (the
+  label follows the versions); address and key kept. Without a key it asks for a pairing code first.
+- **Change the server address** — the same server at a new address; the key stays.
+- **Re-pair** — a new key from a code (panel: Re-pair next to the computer).
+- **Uninstall** — after a confirmation; the parent panel's Journal shows the service stop.
+
+Arrow keys and Enter, or the item's digit; works in a legacy console too (digits only).
+
+## Parameter mode
+
+```
+-Mode install       -ServerUrl <address> -PairingCode <code> [-ChildUsername <account>] [-DisableWinRE] [-NoUserPolicies]
+-Mode update        [-ServerUrl <address>]            files from this package; vigil.toml, signing.dat, totp.dat kept
+-Mode update-config [-ServerUrl <address>] [-PairingCode <code>]
+-Mode reinstall     -ServerUrl <address> -PairingCode <code>
+-Mode uninstall
+-Mode verify        [-ChildUsername <account>]        changes nothing
 ```
 
-Konto dziecka installer znajduje sam (jedyne konto z profilem, D12). Przy kilku kontach pyta
-(interaktywnie) albo trzeba podać `-ChildUsername`; bez tego policies idą tylko do Default User profile.
+The address may be given without a scheme or port (`192.168.1.5` → `http://192.168.1.5:8088`). The child's
+account: the only interactive account with a profile (D12); with several, `-ChildUsername`, otherwise the
+per-user policies go to the Default profile only. Pairing always happens before anything on the PC changes.
 
-### Uninstall
+## What an install does
 
-```powershell
-Cleanup.cmd
-```
+1. **Stopping**: the service stopped as SYSTEM through a one-off task (a normal stop: the watchdog says
+   goodbye) and deleted; vigil_ui killed; the guardian task ended and deleted (it runs the copy of
+   `vigil_setup.exe` being replaced).
+2. **Files** to `C:\ProgramData\Vigil`: `vigil_watchdog.exe`, `vigil_ui.exe`, `vigil_setup.exe`,
+   `backup\vigil_watchdog.exe`; leftovers of older versions removed (`VigilLayout.LegacyPaths`).
+3. **Configuration**: `guardian.dat` (SHA-256 of the watchdog, DPAPI), `vigil.toml` (server address only),
+   `signing.dat` (the key, DPAPI with entropy) — kept on `update`, like `totp.dat`.
+4. **Service** `vigil_watchdog`: automatic, quoted path, recovery restart ×3 after 60 s (also on a non-zero
+   exit), DACL: administrators query/start only.
+5. **Protection**: SafeBoot Minimal/Network, the task "Vigil Guardian" (`vigil_setup.exe guardian`, SYSTEM,
+   startup + every 5 min), F8 menu off (`bootmenupolicy Standard`), optionally WinRE off (`-DisableWinRE`).
+6. **Child's account**: the per-user policies (`VigilLayout.UserPolicies`) in the child's hive and the
+   Default profile — live, or loaded as an app hive; never through `reg.exe` (D12: it may be blocked).
+7. **Permissions**: folder SYSTEM full / Administrators modify / Authenticated Users read+execute,
+   secrets SYSTEM full / Administrators read.
+8. **Start** and a check that it runs.
 
-### Zmiana adresu servera (np. po zmianie static IP) albo ponowne parowanie
+**Uninstall** reverses it best effort — every step runs even when one fails, also on a half-removed
+installation — and removes the Event Log sources. The F8 policy is left at Windows' default.
 
-```powershell
-Install.cmd -Mode update-config -ServerUrl 'http://192.168.0.5:8088'
-Install.cmd -Mode update-config -PairingCode '1234 5678'   # panel: „Sparuj ponownie” przy komputerze
-```
+## Verify
 
-### Pełny reset (uninstall + install)
+Reads only language-independent sources (registry, APIs, task XML, CSV columns by position, exit codes).
+Installed: service (state, start, path, recovery, DACL), files (complete, no leftovers, backup and
+`guardian.dat` match, binaries = this package, secrets decrypt, ACLs), tasks and boot (guardian task, no
+temporary tasks, SafeBoot, F8), the child's policies, runtime (vigil_ui in the session, the server answers,
+watchdog warnings in the last 15 minutes). Not installed: nothing left (service, folder, tasks, SafeBoot,
+processes, policies, Event Log sources).
 
-```powershell
-Install.cmd -Mode reinstall -ServerUrl '...' -PairingCode '...'
-```
+An installation from before #65 (guardian `vigil_guardian.ps1`) is a warning: Update/Repair replaces it.
 
-## Parametry
+## Emergency: Windows does not start or Vigil cannot be removed normally
 
-### Wymagane dla `install` bez pytań (inaczej tryb interaktywny)
-- `-ServerUrl http://...` — adres FastAPI servera w LAN
-- `-PairingCode 12345678` — jednorazowy kod z panelu (ważny 10 min). Serwer wydaje za niego klucz tego
-  komputera; innej drogi do klucza nie ma (panel go nie pokazuje).
+The lock is fail-closed, and the parent unlocks offline with the TOTP code (D4). If the PC itself must be
+freed from outside Windows:
 
-### Opcjonalne
-- `-SourceDir <path>` — gdzie szukać binarek, default `$PSScriptRoot`
-- `-InstallDir 'C:\ProgramData\Vigil'` — default
-- `-ChildUsername 'jasiek'` — tylko gdy na PC jest kilka kont. Domyślnie installer bierze jedyne konto
-  z profilem: `ProfileList` (`S-1-5-21-*`, bez wbudowanych RID 500/501/503/504 — po SID, nie po nazwie, bo
-  „Gość” i konta Microsoft). Policies (DisableTaskMgr, DisableChangePassword, sticky keys, touchpad gestures)
-  idą wprost do hive'u tego konta (live `HKEY_USERS\<SID>`, inaczej `reg load` jego `NTUSER.DAT` ze ścieżki
-  profilu z `ProfileList`). Deinstalacja czyści policies ze wszystkich kont z profilem.
-- `-DisableWinRE` — wyłącz Windows Recovery Environment (`reagentc /disable`). Opt-in, bo
-  to nie do końca odwracalne (uninstall NIE robi `reagentc /enable`)
-- `-NoUserPolicies` — pomiń aplikację policies w ogóle (ani Default profile, ani named user).
-  Użyteczne do testów na własnym koncie / dry-runów.
+1. Boot Windows Recovery (WinRE: Shift + Restart, or three failed boots) → Troubleshoot → Command Prompt.
+2. Find the Windows drive (in WinRE it is often `D:`): `dir D:\ProgramData`.
+3. `rmdir /s /q D:\ProgramData\Vigil` — without its files the watchdog and the guardian cannot start, and
+   without the watchdog there is no lock.
+4. Restart normally, then uninstall (the menu or `-Mode uninstall`) and check with `vigil_setup.exe -Mode verify`.
 
-## Co installer robi w trybie `install`
+Threat model: nothing new — an administrator can do the same from Windows; the panel only sees the PC offline.
 
-1. Sprawdza uprawnienia admin (fail-fast jeśli nie)
-2. Sprawdza obecność 3 plików w `-SourceDir` (`vigil_watchdog.exe`, `vigil_ui.exe`, `vigil_guardian.ps1`)
-3. Waliduje parametry (signing_key min 16 bajtów po dekodowaniu, ServerUrl http/https)
-4. Tworzy `C:\ProgramData\Vigil\` z ACL: SYSTEM full, Admin modify, AuthUsers r+x
-5. Zatrzymuje działające `vigil_ui`, kopiuje 3 pliki + backup `vigil_watchdog.exe` do `backup\`
-6. Generuje SHA256 hash, szyfruje DPAPI LocalMachine, zapisuje `guardian.dat` (dla vigil_guardian)
-7. Tworzy `vigil.toml` z server_url (bez sekretów; signing_key idzie do `signing.dat`)
-8. Szyfruje signing_key DPAPI LocalMachine z entropy `"Vigil-SigningKey-v1"`,
-   zapisuje `signing.dat`
-9. Usuwa pozostałości starszych wersji: odblokowanie awaryjne (`emergency.dat`, `C:\Users\Public\Vigil\`),
-   `vigil_lockscreen.exe`, `vigil_tray.exe` (zastąpione przez `vigil_ui.exe`, które uruchamia watchdog).
-   Odblokowanie offline działa teraz kodem TOTP rodzica — sekret pobiera sam watchdog (`totp.dat`).
-10. Rejestruje service `vigil_watchdog` (auto-start, recovery: restart×3 bez reboota)
-11. Ustawia restrykcyjny DACL na service (Admin tylko query/start, nie stop/modify/delete)
-12. Dodaje SafeBoot entries (Minimal + Network) — vigil_watchdog działa też w safe mode
-13. Tworzy Scheduled Task `Vigil Guardian` (SYSTEM, AtStartup + co 5 min); usuwa stare zadanie `Vigil Tray`
-14. `bcdedit bootmenupolicy Standard` — wyłącza F8 menu
-15. `reagentc /disable` (opt-in przez `-DisableWinRE`)
-16. Aplikuje user policies (chyba że `-NoUserPolicies`):
-    - **Zawsze**: mount Default User profile (`C:\Users\Default\NTUSER.DAT`), set policies, unmount.
-      Skutek dla NOWO TWORZONYCH kont.
-    - **Jeśli `-ChildUsername` podany**: rezolwuje SID. Live HKU jeśli zalogowany,
-      `reg load` NTUSER.DAT jeśli nie. Skutek dla istniejącego konta dziecka **od razu**.
-    - Pisane klucze: `DisableTaskMgr`, `DisableChangePassword`, sticky keys hot-keys off,
-      PrecisionTouchPad gesty off. Tylko to, co zamyka drogę spod blokady — to samo konto co rodzic (D12).
-      `DisableRegistryTools`, `DisableLockWorkstation`, `NoLogoff` ze starszych wersji są usuwane.
-17. Start service
-18. Smoke test — czeka 15s i sprawdza czy `vigil_watchdog` jest w stanie Running.
-    Opcjonalnie loguje potwierdzenie z Event Log (`Vigil Watchdog`, source może jeszcze
-    nie istnieć przy pierwszym uruchomieniu — to nie jest błąd).
+## Tests
 
-## Co `uninstall` robi
-
-1. Stop + delete service, zatrzymuje `vigil_ui` (i stare `vigil_lockscreen`/`vigil_tray`)
-2. Unregister Scheduled Tasks (`Vigil Guardian`, stare `Vigil Tray`)
-3. Remove SafeBoot entries
-4. Cofa user policies w Default User profile + (jeśli `-ChildUsername` podany przy uninstall)
-   w hive tego użytkownika — usuwa wszystkie wartości pisane przy installu, także przez starsze wersje
-   (`DisableTaskMgr`, `DisableRegistryTools`, `DisableLockWorkstation`, `DisableChangePassword`,
-   `NoLogoff`, sticky keys, touchpad gestures). Pomijane jeśli `-NoUserPolicies`.
-5. Remove `C:\ProgramData\Vigil\` w całości — w tym `signing.dat` i `totp.dat`
-   (z `takeown` + `icacls` żeby pokonać ACL z install)
-
-**`uninstall` NIE robi:**
-- `bcdedit` cofać (Standard policy to default na Win10+, no-op)
-- `reagentc /enable` cofać (zostawiamy ręcznie jeśli było wyłączone)
-- Policy w innych kontach niż Default i `-ChildUsername` — jeśli ktoś instalował kilka razy
-  z różnymi userami, to `vigil-cleanup.ps1 -Force` przejdzie po wszystkich kontach.
-
-## Co `update-config` robi
-
-1. Wymaga że `C:\ProgramData\Vigil\` istnieje
-2. Czyta brakujące parametry z istniejącego `vigil.toml` (jeśli `-ServerUrl` nie podany,
-   bierze poprzedni)
-3. Zatrzymuje service (jeśli running)
-4. Nadpisuje `vigil.toml`
-5. Jeśli `-PairingCode` podany: paruje się (przed zatrzymaniem usługi — zły kod niczego nie psuje)
-   i nadpisuje `signing.dat` (DPAPI)
-6. Restart service
-
-Można podać tylko jeden parametr (np. tylko `-ServerUrl`), reszta zostaje.
-
-## Idempotencja
-
-`install` może być uruchomiony ponownie — wszystkie kroki są idempotentne:
-- Service istnieje → stop, delete, recreate
-- Scheduled Task istnieje → unregister, register
-- SafeBoot entries istnieją → overwrite
-- ACL → SetAccessRuleProtection(true) wyklucza dziedziczenie i nadpisuje
-
-## Walidacja
-
-Skrypt walidowany na realnym Windowsie (install / reinstall / uninstall / update-config cycle).
-
-## Ograniczenia
-
-- **User policies dla istniejącego konta** wymagają `-ChildUsername` przy installu — bez tego
-  installer modyfikuje tylko Default User profile (efekt dla nowych kont) i pokazuje warning
-  z instrukcją. Patrz też „Krok 4" w głównym README.
-- **Service DACL: Admin nie ma stop ani delete** — SDDL daje Administratorom tylko query/start
-  (bez `WP`, `SD`). Installer i `vigil-cleanup.ps1` zatrzymują i kasują usługę przez jednorazowy task
-  SYSTEM (`Invoke-ScAsSystem`): zwykły stop, watchdog wysyła serwerowi pożegnanie, w panelu alert
-  „Usługa Vigil została zatrzymana”. Kill procesu tylko awaryjnie (bez pożegnania → serwer widzi
-  „restart watchdoga”). To utrudnienie, nie ochrona: admin może zrobić to samo co installer.
-- **`-DisableWinRE` nie jest cofane przy uninstall** — opt-in z założenia, opt-out manualny
-  (`reagentc /enable`).
-- **Backup binarki** (do restore przez guardian) jest single-version. Przy update binarki
-  reinstalluje się też backup → traci się starą wersję jako recovery point.
-
-## Cleanup z Recovery (vigil-cleanup.ps1)
-
-Skrypt który kasuje wszystkie ślady systemu Vigil z Windowsa — service, scheduled task,
-katalogi, event log sources, user policies dla wszystkich kont. Działa w dwóch trybach:
-
-### Online (Windows działa normalnie)
-
-```powershell
-# PowerShell jako Administrator
-.\vigil-cleanup.ps1
-# albo bez pytań:
-.\vigil-cleanup.ps1 -Force
-```
-
-To samo co `Cleanup.cmd`, ale defensywne — nie wymaga że install dir
-i registry są w spójnym stanie.
-
-### Offline (z Windows Recovery / instalatora)
-
-Gdy Windows nie boot'uje albo z innego powodu musisz wykasować Vigil z zewnątrz:
-
-1. Boot z nośnika instalacyjnego Windows (USB) lub wybierz **"Repair your computer"** w
-   menu zaawansowanego startupu (Shift+Restart → Troubleshoot → Advanced → Command Prompt).
-2. W otwartym Command Prompt zorientuj się która litera dysku to docelowy Windows
-   (zwykle `D:` lub `E:` — `C:` jest często zarezerwowane dla recovery image):
-   ```cmd
-   dir C:\Windows
-   dir D:\Windows
-   ```
-3. Wgraj skrypt (USB stick, lub jeśli masz dostęp do sieci → `xcopy \\server\path X:\`)
-4. Uruchom z explicit drive parameter:
-   ```cmd
-   powershell.exe -ExecutionPolicy Bypass -File X:\vigil-cleanup.ps1 -SystemDrive D: -Force
-   ```
-
-Skrypt zrobi mount NTUSER.DAT każdego konta usera, wyczyści policies, odmountuje, kasuje
-pliki, kasuje service entry z SYSTEM hive.
-
-### Parametry
-
-| Parametr | Opis |
-|----------|------|
-| `-SystemDrive D:` | Litera dysku z Windows (offline mode). Online wykrywa automatycznie. |
-| `-Force` | Bez interaktywnego potwierdzenia (dla automatów / skryptów wsadowych). |
-| `-KeepUserPolicies` | Nie cofa user policies — useful przed reinstall Vigil. |
-| `-WhatIf` | Standardowy PS dry-run — pokazuje co by usunął bez wykonywania. |
-
-### Co konkretnie kasuje
-
-1. **Service**: `vigil_watchdog` (z wieloma strategiami fallback gdy DACL blokuje)
-2. **Scheduled Tasks**: `Vigil Guardian`, `Vigil Tray` (sprzed v0.6)
-3. **Procesy**: `vigil_watchdog.exe`, `vigil_ui.exe` (+ `vigil_lockscreen.exe`, `vigil_tray.exe` sprzed v0.6)
-4. **Katalogi**:
-   - `<drive>:\ProgramData\Vigil\`
-   - `<drive>:\ProgramData\ParentalControl\` (stara nazwa)
-   - `<drive>:\Windows\System32\Tasks\ParentalControl Guardian`
-5. **Event Log sources**: `Vigil Watchdog`, `Vigil Guardian`
-6. **SafeBoot entries**: `vigil_watchdog` w Minimal i Network
-7. **User policies** (jeśli NIE podano `-KeepUserPolicies`) — dla każdego konta w `Users\`:
-   - `DisableTaskMgr`, `DisableRegistryTools`, `DisableLockWorkstation`, `DisableChangePassword`
-   - `NoLogoff`
-   - Accessibility shortcuts (StickyKeys/Keyboard Response/ToggleKeys/MouseKeys) — defaulty Windows
-   - PrecisionTouchPad (Three/FourFinger Slide/Tap) — defaulty Windows
-
-### Czego NIE robi
-
-- **`reagentc /enable`** — przywrócenie WinRE jeśli installer wyłączył przez `-DisableWinRE`.
-  Opt-in. Uruchom ręcznie jeśli chcesz.
-- **`bcdedit bootmenupolicy`** — Standard to default na Win10/11, nie ma czego cofać.
-- **Cleanup hasła konta dziecka** — to nigdy nie było modyfikowane przez Vigil.
+`e2e/installer-e2e.ps1` runs in CI on a throwaway `windows-latest` runner against the server of the same
+commit: a PowerShell install from before D22 → `update` → broken installs → re-pair → uninstall → install →
+six guardian repairs reported to the journal → the emergency path above → uninstall, then the wizard and
+the menu through a key script (`-Keys <file>`, not in the usage). What CI cannot see — Windows 10/11 Home,
+Polish Windows, the child's session, the console look — is tested on a VM.

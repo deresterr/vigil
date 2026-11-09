@@ -207,6 +207,14 @@ public sealed class Installer
             _r.Check(CheckLevel.Pass, Strings.SafeBootRemoved);
         });
         Step(Strings.StepPolicies, ClearUserPolicies);
+        Step(Strings.StepEventSources, () =>
+        {
+            foreach (var source in VigilLayout.EventSources.Where(EventLog.SourceExists))
+            {
+                EventLog.DeleteEventSource(source);
+                _r.Check(CheckLevel.Pass, Strings.EventSourceRemoved(source));
+            }
+        });
         Step(Strings.StepFilesRemove, () =>
         {
             if (!Directory.Exists(VigilLayout.InstallDir)) { _r.Info(Strings.NoFolder(VigilLayout.InstallDir)); return; }

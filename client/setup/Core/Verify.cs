@@ -14,9 +14,6 @@ namespace Vigil.Setup.Core;
 /// that is not loaded is opened as a private app hive and closed). Without an installation it checks that
 /// the uninstall left nothing behind. What it cannot see (the lock overlay, the tray, keyboard blocking)
 /// stays a manual test. A diagnostic for the parent, not a protection.
-///
-/// Port of vigil_install.ps1 -Mode verify (#45), which stays the oracle in the CI e2e until the C#
-/// installer replaces it (D22): same sections, same checks, same Pass/Warn/Fail levels.
 /// </summary>
 public sealed class Verify
 {
@@ -44,19 +41,8 @@ public sealed class Verify
 
     // === Installed ===
 
-    /// <summary>The guardian task still runs vigil_guardian.ps1: an installation from before #65. It works, so
-    /// a warning (update replaces it), and its files are judged by that layout.</summary>
-    private bool _oldGuardian;
-
     private void RunInstalled()
     {
-        try
-        {
-            _oldGuardian = ScheduledTasks.Get(VigilLayout.GuardianTaskName) is { } task
-                && task.Arguments.Contains(VigilLayout.GuardianScript, StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception) { _oldGuardian = false; }
-
         // Each section on its own: an unexpected error is one failed check, not the end of the report.
         Section(Strings.SectionService(VigilLayout.ServiceName), CheckService);
         Section(Strings.SectionFiles(VigilLayout.InstallDir), CheckFiles);
@@ -82,7 +68,6 @@ public sealed class Verify
         var automatic = svc.Start == 2 && !svc.DelayedAutoStart;
         _r.Check(automatic, Strings.ServiceStart(automatic ? "Automatic" : $"Start={svc.Start}{(svc.DelayedAutoStart ? " (delayed)" : "")}"));
 
-        // Quoted since #47; older installs have it unquoted, which only matters with a space in the path.
         var exe = VigilLayout.PathOf(VigilLayout.WatchdogExe);
         var path = svc.ImagePath;
         var quoted = path.StartsWith('"');
@@ -101,21 +86,11 @@ public sealed class Verify
     {
         string P(string name) => VigilLayout.PathOf(name);
         var watchdog = P(VigilLayout.WatchdogExe);
-        // What the guardian task runs: vigil_setup.exe, or before #65 the PowerShell script.
-        var guardianFile = _oldGuardian ? VigilLayout.GuardianScript : VigilLayout.SetupExe;
-        var files = new[]
-        {
-            watchdog, P(VigilLayout.UiExe), P(guardianFile), P(VigilLayout.ConfigFile),
-            P(VigilLayout.SigningFile), P(VigilLayout.GuardianFile), VigilLayout.BackupWatchdogPath,
-        };
+        var files = Installer.PackageFiles.Select(P)
+            .Concat(new[] { P(VigilLayout.ConfigFile), P(VigilLayout.SigningFile), P(VigilLayout.GuardianFile), VigilLayout.BackupWatchdogPath });
         // Relative to the folder: "backup\vigil_watchdog.exe", not just the name it shares with the original.
         var missing = files.Where(f => !File.Exists(f)).Select(f => Path.GetRelativePath(VigilLayout.InstallDir, f)).ToList();
         _r.Check(missing.Count == 0, Strings.FilesComplete(missing));
-
-        var legacy = VigilLayout.LegacyPaths
-            .Where(p => !(_oldGuardian && p.Equals(P(VigilLayout.GuardianScript), StringComparison.OrdinalIgnoreCase)))
-            .Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
-        _r.Check(legacy.Count == 0, Strings.NoLegacyFiles(legacy));
 
         if (File.Exists(watchdog))
         {
@@ -159,7 +134,6 @@ public sealed class Verify
             var text = File.ReadAllText(toml);
             _serverUrl = Regex.Match(text, "server_url\\s*=\\s*\"([^\"]+)\"") is { Success: true } m ? m.Groups[1].Value : null;
             _r.Check(_serverUrl is not null, Strings.ConfigServerUrl(_serverUrl));
-            _r.Check(!text.Contains("bearer_token"), Strings.ConfigNoBearer);
         }
 
         if (Directory.Exists(VigilLayout.InstallDir)) CheckAcls();
@@ -199,21 +173,15 @@ public sealed class Verify
             _r.Check(task.UserId is "S-1-5-18" or "SYSTEM" && task.RunLevel == "HighestAvailable", Strings.TaskAsSystem);
             _r.Check(task.Enabled, Strings.TaskEnabled(task.Enabled));
             _r.Check(task.HasBootTrigger && task.RepeatsEvery("PT5M"), Strings.TaskTriggers);
-            if (_oldGuardian)
-                _r.Check(CheckLevel.Warn, Strings.TaskOldGuardian(VigilLayout.PathOf(VigilLayout.GuardianScript)));
-            else
-            {
-                var exe = VigilLayout.PathOf(VigilLayout.SetupExe);
-                _r.Check(task.Command.Trim('"').Equals(exe, StringComparison.OrdinalIgnoreCase)
-                         && task.Arguments.Trim() == Installer.GuardianArgument,
-                    Strings.TaskRuns($"{exe} {Installer.GuardianArgument}"));
-            }
+            var exe = VigilLayout.PathOf(VigilLayout.SetupExe);
+            _r.Check(task.Command.Trim('"').Equals(exe, StringComparison.OrdinalIgnoreCase)
+                     && task.Arguments.Trim() == Installer.GuardianArgument,
+                Strings.TaskRuns($"{exe} {Installer.GuardianArgument}"));
             if (task.LastResult == TaskInfo.HasNotRun)
                 _r.Check(CheckLevel.Pass, Strings.TaskNotRunYet);
             else if (task.LastResult is { } result)
                 _r.Check(result == 0, Strings.TaskLastResult(result, task.LastRunTime), CheckLevel.Warn);
         }
-        _r.Check(!ScheduledTasks.Exists(VigilLayout.LegacyTrayTaskName), Strings.NoLegacyTrayTask(VigilLayout.LegacyTrayTaskName));
         CheckNoTempTasks();
 
         foreach (var key in VigilLayout.SafeBootKeys)
@@ -227,7 +195,7 @@ public sealed class Verify
     private void CheckNoTempTasks()
     {
         var left = ScheduledTasks.AllNames()
-            .Where(n => VigilLayout.TempTaskPrefixes.Any(p => n.StartsWith(p, StringComparison.OrdinalIgnoreCase))).ToList();
+            .Where(n => n.StartsWith(VigilLayout.TempTaskPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
         _r.Check(left.Count == 0, Strings.NoTempTasks(left));
     }
 
@@ -248,7 +216,7 @@ public sealed class Verify
         CheckUserPolicies(Strings.DefaultProfile, null, VigilLayout.DefaultProfileHive, removed: false);
     }
 
-    /// <summary>Installed: every value set, no legacy one. Removed: nothing of ours left.</summary>
+    /// <summary>Installed: every value set. Removed: nothing of ours left.</summary>
     private void CheckUserPolicies(string label, string? sid, string? hiveFile, bool removed)
     {
         List<PolicyValue> rows;
@@ -258,8 +226,8 @@ public sealed class Verify
             rows = UserPolicies.Read(hive.Root);
         }
         var bad = removed
-            ? rows.Where(v => v.State is PolicyState.Set or PolicyState.Legacy).ToList()
-            : rows.Where(v => v.IsLegacy ? v.State == PolicyState.Legacy : v.State != PolicyState.Set).ToList();
+            ? rows.Where(v => v.State == PolicyState.Set).ToList()
+            : rows.Where(v => v.State != PolicyState.Set).ToList();
         if (bad.Count == 0)
             _r.Check(CheckLevel.Pass, removed ? Strings.PoliciesRemoved(label) : Strings.PoliciesSet(label, VigilLayout.UserPolicies.Length));
         else
@@ -288,8 +256,7 @@ public sealed class Verify
         _r.Section(Strings.SectionRemoved);
         _r.Check(!WatchdogService.Exists(), Strings.NoService(VigilLayout.ServiceName));
         _r.Check(!Directory.Exists(VigilLayout.InstallDir), Strings.NoFolder(VigilLayout.InstallDir));
-        foreach (var name in new[] { VigilLayout.GuardianTaskName, VigilLayout.LegacyTrayTaskName })
-            _r.Check(!ScheduledTasks.Exists(name), Strings.NoTask(name));
+        _r.Check(!ScheduledTasks.Exists(VigilLayout.GuardianTaskName), Strings.NoTask(VigilLayout.GuardianTaskName));
         CheckNoTempTasks();
         foreach (var key in VigilLayout.SafeBootKeys)
         {
@@ -298,7 +265,7 @@ public sealed class Verify
         }
         var procs = VigilLayout.ProcessNames.Where(n => Process.GetProcessesByName(n).Length > 0).ToList();
         _r.Check(procs.Count == 0, Strings.NoProcesses(procs));
-        // Harmless when left (an uninstall before #66 kept them), so a warning.
+        // Harmless when left, so a warning.
         var sources = VigilLayout.EventSources.Where(EventLog.SourceExists).ToList();
         _r.Check(sources.Count == 0, Strings.NoEventSources(sources), CheckLevel.Warn);
         foreach (var acc in Accounts.Interactive())

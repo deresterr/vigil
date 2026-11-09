@@ -4,18 +4,19 @@
 
 .DESCRIPTION
     'dotnet publish' of the three projects (single-file, self-contained, win-x64) into the parts folder,
-    then the package: vigil_setup.exe with vigil_watchdog.exe and vigil_ui.exe appended after its .NET
-    bundle, gzipped, with a trailer (format: client\setup\Core\Package.cs, the only reader).
+    then the package: vigil_setup.exe with vigil_watchdog.exe, vigil_ui.exe and vigil_ui's native WPF
+    libraries appended after its .NET bundle, gzipped, with a trailer (format: client\setup\Core\Package.cs,
+    the only reader).
+
+    Nothing is extracted at run time (D24): the projects publish native libraries next to their exe, and
+    only vigil_ui may have any, exactly VigilLayout.UiNativeLibraries (the build fails otherwise).
 
     Run from the repo root:
         .\build-package.ps1
 
     Output:
         dist\vigil_setup.exe          the package: double click = wizard / menu, -Mode ... for scripts
-        build\parts\vigil_watchdog.exe, vigil_ui.exe, vigil_setup.exe
-                                      the binaries on their own (the e2e's install from before D22 needs them)
-
-    vigil_install.ps1 and vigil_guardian.ps1 stay in the repo (installer\) for the e2e only.
+        build\parts\                  the files on their own: the e2e compares the installed ones with them
 
 .PARAMETER OutputDir
     Where the package goes. Default: .\dist
@@ -49,13 +50,16 @@ $ErrorActionPreference = 'Stop'
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'dist' }
 if (-not $PartsDir) { $PartsDir = Join-Path (Join-Path $PSScriptRoot 'build') 'parts' }
 
+# Natives: the libraries a project publishes next to its exe; the same list as VigilLayout.UiNativeLibraries.
 $projects = @(
-    @{ Dir = 'client\watchdog';   Exe = 'vigil_watchdog.exe' }
-    @{ Dir = 'client\ui';         Exe = 'vigil_ui.exe' }
-    @{ Dir = 'client\setup';      Exe = 'vigil_setup.exe' }
+    @{ Dir = 'client\watchdog';   Exe = 'vigil_watchdog.exe'; Natives = @() }
+    @{ Dir = 'client\ui';         Exe = 'vigil_ui.exe'
+       Natives = @('D3DCompiler_47_cor3.dll', 'PenImc_cor3.dll', 'PresentationNative_cor3.dll',
+                   'vcruntime140_cor3.dll', 'wpfgfx_cor3.dll') }
+    @{ Dir = 'client\setup';      Exe = 'vigil_setup.exe'; Natives = @() }
 )
 # Appended to vigil_setup.exe, in this order.
-$payload = @('vigil_watchdog.exe', 'vigil_ui.exe')
+$payload = @('vigil_watchdog.exe', 'vigil_ui.exe') + $projects[1].Natives
 
 # === Validation ===
 $missing = $projects | Where-Object { -not (Test-Path (Join-Path $PSScriptRoot $_.Dir)) }
@@ -94,7 +98,6 @@ foreach ($p in $projects) {
             dotnet publish -c $Configuration -r win-x64 `
                 -p:PublishSingleFile=true `
                 -p:SelfContained=true `
-                -p:IncludeNativeLibrariesForSelfExtract=true `
                 "-p:Version=$Version" `
                 --nologo
             if ($LASTEXITCODE -ne 0) {
@@ -109,7 +112,17 @@ foreach ($p in $projects) {
     if (-not (Test-Path $srcExe)) {
         throw "$srcExe not found after the build - check the dotnet publish output"
     }
-    Copy-Item -Path $srcExe -Destination (Join-Path $PartsDir $p.Exe) -Force
+    # Everything published besides the exe (symbols aside) must be a listed native library: anything else
+    # would be missing on the PC, or would have to be extracted at run time.
+    $extra = @(Get-ChildItem -Path $publishDir -File |
+        Where-Object { $_.Name -ne $p.Exe -and $_.Extension -ne '.pdb' } | ForEach-Object { $_.Name } | Sort-Object)
+    $expected = @($p.Natives | Sort-Object)
+    if (($extra -join ',') -ne ($expected -join ',')) {
+        throw "$($p.Dir) published [$($extra -join ', ')] next to $($p.Exe), expected [$($expected -join ', ')]: update this list and VigilLayout.UiNativeLibraries"
+    }
+    foreach ($name in @($p.Exe) + $p.Natives) {
+        Copy-Item -Path (Join-Path $publishDir $name) -Destination (Join-Path $PartsDir $name) -Force
+    }
 }
 
 # === Package ===

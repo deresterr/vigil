@@ -7,20 +7,15 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using Vigil.Ui.ViewModels;
-// Alias dla Screen z WinForms — żeby nie wciągać całego namespace, który konfliktuje z WPF
-// (np. KeyEventArgs jest w obu, Application też).
+// WinForms types by alias: the namespace clashes with WPF (KeyEventArgs, Application).
 using WinFormsScreen = System.Windows.Forms.Screen;
-// MessageBox z WPF (System.Windows.MessageBox) — alias żeby krócej się odwoływać.
 using MessageBox = System.Windows.MessageBox;
 
 namespace Vigil.Ui;
 
 /// <summary>
-/// Fullscreen lockscreen window. Każdy monitor dostaje swoją instancję — wszystkie
-/// współdzielą ten sam ViewModel.
-///
-/// Click handlers w code-behind (a nie commands) są celowym wyborem — kod jest mały,
-/// a commands wymagałyby relay-command boilerplate. WPF idiom MVVM jest tu nadmiarowy.
+/// Full-screen lock window, one per monitor, all sharing one ViewModel. Click handlers in code-behind on
+/// purpose: commands would only add boilerplate here.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public partial class LockWindow : Window
@@ -36,15 +31,14 @@ public partial class LockWindow : Window
         InitializeComponent();
         DataObject.AddPastingHandler(TotpInput, TotpInput_Pasting);
 
-        // Pozycjonowanie na właściwym ekranie zanim WindowState=Maximized
-        // (Maximized zachowuje się na ekranie gdzie jest okno gdy go ustawiamy).
+        // On its monitor before Maximized: a window maximizes on the screen it is on.
         var bounds = screen.Bounds;
         Left = bounds.Left;
         Top = bounds.Top;
         Width = bounds.Width;
         Height = bounds.Height;
 
-        // Block Alt+F4 (jest też zablokowany przez KeyboardBlocker, ale defense in depth).
+        // Block Alt+F4 (KeyboardBlocker does too).
         PreviewKeyDown += OnPreviewKeyDown;
     }
 
@@ -56,7 +50,7 @@ public partial class LockWindow : Window
             e.Handled = true;
             return;
         }
-        // Escape — nie zamyka window (tylko może wyczyścić TOTP input)
+        // Escape never closes the window (at most it clears the code field)
         if (e.Key == Key.Escape)
         {
             if (_vm.Phase == LockUiPhase.Locked)
@@ -111,7 +105,7 @@ public partial class LockWindow : Window
 
     private void TotpInput_KeyDown(object sender, KeyEventArgs e)
     {
-        // Enter w TOTP field = klik "Sprawdź"
+        // Enter in the code field = the Check button
         if (e.Key == Key.Enter || e.Key == Key.Return)
         {
             CheckTotp_Click(sender, e);
@@ -128,8 +122,7 @@ public partial class LockWindow : Window
             return;
         }
 
-        // Hardcoded 60 min grant — uproszczenie UX. Dziecko podaje sam kod, dostaje godzinę.
-        // Jeśli rodzic chce inny zakres, używa admin UI (manual grant).
+        // Always 60 min: the code alone grants an hour; other amounts from the parent panel.
         _vm.StatusMessage = "";
         await ApplyGrant(60);
     }
@@ -137,7 +130,7 @@ public partial class LockWindow : Window
     private async void Retry_Click(object sender, RoutedEventArgs e)
     {
         _vm.StatusMessage = Strings.Reconnecting;
-        if (IsStandaloneTestMode()) return;
+        if (App.IsStandalone) return;
 
         var ipc = ((App)System.Windows.Application.Current).IpcClient;
         if (ipc is null || !ipc.IsConnected) return;
@@ -154,9 +147,9 @@ public partial class LockWindow : Window
 
     private async void ResumeFromPause_Click(object sender, RoutedEventArgs e)
     {
-        // Informujemy watchdoga — on woła serwer (/v1/pause_toggle), serwer wyłącza pauzę.
+        // The watchdog asks the server (/v1/pause_toggle) to end the pause.
         // The overlay goes away on the next heartbeat once lock_reason != "pause".
-        if (IsStandaloneTestMode())
+        if (App.IsStandalone)
         {
             _vm.StatusMessage = Strings.PauseEndedTest;
             return;
@@ -181,7 +174,7 @@ public partial class LockWindow : Window
         _vm.Phase = LockUiPhase.GrantPending;
 
         // Standalone test: simulate success
-        if (IsStandaloneTestMode())
+        if (App.IsStandalone)
         {
             await Task.Delay(500);
             _vm.Phase = LockUiPhase.GrantApplied;
@@ -210,7 +203,7 @@ public partial class LockWindow : Window
             }
             else
             {
-                // Wracamy do Locked, czyścimy TOTP, pokazujemy błąd
+                // Back to Locked: clear the code, show the error
                 _vm.Phase = LockUiPhase.Locked;
                 _vm.TotpCode = "";
                 _vm.StatusMessage = Strings.CodeRejected(resp.Reason, resp.LockoutSecondsRemaining);
@@ -243,8 +236,7 @@ public partial class LockWindow : Window
 
         try
         {
-            // shutdown /s /t 0 — natychmiastowy shutdown
-            // Uruchomimy bez user interakcji (zaplanowany shutdown).
+            // shutdown /s /t 0: shut down now
             Process.Start(new ProcessStartInfo
             {
                 FileName = "shutdown.exe",
@@ -257,14 +249,5 @@ public partial class LockWindow : Window
         {
             _vm.StatusMessage = Strings.ShutDownFailed(ex.Message);
         }
-    }
-
-    // === Helpers ===
-
-    private static bool IsStandaloneTestMode()
-    {
-        // Standalone fallback dla local UI debug — argv lub env var.
-        return Environment.GetCommandLineArgs().Any(a => a == "--standalone-test")
-            || Environment.GetEnvironmentVariable("VIGIL_LOCKSCREEN_STANDALONE") == "1";
     }
 }

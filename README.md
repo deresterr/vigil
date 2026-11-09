@@ -130,7 +130,6 @@ files Vigil does not start, so there is no lock. For an ordinary lock the parent
 | `server/` | FastAPI + SQLite, parent panel, tests |
 | `client/` | Windows service (`watchdog`), lock screen with a tray icon (`ui`), installer (`setup`) |
 | `client/setup/` | the installer `vigil_setup.exe`: wizard, menu, verify, integrity guardian |
-| `installer/` | the old PowerShell installer, used only by the CI test as an installation from before the C# one |
 | `e2e/` | installer end-to-end test (CI, throwaway Windows) |
 | `docs/` | architecture, review and roadmap |
 

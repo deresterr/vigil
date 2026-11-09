@@ -3,8 +3,8 @@ namespace Vigil.Setup;
 public sealed class CliException(string message) : Exception(message);
 
 /// <summary>
-/// The parameters of the old Install.cmd / vigil_install.ps1, unchanged: -Mode, -ServerUrl, -PairingCode,
-/// -ChildUsername, -DisableWinRE, -NoUserPolicies. Names are case-insensitive, as in PowerShell.
+/// The parameter mode: -Mode, -ServerUrl, -PairingCode, -ChildUsername, -DisableWinRE, -NoUserPolicies
+/// (PowerShell style, names case-insensitive).
 /// </summary>
 public sealed class Cli
 {

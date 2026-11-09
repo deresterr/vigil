@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Vigil.Watchdog.Server;
 
 /// <summary>
-/// Request body dla POST /v1/heartbeat. Format: snake_case zgodny z FastAPI.
+/// Request body of POST /v1/heartbeat (snake_case, as the server's Pydantic models).
 /// </summary>
 public sealed class HeartbeatRequest
 {
@@ -68,7 +68,7 @@ public sealed class TamperEventRequest
     public bool LoggedOff { get; init; }
 }
 
-/// <summary>POST /v1/tamper_event type guardian_repaired — one vigil_guardian.ps1 finding (#36).</summary>
+/// <summary>POST /v1/tamper_event type guardian_repaired — one finding of the guardian (#36).</summary>
 public sealed class GuardianRepairRequest
 {
     [JsonPropertyName("type")]
@@ -103,7 +103,7 @@ public sealed class GoodbyeResponse
     public bool Ok { get; init; }
 }
 
-/// <summary>Response z POST /v1/heartbeat.</summary>
+/// <summary>Response of POST /v1/heartbeat.</summary>
 public sealed class HeartbeatResponse
 {
     [JsonPropertyName("lock_required")]
@@ -170,7 +170,7 @@ public sealed class TotpAttemptRequest
     public required int MinutesToGrant { get; init; }
 }
 
-/// <summary>POST /v1/totp_attempt response. Sukces (200) lub 401/429.</summary>
+/// <summary>POST /v1/totp_attempt response: 200, or 401/429.</summary>
 public sealed class TotpAttemptResponse
 {
     [JsonPropertyName("ok")]

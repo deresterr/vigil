@@ -8,7 +8,7 @@ namespace Vigil.Setup.Core;
 /// <summary>
 /// A user's registry hive: the live one under HKEY_USERS when the user is logged on, otherwise the
 /// NTUSER.DAT file loaded as an application hive (private to this process, unloaded on dispose).
-/// No reg.exe: DisableRegistryTools, set by versions before v0.6, blocks it for the installer itself (D12).
+/// Through the registry API (RegLoadAppKey), not reg.exe: no privilege or global mount name needed.
 /// </summary>
 public sealed class UserHive : IDisposable
 {
@@ -47,11 +47,9 @@ public enum PolicyState
     Clear,
     /// <summary>Something else.</summary>
     Other,
-    /// <summary>A value of an older version that is still there.</summary>
-    Legacy,
 }
 
-public sealed record PolicyValue(UserPolicy Policy, PolicyState State, bool IsLegacy);
+public sealed record PolicyValue(UserPolicy Policy, PolicyState State);
 
 public static class UserPolicies
 {
@@ -64,14 +62,12 @@ public static class UserPolicies
             var state = v is not null && v == Text(p.Value) ? PolicyState.Set
                 : v is null || v == Text(p.Reset) ? PolicyState.Clear
                 : PolicyState.Other;
-            result.Add(new PolicyValue(p, state, false));
+            result.Add(new PolicyValue(p, state));
         }
-        foreach (var p in VigilLayout.LegacyUserPolicies)
-            result.Add(new PolicyValue(p, ValueOf(root, p) is null ? PolicyState.Clear : PolicyState.Legacy, true));
         return result;
     }
 
-    /// <summary>Sets every value, removes the legacy ones.</summary>
+    /// <summary>Sets every value.</summary>
     public static void Apply(RegistryKey root)
     {
         foreach (var p in VigilLayout.UserPolicies)
@@ -79,28 +75,17 @@ public static class UserPolicies
             using var key = root.CreateSubKey(p.Key, writable: true);
             key.SetValue(p.Name, p.Value, p.Kind);
         }
-        RemoveValues(root, VigilLayout.LegacyUserPolicies);
     }
 
-    /// <summary>Legacy values first (DisableRegistryTools), then each value back to its reset value or removed.</summary>
+    /// <summary>Each value back to its reset value, or removed.</summary>
     public static void Clear(RegistryKey root)
     {
-        RemoveValues(root, VigilLayout.LegacyUserPolicies);
         foreach (var p in VigilLayout.UserPolicies)
         {
             using var key = root.OpenSubKey(p.Key, writable: true);
             if (key is null) continue;
             if (p.Reset is null) key.DeleteValue(p.Name, throwOnMissingValue: false);
             else key.SetValue(p.Name, p.Reset, p.Kind);
-        }
-    }
-
-    private static void RemoveValues(RegistryKey root, IEnumerable<UserPolicy> policies)
-    {
-        foreach (var p in policies)
-        {
-            using var key = root.OpenSubKey(p.Key, writable: true);
-            key?.DeleteValue(p.Name, throwOnMissingValue: false);
         }
     }
 

@@ -5,14 +5,14 @@ using System.Runtime.CompilerServices;
 namespace Vigil.Ui.ViewModels;
 
 /// <summary>
-/// State machine lockscreen UI:
+/// The lock screen's states:
 ///
-///   Initial          → Locked (wyświetl komunikat + UI z UiState)
-///   Locked + TOTP OK → GrantPending (wysłano do watchdoga, czekamy)
-///   GrantPending OK  → GrantApplied (komunikat "Dodano X minut...")
-///   GrantPending err → Locked (z error message)
+///   Initial          → Locked (message and controls from UiState)
+///   Locked + code    → GrantPending (sent to the watchdog, waiting)
+///   GrantPending OK  → GrantApplied ("Added X minutes")
+///   GrantPending err → Locked (with the error)
 ///
-/// Po GrantApplied: watchdog zauważy unlock przy następnym tickcie i zamknie lockscreen.
+/// After GrantApplied the watchdog sees the unlock at its next tick and removes the overlay.
 /// </summary>
 public sealed class LockViewModel : INotifyPropertyChanged
 {
@@ -57,8 +57,7 @@ public sealed class LockViewModel : INotifyPropertyChanged
     public bool ShowRetryButton      => _phase == LockUiPhase.Locked && _state.ShowRetryButton;
 
     /// <summary>
-    /// Czas pozostały do wyświetlenia na ekranie pauzy.
-    /// Pusta stringa gdy brak (nie pokazuj gdy limit wyczerpany — nie ma sensu pisać "Pozostało: 0 min").
+    /// Time left, shown during a pause; empty when none is left (no "0 min left").
     /// </summary>
     public string MinutesRemainingText =>
         _state.ShowResumeButton && _state.MinutesRemaining > 0
@@ -73,7 +72,7 @@ public sealed class LockViewModel : INotifyPropertyChanged
     }
 
     private string _statusMessage = "";
-    /// <summary>Komunikat statusu (np. "Nieprawidłowy kod", "Lockout 30s", "Dodano 30 minut").</summary>
+    /// <summary>Status line (wrong code, lockout, minutes added).</summary>
     public string StatusMessage
     {
         get => _statusMessage;
@@ -100,7 +99,7 @@ public sealed class LockViewModel : INotifyPropertyChanged
 
 public enum LockUiPhase
 {
-    Locked,         // Pokazujemy komunikat + opcjonalnie TOTP/retry
-    GrantPending,   // Wysłano do watchdoga, czekamy na response
-    GrantApplied,   // Sukces — wyświetl podsumowanie, czekaj aż watchdog zamknie window
+    Locked,         // message, and the code field / Retry when offered
+    GrantPending,   // code sent, waiting for the answer
+    GrantApplied,   // success shown until the watchdog unlocks
 }

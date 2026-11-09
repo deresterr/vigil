@@ -14,14 +14,16 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- D24: WPF's native DLLs are published next to vigil_ui.exe and installed in ProgramData (admin-only
+         write), never extracted to the child's %TEMP%, where a planted DLL would load into the lock screen. -->
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <StartupHookSupport>false</StartupHookSupport>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- UseWindowsForms=true dodaje "using System.Windows.Forms" jako implicit global,
-         co konfliktuje z WPF (Application, KeyEventArgs istnieją w obu). Używamy aliasu
-         WinFormsScreen w plikach które potrzebują Screen.AllScreens — implicit nie potrzebny. -->
+    <!-- UseWindowsForms adds an implicit global "using System.Windows.Forms", which clashes with WPF
+         (Application, KeyEventArgs exist in both). Files that need WinForms types alias them. -->
     <Using Remove="System.Windows.Forms" />
     <Compile Include="..\shared\IpcMessages.cs" Link="IpcMessages.cs" />
   </ItemGroup>

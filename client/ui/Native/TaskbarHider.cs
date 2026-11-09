@@ -14,8 +14,8 @@ public static class TaskbarHider
     private const uint SWP_SHOWWINDOW  = 0x0040;
     private const uint SWP_FRAMECHANGED= 0x0020;   // wymusza WM_NCCALCSIZE → DWM refresh
 
-    // WM_SETTINGCHANGE (26) — Explorer/taskbar odczytuje nowy stan powłoki i się przerysowuje.
-    // Wymagane na Windows 11 gdzie taskbar jest hostowany przez WinUI XAML Islands.
+    // WM_SETTINGCHANGE (26): Explorer rereads the shell state and redraws the taskbar. Needed on Windows 11,
+    // where the taskbar is hosted in WinUI XAML Islands.
     private const uint WM_SETTINGCHANGE = 0x001A;
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]

@@ -6,8 +6,8 @@ using Vigil.Setup.Core;
 [assembly: SupportedOSPlatform("windows")]
 
 // vigil_setup.exe (D22): the whole client package in one file, the watchdog and vigil_ui appended (#76,
-// Core/Package.cs). Without parameters: the wizard (nothing installed) or the menu. With parameters,
-// as Install.cmd and vigil_install.ps1 took them (-Mode install -ServerUrl ... -PairingCode ...): for scripts, CI and support.
+// Core/Package.cs). Without parameters: the wizard (nothing installed) or the menu. With parameters
+// (-Mode install -ServerUrl ... -PairingCode ...): for scripts, CI and support.
 // `vigil_setup.exe guardian`: the guardian task.
 
 // The task "Vigil Guardian" (SYSTEM, every 5 min, #65): no console work, no log file in %TEMP%, no pause;
@@ -143,7 +143,7 @@ static string Normalize(string raw)
 static string Code(string raw) => Pairing.NormalizeCode(raw) ?? throw new SetupException(Strings.CodeFormat);
 
 /// <summary>Parameters: the account is resolved, never asked for; several accounts and no -ChildUsername =
-/// the Default profile only (as the PowerShell installer did).</summary>
+/// the Default profile only.</summary>
 static InstallRequest Request(Cli cli, string url, string? key, IReport report)
 {
     var child = ChildAccountChoice.Resolve(cli.ChildUserName);

@@ -4,7 +4,7 @@ using Forms = System.Windows.Forms;
 namespace Vigil.Ui;
 
 /// <summary>
-/// Pause icon in the notification area (was vigil_tray.exe before D8).
+/// Pause icon in the notification area.
 ///
 ///   Left click  — toggle the pause (the watchdog asks the server)
 ///   Hover       — time remaining (Strings.Remaining), refreshed after every heartbeat

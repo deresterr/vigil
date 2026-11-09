@@ -15,7 +15,7 @@ internal static class MainMenu
 
     /// <summary>What the header shows and the menu depends on.</summary>
     private sealed record State(
-        string? Installed, string Package, List<string> PackageMissing, string? ServerUrl, bool Responds,
+        string? Installed, string Package, string? PackageProblem, string? ServerUrl, bool Responds,
         ServiceControllerStatus? Service, bool KeyPresent, ChildAccountChoice Child)
     {
         /// <summary>&gt; 0: the package is newer than the installation (one from before v0.8 counts as older).</summary>
@@ -36,7 +36,7 @@ internal static class MainMenu
             Theme.Blank(c);
 
             var items = new List<Choice<Item>> { new('1', Strings.UiMenuVerify, Item.Verify) };
-            if (state.PackageMissing.Count == 0)
+            if (state.PackageProblem is null)
             {
                 var cmp = state.PackageVsInstalled;
                 items.Add(new('2', cmp > 0 ? Strings.UiMenuUpdate(state.Package)
@@ -57,7 +57,7 @@ internal static class MainMenu
                     return 0;
                 case Item.Verify:
                     header();
-                    VerifyView.Run(c, app.Log, app.ChildUserName).RenderFull(c);
+                    VerifyView.Run(c, app.Log, app.ChildUserName, app.Package).RenderFull(c);
                     break;
                 case Item.Update:
                     Update(app, state, header);
@@ -80,7 +80,7 @@ internal static class MainMenu
     {
         var url = Installer.InstalledServerUrl();
         return new State(
-            App.InstalledVersion(), AppVersion.Display, app.MissingPackageFiles(), url,
+            App.InstalledVersion(), AppVersion.Display, app.PackageProblem, url,
             url is not null && Pairing.IsHealthy(url), ServiceControl.Status(),
             File.Exists(VigilLayout.PathOf(VigilLayout.SigningFile)), ChildAccountChoice.Resolve(app.ChildUserName));
     }
@@ -103,8 +103,8 @@ internal static class MainMenu
         yield return (Strings.UiStatusKey, s.KeyPresent ? Good(Strings.UiKeyPresent) : Bad(Strings.UiKeyMissing));
         yield return (Strings.UiStatusAccount, s.Child.Account is { } a ? Theme.Esc(a.Name)
             : $"[yellow]{Theme.Esc(Accounts.Interactive().Count > 1 ? Strings.UiAccountSeveral : Strings.UiAccountNone)}[/]");
-        if (s.PackageMissing.Count > 0)
-            yield return ("", $"[yellow]{Theme.Esc(Strings.UiPackageIncomplete(AppContext.BaseDirectory, s.PackageMissing))}[/]");
+        if (s.PackageProblem is { } problem)
+            yield return ("", $"[yellow]{Theme.Esc(problem)}[/]");
     }
 
     // === Actions ===
@@ -143,7 +143,7 @@ internal static class MainMenu
         header();
         var view = new StepsView(c);
         var error = StepsView.Run(c, app.Log, view, r =>
-            new Installer(r, app.PackageDir).Install(App.Request(state.ServerUrl, null, account)));
+            new Installer(r, app.Package).Install(App.Request(state.ServerUrl, null, account)));
         Finish(app, new(error is null ? PairOutcome.Done : PairOutcome.Failed, view.Warnings), account);
     }
 
@@ -154,7 +154,7 @@ internal static class MainMenu
         if (url is null) return;
         header();
         var view = new StepsView(app.C);
-        var error = StepsView.Run(app.C, app.Log, view, r => new Installer(r, app.PackageDir).UpdateConfig(url, null));
+        var error = StepsView.Run(app.C, app.Log, view, r => new Installer(r, app.Package).UpdateConfig(url, null));
         Finish(app, new(error is null ? PairOutcome.Done : PairOutcome.Failed, view.Warnings), state.Child.Account);
     }
 
@@ -192,7 +192,7 @@ internal static class MainMenu
         header();
         var view = new StepsView(c);
         var removed = false;
-        var error = StepsView.Run(c, app.Log, view, r => removed = new Installer(r, app.PackageDir).Uninstall());
+        var error = StepsView.Run(c, app.Log, view, r => removed = new Installer(r, app.Package).Uninstall());
         c.WriteLine();
         if (error is null && removed)
             c.MarkupLine($"{Theme.Mark(c, CheckLevel.Pass)} [green bold]{Theme.Esc(Strings.UiUninstalled)}[/]");

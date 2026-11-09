@@ -4,6 +4,17 @@ One program (`client/setup`, D22): the wizard and the menu for the parent, the p
 and CI, `verify`, and the guardian task. .NET 8, self-contained, trimmed single file (~12 MB), console,
 `requireAdministrator` (UAC). It speaks Windows' display language (Polish or English, `Strings.cs`).
 
+## The package: one file
+
+The client is distributed as `vigil_setup.exe` alone (#76): `build-package.ps1` appends `vigil_watchdog.exe`
+and `vigil_ui.exe`, gzipped, after the .NET bundle of `vigil_setup.exe` (the host finds its bundle through an
+offset in its header and ignores what follows), with a trailer. Format and the only reader:
+`Core/Package.cs`. Each file carries its SHA-256: a damaged download fails before anything is replaced.
+
+The installer puts in `C:\ProgramData\Vigil` the same three files as before and writes there only the first
+part of itself, without the payload: the guardian task starts a ~12 MB program every 5 minutes. That copy (and
+a cut-off download) has no package: install and update refuse, verify and uninstall work.
+
 `Core/` does the work and never touches the console; it reports through `IReport`. `Screens/` (Spectre.Console)
 and the parameter mode (`Program.cs`) are two front ends on the same calls.
 
@@ -59,8 +70,9 @@ per-user policies go to the Default profile only. Pairing always happens before 
 1. **Stopping**: the service stopped as SYSTEM through a one-off task (a normal stop: the watchdog says
    goodbye) and deleted; vigil_ui killed; the guardian task ended and deleted (it runs the copy of
    `vigil_setup.exe` being replaced).
-2. **Files** to `C:\ProgramData\Vigil`: `vigil_watchdog.exe`, `vigil_ui.exe`, `vigil_setup.exe`,
-   `backup\vigil_watchdog.exe`; leftovers of older versions removed (`VigilLayout.LegacyPaths`).
+2. **Files** to `C:\ProgramData\Vigil`: `vigil_watchdog.exe`, `vigil_ui.exe` (unpacked from the package and
+   checked against their SHA-256), `vigil_setup.exe` (without the payload), `backup\vigil_watchdog.exe`;
+   leftovers of older versions removed (`VigilLayout.LegacyPaths`).
 3. **Configuration**: `guardian.dat` (SHA-256 of the watchdog, DPAPI), `vigil.toml` (server address only),
    `signing.dat` (the key, DPAPI with entropy) — kept on `update`, like `totp.dat`.
 4. **Service** `vigil_watchdog`: automatic, quoted path, recovery restart ×3 after 60 s (also on a non-zero
@@ -103,7 +115,9 @@ Threat model: nothing new — an administrator can do the same from Windows; the
 ## Tests
 
 `e2e/installer-e2e.ps1` runs in CI on a throwaway `windows-latest` runner against the server of the same
-commit: a PowerShell install from before D22 → `update` → broken installs → re-pair → uninstall → install →
+commit: a PowerShell install from before D22 (from `build\parts`, the binaries on their own) → `update` → the
+one-file package (installed files = the parts, the installed copy and a payload-less one refuse to update) →
+broken installs → re-pair → uninstall → install →
 six guardian repairs reported to the journal → the emergency path above → uninstall, then the wizard and
 the menu through a key script (`-Keys <file>`, not in the usage). What CI cannot see — Windows 10/11 Home,
 Polish Windows, the child's session, the console look — is tested on a VM.

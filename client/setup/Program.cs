@@ -5,7 +5,8 @@ using Vigil.Setup.Core;
 
 [assembly: SupportedOSPlatform("windows")]
 
-// vigil_setup.exe (D22). Without parameters: the wizard (nothing installed) or the menu. With parameters,
+// vigil_setup.exe (D22): the whole client package in one file, the watchdog and vigil_ui appended (#76,
+// Core/Package.cs). Without parameters: the wizard (nothing installed) or the menu. With parameters,
 // as Install.cmd and vigil_install.ps1 took them (-Mode install -ServerUrl ... -PairingCode ...): for scripts, CI and support.
 // `vigil_setup.exe guardian`: the guardian task.
 
@@ -63,7 +64,9 @@ return exitCode;
 static int RunMode(Cli cli, LogReport log)
 {
     var report = new TeeReport(new ConsoleReport(), log);
-    var installer = new Installer(report, AppContext.BaseDirectory);
+    // The payload appended to this exe (#76); null in the installed copy: install and update then refuse.
+    var package = Package.OfThisProgram();
+    var installer = new Installer(report, package);
     var title = cli.Mode!.ToUpperInvariant();
     ConsoleReport.Title(title);
 
@@ -71,7 +74,7 @@ static int RunMode(Cli cli, LogReport log)
     {
         case "verify":
         {
-            var verify = new Verify(report, cli.ChildUserName, AppContext.BaseDirectory);
+            var verify = new Verify(report, cli.ChildUserName, package);
             verify.Run();
             ConsoleReport.Summary(Strings.VerifyTitle, Strings.VerifySummary(verify.Pass, verify.Fail, verify.Warn),
                 verify.Fail > 0 ? CheckLevel.Fail : verify.Warn > 0 ? CheckLevel.Warn : CheckLevel.Pass);

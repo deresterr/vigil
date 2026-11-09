@@ -1,42 +1,43 @@
 ﻿<#
 .SYNOPSIS
-    Buduje wszystkie komponenty PC (3 .NET projekty) i sklada paczke dla vigil_setup.exe.
+    Builds the client and puts the package together: one vigil_setup.exe (#76).
 
 .DESCRIPTION
-    Wykonuje 'dotnet publish' dla kazdego projektu (single-file, self-contained, win-x64),
-    kopiuje wszystkie .exe do jednego katalogu output.
+    'dotnet publish' of the three projects (single-file, self-contained, win-x64) into the parts folder,
+    then the package: vigil_setup.exe with vigil_watchdog.exe and vigil_ui.exe appended after its .NET
+    bundle, gzipped, with a trailer (format: client\setup\Core\Package.cs, the only reader).
 
-    Uruchom z root projektu (repo root):
+    Run from the repo root:
         .\build-package.ps1
 
-    Output: .\dist\ z plikami:
-        vigil_watchdog.exe     (~80 MB self-contained)
-        vigil_ui.exe           (~80 MB, lock overlay + tray icon)
-        vigil_setup.exe        (instalator w C#, D22: kreator/menu bez parametrow, -Mode ... dla skryptow;
-                                kopiowany do ProgramData, uruchamia go zadanie Vigil Guardian, #65)
+    Output:
+        dist\vigil_setup.exe          the package: double click = wizard / menu, -Mode ... for scripts
+        build\parts\vigil_watchdog.exe, vigil_ui.exe, vigil_setup.exe
+                                      the binaries on their own (the e2e's install from before D22 needs them)
 
-    vigil_install.ps1 i vigil_guardian.ps1 zostaja w repo (installer\) tylko dla e2e (instalacja sprzed D22),
-    poza paczka.
-    Skopiuj caly .\dist\ na PC dziecka i uruchom vigil_setup.exe.
+    vigil_install.ps1 and vigil_guardian.ps1 stay in the repo (installer\) for the e2e only.
 
 .PARAMETER OutputDir
-    Gdzie zlozyc paczke. Default: .\dist
+    Where the package goes. Default: .\dist
+
+.PARAMETER PartsDir
+    Where the separate binaries go. Default: .\build\parts
 
 .PARAMETER Configuration
     Release / Debug. Default: Release
 
 .PARAMETER Version
-    Wersja wszystkich binarek (-p:Version): release z taga (np. 0.8.0), CI 0.0.0-ci.<run>.
-    Default: 0.0.0-dev (jak client\Directory.Build.props). vigil_setup porownuje wersje
-    zainstalowana z wersja paczki.
+    Version of every binary (-p:Version): a release takes the tag (e.g. 0.8.0), CI 0.0.0-ci.<run>.
+    Default: 0.0.0-dev (as client\Directory.Build.props). vigil_setup compares the installed version with its own.
 
 .PARAMETER SkipBuild
-    Pomin dotnet publish (przydatne gdy juz zbudowane, chcesz tylko skopiowac).
+    Skip dotnet publish (already built: only put the package together).
 #>
 
 [CmdletBinding()]
 param(
     [string] $OutputDir = '',
+    [string] $PartsDir = '',
     [ValidateSet('Release','Debug')] [string] $Configuration = 'Release',
     [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')] [string] $Version = '0.0.0-dev',
     [switch] $SkipBuild
@@ -44,46 +45,44 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# $PSScriptRoot w domyslnej wartosci param() jest puste — obliczamy tu gdzie jest juz dostepne
+# $PSScriptRoot is empty inside param() defaults (Windows PowerShell 5.1)
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'dist' }
+if (-not $PartsDir) { $PartsDir = Join-Path (Join-Path $PSScriptRoot 'build') 'parts' }
 
 $projects = @(
     @{ Dir = 'client\watchdog';   Exe = 'vigil_watchdog.exe' }
     @{ Dir = 'client\ui';         Exe = 'vigil_ui.exe' }
     @{ Dir = 'client\setup';      Exe = 'vigil_setup.exe' }
 )
+# Appended to vigil_setup.exe, in this order.
+$payload = @('vigil_watchdog.exe', 'vigil_ui.exe')
 
 # === Validation ===
 $missing = $projects | Where-Object { -not (Test-Path (Join-Path $PSScriptRoot $_.Dir)) }
 if ($missing) {
     $names = ($missing | ForEach-Object { $_.Dir }) -join ', '
-    throw "Brak katalogow projektow: $names. Uruchom z katalogu glownego repo."
+    throw "Project folders missing: $names. Run from the repo root."
 }
 
-# Sprawdz .NET SDK
 try {
     $sdks = dotnet --list-sdks 2>&1
     $has8 = $sdks | Where-Object { $_ -match '^8\.' }
     if (-not $has8) {
-        throw ".NET 8 SDK wymagany. Install: winget install Microsoft.DotNet.SDK.8"
+        throw ".NET 8 SDK required. Install: winget install Microsoft.DotNet.SDK.8"
     }
 } catch [System.Management.Automation.CommandNotFoundException] {
-    throw "dotnet CLI nie znaleziony. Install: winget install Microsoft.DotNet.SDK.8"
+    throw "dotnet CLI not found. Install: winget install Microsoft.DotNet.SDK.8"
 }
 
-# === Output dir ===
-if (Test-Path $OutputDir) {
-    Write-Host "Czyszcze istniejacy $OutputDir" -ForegroundColor Yellow
-    Remove-Item -Path $OutputDir -Recurse -Force
+foreach ($dir in $OutputDir, $PartsDir) {
+    if (Test-Path $dir) { Remove-Item -Path $dir -Recurse -Force }
+    New-Item -Path $dir -ItemType Directory -Force | Out-Null
 }
-New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 
 # === Build ===
 foreach ($p in $projects) {
     $projDir = Join-Path $PSScriptRoot $p.Dir
-    # Wszystkie 3 projekty target net8.0-windows (vigil-watchdog tez, ze wzgledu na P/Invoke
-    # do user32/advapi32 i SupportedOSPlatform attribute).
-    # PS 5.1 Join-Path bierze tylko 2 argumenty, wiec budujemy sciezke krok po kroku.
+    # Windows PowerShell 5.1 Join-Path takes two arguments only.
     $publishDir = Join-Path $projDir "bin\$Configuration\net8.0-windows\win-x64\publish"
 
     if (-not $SkipBuild) {
@@ -91,6 +90,7 @@ foreach ($p in $projects) {
         Write-Host "==> Build $($p.Dir)" -ForegroundColor Cyan
         Push-Location $projDir
         try {
+            # One quoted string for -p:Version: splatted, 0.0.0-ci.89 reached dotnet mangled (MSB1001).
             dotnet publish -c $Configuration -r win-x64 `
                 -p:PublishSingleFile=true `
                 -p:SelfContained=true `
@@ -105,36 +105,69 @@ foreach ($p in $projects) {
         }
     }
 
-    # Skopiuj .exe do dist
     $srcExe = Join-Path $publishDir $p.Exe
     if (-not (Test-Path $srcExe)) {
-        throw "Po build nie znajduje $srcExe - sprawdz output dotnet publish"
+        throw "$srcExe not found after the build - check the dotnet publish output"
     }
-    $dstExe = Join-Path $OutputDir $p.Exe
-    Copy-Item -Path $srcExe -Destination $dstExe -Force
-    $size = [Math]::Round((Get-Item $dstExe).Length / 1MB, 1)
-    Write-Host "    OK $($p.Exe) ($size MB)" -ForegroundColor Green
+    Copy-Item -Path $srcExe -Destination (Join-Path $PartsDir $p.Exe) -Force
 }
 
-# === Skopiuj non-build artifacts ===
-$extras = @(
-)
-foreach ($e in $extras) {
-    $src = Join-Path $PSScriptRoot $e.From
-    $dst = Join-Path $OutputDir $e.To
-    if (-not (Test-Path $src)) {
-        throw "Brak $src"
+# === Package ===
+# [vigil_setup.exe][entry]...[trailer], little-endian (BinaryWriter):
+#   entry:   int32 name length, name (UTF-8), int64 size, int64 stored length, SHA-256 (32 B), gzip
+#   trailer: "VIGILPK1", int64 offset of the first entry, int32 entries
+function Write-Package([string] $Setup, [string[]] $Files, [string] $Target) {
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    $out = [System.IO.File]::Create($Target)
+    try {
+        $w = New-Object System.IO.BinaryWriter($out)
+        $in = [System.IO.File]::OpenRead($Setup)
+        try { $in.CopyTo($out) } finally { $in.Dispose() }
+        $offset = $out.Position
+
+        foreach ($file in $Files) {
+            $name = $utf8.GetBytes([System.IO.Path]::GetFileName($file))
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            $in = [System.IO.File]::OpenRead($file)
+            try { $hash = $sha.ComputeHash($in); $size = $in.Length } finally { $in.Dispose(); $sha.Dispose() }
+
+            # Gzipped into memory first: the entry header carries the stored length.
+            $stored = New-Object System.IO.MemoryStream
+            $gzip = New-Object System.IO.Compression.GZipStream($stored, [System.IO.Compression.CompressionMode]::Compress, $true)
+            $in = [System.IO.File]::OpenRead($file)
+            try { $in.CopyTo($gzip) } finally { $in.Dispose(); $gzip.Dispose() }
+
+            $w.Write([int32] $name.Length)
+            $w.Write($name)
+            $w.Write([int64] $size)
+            $w.Write([int64] $stored.Length)
+            $w.Write($hash)
+            $w.Flush()
+            $stored.Position = 0
+            $stored.CopyTo($out)
+            $stored.Dispose()
+        }
+
+        $w.Write([System.Text.Encoding]::ASCII.GetBytes('VIGILPK1'))
+        $w.Write([int64] $offset)
+        $w.Write([int32] $Files.Count)
+        $w.Flush()
+    } finally {
+        $out.Dispose()
     }
-    Copy-Item -Path $src -Destination $dst -Force
-    Write-Host "    OK $($e.To)" -ForegroundColor Green
 }
+
+Write-Host ""
+Write-Host "==> Package" -ForegroundColor Cyan
+$package = Join-Path $OutputDir 'vigil_setup.exe'
+Write-Package -Setup (Join-Path $PartsDir 'vigil_setup.exe') `
+    -Files ($payload | ForEach-Object { Join-Path $PartsDir $_ }) -Target $package
 
 # === Summary ===
+$mb = { param($f) [Math]::Round((Get-Item $f).Length / 1MB, 1).ToString() + ' MB' }
+Get-ChildItem -Path $PartsDir | ForEach-Object { Write-Host ("    {0,-20} {1}" -f $_.Name, (& $mb $_.FullName)) }
 Write-Host ""
-Write-Host "==> Paczka gotowa: $OutputDir" -ForegroundColor Magenta
-Get-ChildItem -Path $OutputDir | Format-Table @{N='Plik';E={$_.Name}}, @{N='Rozmiar';E={[Math]::Round($_.Length/1MB,1).ToString()+' MB'}}
-
-Write-Host ""
-Write-Host "Skopiuj caly katalog dist\ na PC dziecka i uruchom:" -ForegroundColor Yellow
-Write-Host "  Kreator (zalecany):   vigil_setup.exe  (UAC z manifestu)" -ForegroundColor Green
-Write-Host "  Z parametrami:        vigil_setup.exe -Mode install -ServerUrl '...' -PairingCode '...'" -ForegroundColor Yellow
+Write-Host "==> Package ready: $package ($(& $mb $package))" -ForegroundColor Magenta
+Write-Host "Copy it to the child's PC and run it:" -ForegroundColor Yellow
+Write-Host "  Wizard / menu:    vigil_setup.exe  (UAC from the manifest)" -ForegroundColor Green
+Write-Host "  With parameters:  vigil_setup.exe -Mode install -ServerUrl '...' -PairingCode '...'" -ForegroundColor Yellow

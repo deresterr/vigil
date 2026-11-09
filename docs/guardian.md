@@ -13,7 +13,7 @@ jest cofana, a watchdog wysyła ją do Dziennika jako alert `tamper_guardian_rep
 
 | Event ID | `check` | Znalezisko | Naprawa |
 |---|---|---|---|
-| 7003 | `binary_replaced` | SHA256 `vigil_watchdog.exe` ≠ `guardian.dat` (DPAPI LocalMachine) | kopia z `backup\vigil_watchdog.exe`, stop/start usługi |
+| 7003 | `binary_replaced` | SHA256 `vigil_watchdog.exe` ≠ `guardian.dat` (DPAPI LocalMachine) | stop usługi, kopia z `backup\vigil_watchdog.exe`; start dopiero po pozostałych naprawach (IFEO Debugger przejąłby ten start), wtedy wpis |
 | 7004 | `ifeo_debugger` | `Debugger` w IFEO dla `vigil_watchdog.exe` | usunięcie wartości |
 | 7002 | `service_disabled` | `Start` usługi w rejestrze ≠ 2 (automatyczny) | `sc.exe config start= auto` |
 | 7006 | `recovery_missing` | `FailureActions` w rejestrze ≠ restart ×3 albo bez flagi „także przy błędzie” | te same akcje co instalator (restart ×3 po 60 s) |

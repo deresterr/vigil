@@ -1,10 +1,9 @@
-"""Auth dla admin UI: hasło → cookie session (itsdangerous, 24h, HttpOnly, SameSite=Strict).
+"""Panel authentication: password → session cookie (itsdangerous, 24 h, HttpOnly, SameSite=Strict).
 
-Zamiennie do podpisów HMAC z watchdoga — admin UI używa standardowych cookie. SameSite=Strict
-chroni przed CSRF, HttpOnly blokuje dostęp z JS (XSS mitigation), itsdangerous podpisuje
-cookie tak że nikt nie sforge'uje (klucz `admin_session_key` z DB).
+The panel uses a cookie, the watchdog signed requests. SameSite=Strict against CSRF, HttpOnly against
+script access, the itsdangerous signature (key `admin_session_key`) against forged cookies.
 
-Hasło rodzica zapisane jako argon2id hash w `config.parent_password_hash`.
+The parent's password is an argon2id hash in `config.parent_password_hash`.
 """
 
 from __future__ import annotations
@@ -25,20 +24,18 @@ _ITSDANGEROUS_SALT = "vigil-admin-session-v1"
 
 
 def _serializer(db: sqlite3.Connection) -> URLSafeTimedSerializer:
-    """Buduje serializer z secret z DB. Wywoływane przy każdym requestcie — tani lookup."""
+    """The signer with the key from the database (read per request: cheap)."""
     secret = get_config_value(db, "admin_session_key")
     if not secret:
         raise RuntimeError(
-            "Brakuje admin_session_key w config — bootstrap nie został uruchomiony lub baza jest stara. "
-            "Wygeneruj klucz ręcznie albo zresetuj DB."
+            "admin_session_key missing from config: the startup bootstrap did not run"
         )
     return URLSafeTimedSerializer(secret, salt=_ITSDANGEROUS_SALT)
 
 
 def verify_admin_password(db: sqlite3.Connection, password: str) -> bool:
-    """Weryfikuje hasło względem hashu z config. Argon2id sam jest CPU-bound (~50-200ms),
-    więc nie potrzebujemy dodatkowego sleep przeciwko brute force.
-    """
+    """The password against the stored hash. argon2id costs ~50–200 ms of CPU; repeated failures are
+    throttled per IP (record_login_failure)."""
     stored_hash = get_config_value(db, "parent_password_hash")
     if not stored_hash:
         return False
@@ -46,18 +43,18 @@ def verify_admin_password(db: sqlite3.Connection, password: str) -> bool:
 
 
 def issue_session_cookie(db: sqlite3.Connection) -> str:
-    """Generuje podpisany token (cookie value) dla zalogowanego admina."""
+    """A signed session token (the cookie value)."""
     return _serializer(db).dumps({"sub": "parent"})
 
 
 def set_session_cookie(response, cookie_value: str) -> None:
-    """Ustawia cookie z bezpiecznymi flagami. Secure=False bo serwer LAN-only HTTP."""
+    """The session cookie. Not Secure: the server is meant for plain HTTP on the home network or a VPN."""
     response.set_cookie(
         key=SESSION_COOKIE,
         value=cookie_value,
         max_age=SESSION_MAX_AGE_SECONDS,
         httponly=True,
-        secure=False,  # LAN HTTP-only deployment
+        secure=False,
         samesite="strict",
         path="/admin",
     )
@@ -71,9 +68,9 @@ async def require_admin_session(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """Dependency dla endpointów /admin/api/*. 401 jeśli brak/zły/expired cookie.
+    """Dependency of /admin/api/*: 401 without a valid, unexpired session cookie.
 
-    Returns: payload z cookie ({"sub": "parent"}).
+    Returns the cookie's payload ({"sub": "parent"}).
     """
     cookie = request.cookies.get(SESSION_COOKIE)
     if not cookie:

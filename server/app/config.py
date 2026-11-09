@@ -1,19 +1,16 @@
-"""Centralna konfiguracja: env vars (infrastruktura) + defaulty w tabeli `config` (logika)."""
+"""Configuration: environment variables (infrastructure only) and the defaults of the `config` table."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-# === Env vars — wyłącznie infrastruktura (Docker/host-level) ===
-# Logika aplikacji (hasła, limity, strefy czasowe) konfigurowana przez wizard /setup.
+# === Environment: infrastructure only. Passwords, limits and the time zone come from the wizard. ===
+# (LISTEN_PORT is read by the Dockerfile's uvicorn command, not here.)
 
 DATABASE_PATH: Path = Path(os.environ.get("DATABASE_PATH", "/data/vigil.db"))
-LISTEN_HOST: str = os.environ.get("LISTEN_HOST", "0.0.0.0")
-LISTEN_PORT: int = int(os.environ.get("LISTEN_PORT", "8088"))
 
-# === Defaulty wpisywane do tabeli `config` przy first-run ===
-# Po inicjalizacji DB nadrzędne są wartości z bazy (modyfikowalne przez wizard i admin UI).
+# === Defaults of the `config` table, inserted when missing; the database values win afterwards. ===
 
 CONFIG_DEFAULTS: dict[str, str] = {
     # Set by the wizard
@@ -40,7 +37,7 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "totp_last_step":             "0",
 }
 
-# Settings of a new child (wizard, "Dodaj dziecko"). Migration 2 reads these keys too: keep them.
+# Settings of a new child (setup wizard, "Add child" in the panel).
 CHILD_DEFAULTS: dict[str, object] = {
     "daily_limit_weekday": 120,
     "daily_limit_weekend": 240,
@@ -52,7 +49,7 @@ CHILD_DEFAULTS: dict[str, object] = {
 def week_schedule(limit_mon_thu: int, limit_fri_sun: int, night_start: str, night_end: str) -> list[dict]:
     """Seven days (Monday first) for `child_schedule`: one limit Mon–Thu, another Fri–Sun, one night window.
 
-    The shape of the week before #48, for a new child (defaults, setup wizard)."""
+    A new child's week (defaults, the setup wizard's two limits); the panel then edits each day."""
     return [{"daily_limit": limit_mon_thu if weekday < 4 else limit_fri_sun,
              "night_start": night_start, "night_end": night_end} for weekday in range(7)]
 
@@ -61,6 +58,8 @@ def default_schedule() -> list[dict]:
     return week_schedule(int(CHILD_DEFAULTS["daily_limit_weekday"]), int(CHILD_DEFAULTS["daily_limit_weekend"]),
                          str(CHILD_DEFAULTS["night_lock_start"]), str(CHILD_DEFAULTS["night_lock_end"]))
 
-# === Stałe nieprzechowywane w DB ===
+# === Constants not stored in the database ===
 
+# The entry in the parent's authenticator app: "Vigil (parent)". A rename only affects new scans.
 TOTP_ISSUER: str = "Vigil"
+TOTP_ACCOUNT: str = "parent"

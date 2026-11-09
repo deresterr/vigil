@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..admin_auth import require_admin_session, verify_admin_password
-from ..config import TOTP_ISSUER, default_schedule
+from ..config import TOTP_ACCOUNT, TOTP_ISSUER, default_schedule
 from ..crypto import hash_password
 from ..db import (
     ensure_child_day,
@@ -433,12 +433,10 @@ async def update_config(body: ConfigBody, db: sqlite3.Connection = Depends(get_d
 
 
 def _png_qr_base64(data: str) -> str:
-    """Render QR jako PNG, zwraca base64 string (do data: URL w <img src>).
+    """The QR code as base64 PNG (for a data: URL).
 
-    Wymuszamy PIL backend (Pillow). Domyślnie qrcode.make_image() detect-uje czy Pillow
-    jest dostępny i fallbackuje do PyPNGImage (pure-Python) który ma inną sygnaturę save().
-    Pillow jest hard requirement w requirements.txt — jeśli go brakuje, ImportError jest
-    bardziej czytelny niż obecny TypeError z save(format=...).
+    The Pillow backend explicitly: qrcode otherwise falls back to PyPNGImage, whose save() has another
+    signature, so a missing Pillow would surface as a puzzling TypeError instead of an ImportError.
     """
     import base64
 
@@ -457,17 +455,16 @@ def _png_qr_base64(data: str) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-# === GET /admin/api/totp — zwraca obecny TOTP secret + QR ===
+# === GET /admin/api/totp: the current secret and QR ===
 
 
 @router.get("/totp")
 async def get_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Zwraca AKTUALNY (nie regenerowany) TOTP secret + QR — do wyświetlenia w admin UI
-    żeby rodzic mógł zeskanować ponownie (np. po wymianie telefonu)."""
+    """The current secret (not a new one) and its QR, to scan again on a new phone."""
     secret = get_config_value(db, "totp_secret")
     if not secret:
         raise HTTPException(status_code=404, detail="totp_not_configured")
-    uri = pyotp.TOTP(secret).provisioning_uri(name="rodzic", issuer_name=TOTP_ISSUER)
+    uri = pyotp.TOTP(secret).provisioning_uri(name=TOTP_ACCOUNT, issuer_name=TOTP_ISSUER)
     return {
         "secret": secret,
         "uri": uri,
@@ -477,14 +474,14 @@ async def get_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
 
 @router.post("/regen_totp")
 async def regen_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Generuje nowy TOTP secret. Trzeba ponownie zeskanować QR aplikacją Aegis."""
+    """A new TOTP secret: the authenticator app needs the new QR code."""
     new_secret = pyotp.random_base32()
     set_config_value(db, "totp_secret", new_secret)
     set_config_value(db, "totp_last_step", 0)
-    # Reset lockoutu — żeby admin nie musiał czekać po regeneracji
+    # A new secret ends any lockout
     db.execute("DELETE FROM totp_lockout")
 
-    uri = pyotp.TOTP(new_secret).provisioning_uri(name="rodzic", issuer_name=TOTP_ISSUER)
+    uri = pyotp.TOTP(new_secret).provisioning_uri(name=TOTP_ACCOUNT, issuer_name=TOTP_ISSUER)
     log_event(db, "totp_regenerated", {"via": "admin_ui"})
 
     return {

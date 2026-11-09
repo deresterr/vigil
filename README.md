@@ -78,7 +78,7 @@ and run `docker compose pull && docker compose up -d`; the downloaded `vigil_set
 
 ```bash
 cd server
-cp .env.example .env          # instance name, port, optionally a ready image
+cp .env.example .env          # port, optionally a ready image
 docker compose up -d
 ```
 

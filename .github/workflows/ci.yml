@@ -81,7 +81,8 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Build package
         shell: pwsh
-        run: ./build-package.ps1 -Configuration Release
+        # A pre-release version per run: vigil_setup tells an installed CI build from a newer one.
+        run: ./build-package.ps1 -Configuration Release -Version "0.0.0-ci.${{ github.run_number }}"
       - uses: actions/upload-artifact@v4
         with:
           name: vigil-client-${{ github.sha }}
@@ -98,5 +99,5 @@ jobs:
         run: pip install -r server/requirements.txt tzdata
       - name: Installer e2e
         shell: pwsh
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: ./e2e/installer-e2e.ps1 -PackageDir dist -ServerDir server

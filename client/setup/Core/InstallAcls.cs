@@ -13,7 +13,7 @@ namespace Vigil.Setup.Core;
 internal static class InstallAcls
 {
     private static readonly SecurityIdentifier Admins = new(WellKnownSidType.BuiltinAdministratorsSid, null);
-    private static readonly SecurityIdentifier System = new(WellKnownSidType.LocalSystemSid, null);
+    private static readonly SecurityIdentifier LocalSystem = new(WellKnownSidType.LocalSystemSid, null);
 
     /// <summary>
     /// Makes everything under the folder writable and deletable for administrators: folder ACL as installed,
@@ -28,7 +28,7 @@ internal static class InstallAcls
         foreach (var item in Items(dir))
         {
             TakeOwnership(item);
-            if (IsSecret(item)) SetProtected(item, (System, FileSystemRights.FullControl), (Admins, FileSystemRights.FullControl));
+            if (IsSecret(item)) SetProtected(item, (LocalSystem, FileSystemRights.FullControl), (Admins, FileSystemRights.FullControl));
             else SetInheritedOnly(item);
         }
     }

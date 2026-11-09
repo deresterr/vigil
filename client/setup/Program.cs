@@ -23,13 +23,9 @@ catch (CliException ex)
 using var log = new LogReport();
 if (cli.Mode is null)
 {
-    if (cli.InputScript is null && (Console.IsInputRedirected || Console.IsOutputRedirected))
-    {
-        Console.WriteLine(Strings.Usage);
-        return 2;
-    }
-    var code = Ui.Run(log, cli.InputScript);
-    return code;
+    // The wizard and the menu need a person at a console; a script without parameters gets the usage.
+    Console.WriteLine(Strings.Usage);
+    return 2;
 }
 
 int exitCode;

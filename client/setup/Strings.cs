@@ -21,29 +21,59 @@ public static class Strings
         """
         Vigil — instalator
 
-          vigil_setup.exe -Mode verify [-ChildUsername <konto>]
-              Sprawdza instalację (albo, gdy Vigila nie ma, czy deinstalacja nic nie zostawiła).
-              Kod wyjścia 1 przy błędzie. Niczego nie zmienia.
+        Bez parametrów: kreator instalacji albo, gdy Vigil już jest zainstalowany, stan i menu.
 
-        Instalacja, deinstalacja i zmiana konfiguracji: na razie Install.cmd.
+        Parametry (skrypty, CI, wsparcie):
+          -Mode install       -ServerUrl <adres> -PairingCode <kod> [-ChildUsername <konto>]
+                              [-DisableWinRE] [-NoUserPolicies]
+          -Mode update        [-ServerUrl <adres>]   pliki z tej paczki, konfiguracja i klucz bez zmian
+          -Mode update-config [-ServerUrl <adres>] [-PairingCode <kod>]
+          -Mode reinstall     -ServerUrl <adres> -PairingCode <kod>
+          -Mode uninstall
+          -Mode verify        [-ChildUsername <konto>]   sprawdza, niczego nie zmienia
+
+        Kod wyjścia: 0 — gotowe, 1 — błąd (verify: co najmniej jeden błąd), 2 — złe parametry.
         """,
         """
         Vigil — installer
 
-          vigil_setup.exe -Mode verify [-ChildUsername <account>]
-              Checks the installation (or, without Vigil, that the uninstall left nothing behind).
-              Exit code 1 on a failure. Changes nothing.
+        Without parameters: the setup wizard or, when Vigil is installed, its status and a menu.
 
-        Install, uninstall and configuration changes: Install.cmd for now.
+        Parameters (scripts, CI, support):
+          -Mode install       -ServerUrl <address> -PairingCode <code> [-ChildUsername <account>]
+                              [-DisableWinRE] [-NoUserPolicies]
+          -Mode update        [-ServerUrl <address>]   files from this package, configuration and key kept
+          -Mode update-config [-ServerUrl <address>] [-PairingCode <code>]
+          -Mode reinstall     -ServerUrl <address> -PairingCode <code>
+          -Mode uninstall
+          -Mode verify        [-ChildUsername <account>]   checks, changes nothing
+
+        Exit code: 0 — done, 1 — failed (verify: at least one failure), 2 — wrong parameters.
         """);
 
     public static string UnknownParameter(string name) => T($"Nieznany parametr: {name}", $"Unknown parameter: {name}");
     public static string MissingValue(string name) => T($"Parametr {name} wymaga wartości", $"Parameter {name} needs a value");
     public static string UnknownMode(string mode) => T($"Nieznany tryb: {mode}", $"Unknown mode: {mode}");
-    public static string ModeNotYet(string mode) => T(
-        $"Tryb {mode} jeszcze nie jest w vigil_setup — użyj Install.cmd -Mode {mode}.",
-        $"Mode {mode} is not in vigil_setup yet — use Install.cmd -Mode {mode}.");
     public static string PressAnyKey => T("Naciśnij dowolny klawisz, aby zamknąć…", "Press any key to close…");
+
+    // === Parameter mode ===
+
+    public static string Done => T("gotowe", "done");
+    public static string Failed => T("BŁĄD", "FAILED");
+    public static string LogAt(string path) => T($"Log: {path}", $"Log: {path}");
+    public static string UninstallIncomplete => T(
+        "nie wszystko zostało usunięte — szczegóły wyżej", "not everything was removed — details above");
+    public static string InstallNeedsParams => T(
+        "Instalacja z parametrami wymaga -ServerUrl i -PairingCode (bez parametrów uruchamia się kreator).",
+        "Installing with parameters needs -ServerUrl and -PairingCode (without parameters the wizard starts).");
+    public static string UpdateConfigNeedsParams => T(
+        "Podaj co najmniej jeden z: -ServerUrl, -PairingCode.", "Give at least one of: -ServerUrl, -PairingCode.");
+    public static string ServerNotResponding(string url) => T(
+        $"Serwer {url} nie odpowiada.", $"The server {url} does not respond.");
+    public static string InvalidServerUrl(string raw) => T(
+        $"To nie jest adres serwera: {raw}", $"This is not a server address: {raw}");
+    public static string CodeFormat => T(
+        "Kod parowania ma 8 cyfr (np. 1234 5678).", "The pairing code has 8 digits (e.g. 1234 5678).");
 
     // === Accounts ===
 

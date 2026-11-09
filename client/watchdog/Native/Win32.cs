@@ -30,6 +30,7 @@ public static partial class Win32
 
     // CreateProcess flags
     public const uint NORMAL_PRIORITY_CLASS = 0x00000020;
+    public const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
 
     public enum WTS_CONNECTSTATE_CLASS
     {
@@ -137,6 +138,18 @@ public static partial class Win32
         string? lpCurrentDirectory,
         ref STARTUPINFO lpStartupInfo,
         out PROCESS_INFORMATION lpProcessInformation);
+
+    // === userenv.dll ===
+
+    /// <summary>The environment of the token's user (USERPROFILE, TEMP, LOCALAPPDATA…), as at logon.</summary>
+    [LibraryImport("userenv.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool CreateEnvironmentBlock(
+        out IntPtr lpEnvironment, IntPtr hToken, [MarshalAs(UnmanagedType.Bool)] bool bInherit);
+
+    [LibraryImport("userenv.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyEnvironmentBlock(IntPtr lpEnvironment);
 
     // === kernel32.dll ===
 

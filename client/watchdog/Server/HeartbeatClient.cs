@@ -15,8 +15,8 @@ namespace Vigil.Watchdog.Server;
 /// - X-Nonce: 16 random bytes, base64url without padding
 /// - X-Signature: base64(HMAC-SHA256(signing_key, "POST\n/v1/...\n" + ts + "\n" + nonce + "\n" + hex(sha256(body))))
 ///
-/// Response weryfikuje X-Signature = HMAC-SHA256(signing_key, nonce + body).
-/// Jeśli weryfikacja nie przejdzie → rzuca SignatureMismatchException, watchdog traktuje to jak unreachable.
+/// Responses carry X-Signature = HMAC-SHA256(signing_key, nonce + body); a missing or wrong one throws, and the
+/// watchdog treats it like an unreachable server.
 /// </summary>
 public sealed class HeartbeatClient : IDisposable
 {
@@ -42,7 +42,7 @@ public sealed class HeartbeatClient : IDisposable
         _http = new HttpClient(handler)
         {
             BaseAddress = new Uri(config.ServerUrl + "/"),
-            // Krótszy timeout niż domyślne 100s — heartbeat ma być szybki, dłużej nie ma sensu
+            // Not the default 100 s: a slow heartbeat is as good as none
             Timeout = TimeSpan.FromSeconds(10),
         };
     }
@@ -86,13 +86,12 @@ public sealed class HeartbeatClient : IDisposable
     }
 
     /// <summary>
-    /// Wspólna ścieżka dla wszystkich endpointów /v1/*. Buduje nonce/timestamp, wysyła,
-    /// weryfikuje X-Signature, deserializuje body.
+    /// Every /v1/* call: nonce and timestamp, signed request, response signature checked, body deserialized.
     /// </summary>
     private async Task<(T result, string nonce)> PostSignedAsync<T>(
         string path, object body, CancellationToken ct) where T : class
     {
-        // Nonce: 16 bajtów losowych, base64 urlsafe bez paddingu (zgodnie z formatem servera)
+        // Nonce: 16 random bytes, base64url without padding (the server's format)
         var nonceBytes = RandomNumberGenerator.GetBytes(16);
         var nonce = Base64UrlEncode(nonceBytes);
 
@@ -114,18 +113,17 @@ public sealed class HeartbeatClient : IDisposable
         using var resp = await _http.SendAsync(request, ct).ConfigureAwait(false);
         var responseBytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
 
-        // Spec: 401/429 mają sensowne body (np. {"ok": false, "reason": "invalid_code"}).
-        // Te response też są podpisywane przez server (auth przeszło, dopiero biznesowo failed).
-        // 401 BEFORE auth (np. duplicate_nonce) — nie ma podpisu, traktujemy jako error.
+        // 401/429 after authentication carry a meaningful, signed body (e.g. {"ok": false, "reason": "invalid_code"}).
+        // A 401 before authentication (e.g. a reused nonce) is unsigned and handled below as an error.
         if (!resp.IsSuccessStatusCode && resp.StatusCode != System.Net.HttpStatusCode.Unauthorized
             && resp.StatusCode != (System.Net.HttpStatusCode)429)
         {
             var bodyStr = Encoding.UTF8.GetString(responseBytes);
             throw new HttpRequestException(
-                $"{path} zwrócił {(int)resp.StatusCode} {resp.ReasonPhrase}: {bodyStr}");
+                $"{path} returned {(int)resp.StatusCode} {resp.ReasonPhrase}: {bodyStr}");
         }
 
-        // Zarówno 200 jak i 401/429 PO auth są podpisywane. Brak podpisu = serwer odrzucił przed auth.
+        // 200 and 401/429 after authentication are signed; no signature = rejected before authentication.
         var signatureHeader = resp.Headers.TryGetValues("X-Signature", out var sigVals)
             ? sigVals.FirstOrDefault()
             : null;
@@ -135,22 +133,21 @@ public sealed class HeartbeatClient : IDisposable
             // invalid_signature: the server no longer knows this key (re-paired or removed in the panel).
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized && IsInvalidSignature(responseBytes))
                 throw new KeyRejectedException($"{path}: the server rejected this computer's key (invalid_signature)");
-            // Brak podpisu = pre-auth rejection (zły podpis, zły timestamp, duplicate nonce).
-            // To NIE jest odpowiedź której powinniśmy ufać.
+            // Rejected before authentication (bad signature, timestamp, reused nonce): nothing to trust.
             var bodyStr = Encoding.UTF8.GetString(responseBytes);
             throw new HttpRequestException(
-                $"{path} zwrócił {(int)resp.StatusCode} bez X-Signature (pre-auth rejection): {bodyStr}");
+                $"{path} returned {(int)resp.StatusCode} without X-Signature (rejected before authentication): {bodyStr}");
         }
 
-        // Weryfikuj HMAC: signing_key, message = nonce_bytes + body_bytes
+        // HMAC with signing_key over nonce + body
         if (!VerifySignature(nonce, responseBytes, signatureHeader))
         {
             throw new SignatureMismatchException(
-                $"{path}: X-Signature nie matchuje. Możliwy MITM lub błąd po stronie servera.");
+                $"{path}: X-Signature does not match (a man in the middle, or a server error)");
         }
 
         var deserialized = JsonSerializer.Deserialize<T>(responseBytes, _json)
-            ?? throw new InvalidDataException($"{path}: deserializacja JSON dała null.");
+            ?? throw new InvalidDataException($"{path}: the JSON body deserialized to null");
 
         return (deserialized, nonce);
     }
@@ -185,8 +182,7 @@ public sealed class HeartbeatClient : IDisposable
         var actualBytes = HMACSHA256.HashData(_signingKey, message);
         var actualB64 = Convert.ToBase64String(actualBytes);
 
-        // Constant-time compare, żeby uniknąć timing attacks. Strings tej samej długości,
-        // więc CryptographicOperations.FixedTimeEquals się sprawdza.
+        // Constant-time comparison.
         var expectedBytes = Convert.FromBase64String(expectedB64);
         return CryptographicOperations.FixedTimeEquals(actualBytes, expectedBytes);
     }

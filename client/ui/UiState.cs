@@ -3,16 +3,15 @@ using System;
 namespace Vigil.Ui;
 
 /// <summary>
-/// Stan UI lockscreen, mirroring serwerowego ui_state z heartbeat response.
-/// Lockscreen otrzymuje to przez named pipe od watchdoga (IpcSetState). The message is worded here from
-/// Reason (Strings.LockMessage, i18n D21).
+/// The lock screen's state, mirroring the server's ui_state; it arrives from the watchdog over the pipe
+/// (IpcSetState). The message is worded here from Reason (Strings.LockMessage, i18n D21).
 /// </summary>
 public sealed record UiState
 {
     public required LockReason Reason { get; init; }
     public bool ShowTotpField { get; init; }
     public bool ShowRetryButton { get; init; }
-    public bool ShowResumeButton { get; init; }   // "Jestem z powrotem" — tylko w trybie Pause
+    public bool ShowResumeButton { get; init; }   // "I'm back", pause only
     public bool ShowShutdownButton { get; init; } = true;
     public int MinutesRemaining { get; init; }
 }
@@ -22,7 +21,7 @@ public enum LockReason
     Limit,
     Night,
     Manual,
-    Pause,             // dziecko samo włączyło pauzę — czas nie leci
+    Pause,             // the child's own pause: time is not counted
     ServerUnreachable,
 }
 

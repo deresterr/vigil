@@ -6,15 +6,13 @@ using System.Windows.Threading;
 namespace Vigil.Ui.Native;
 
 /// <summary>
-/// Co 500ms re-asserts topmost + foreground na liście podanych okien lockscreen.
-/// Defense in depth — gdy inny proces ukradł focus albo otworzył okno z WS_EX_TOPMOST
-/// nad nami, pół sekundy później jesteśmy z powrotem na wierzchu.
+/// Every 500 ms puts the lock windows back on top and in the foreground: when another process took the
+/// focus or opened a topmost window over them, half a second later they are on top again.
 ///
-/// W przeciwieństwie do zwykłego SetWindowPos+HWND_TOPMOST, używamy AttachThreadInput
-/// hack żeby obejść Windows "foreground lock timeout" (ForegroundLockTimeout) — bez tego
-/// SetForegroundWindow często cicho fail-uje gdy ostatni input użytkownika był w innej apce.
+/// SetForegroundWindow alone often fails silently (the foreground lock timeout, when the user's last input
+/// went to another app), so it runs with the foreground thread's input attached (AttachThreadInput).
 ///
-/// Lifecycle: Start() po creation lockscreen, Stop()+Dispose() przy unlock.
+/// Start() once the windows exist, Stop() + Dispose() on unlock.
 /// </summary>
 public sealed class TopmostEnforcer : IDisposable
 {
@@ -56,9 +54,7 @@ public sealed class TopmostEnforcer : IDisposable
 
     public TopmostEnforcer()
     {
-        // 500ms zamiast 1s — gdy dziecko uruchomi program przez taskbar, mamy ≤500ms
-        // visible "obcego" okna zanim wracamy na wierzch. Wystarczająco szybko żeby
-        // dziecko nie zdążyło wpisać niczego istotnego.
+        // 500 ms: a window that got over the lock is visible for at most half a second.
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _timer.Tick += (_, _) => ReassertAll();
     }
@@ -66,7 +62,7 @@ public sealed class TopmostEnforcer : IDisposable
     public void Track(Window w)
     {
         _windows.Add(w);
-        // Od razu też wyślij to topmost — initial assert
+        // On top at once, not only at the next tick
         ReassertSingle(w);
     }
 
@@ -86,8 +82,7 @@ public sealed class TopmostEnforcer : IDisposable
         {
             ReassertSingle(w);
         }
-        // Re-hide taskbar — Explorer/system mogą przywrócić visibility (zwłaszcza zaraz po
-        // logowaniu lub po wybudzeniu z sleep). Idempotent, bezpieczne wołać co tick.
+        // Explorer may show the taskbar again (right after logon, after sleep); hiding is idempotent.
         TaskbarHider.Hide();
     }
 
@@ -98,24 +93,20 @@ public sealed class TopmostEnforcer : IDisposable
             var hwnd = new WindowInteropHelper(w).Handle;
             if (hwnd == IntPtr.Zero) return;
 
-            // Krok 1: re-topmost (Z-order). SWP_NOACTIVATE — nie wymuszaj focus tutaj,
-            // robimy to w kroku 2 z AttachThreadInput hack.
+            // 1. Z-order only (SWP_NOACTIVATE); the focus is step 2.
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                 SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
 
-            // Krok 2: jeśli inne okno ma fokus, wymuś nasze. Bez tego SetForegroundWindow
-            // zwykle silently fail-uje bo Windows "foreground lock" blokuje aplikacje
-            // które nie były ostatnio user-activated.
+            // 2. Take the focus back from another window.
             var fg = GetForegroundWindow();
-            if (fg == hwnd) return;  // już mamy fokus, nic do roboty
+            if (fg == hwnd) return;
 
             var fgThread = GetWindowThreadProcessId(fg, out _);
             var myThread = GetCurrentThreadId();
 
             if (fgThread != 0 && fgThread != myThread)
             {
-                // AttachThreadInput: tymczasowo "łączymy" message queue wątku
-                // foreground z naszym → Windows zezwala SetForegroundWindow.
+                // With the foreground thread's input attached Windows allows SetForegroundWindow.
                 if (AttachThreadInput(fgThread, myThread, true))
                 {
                     try
@@ -131,14 +122,14 @@ public sealed class TopmostEnforcer : IDisposable
             }
             else
             {
-                // Już w naszym wątku lub fgThread niedostępny — single attempt
+                // Our own thread, or no foreground thread: a plain attempt
                 SetForegroundWindow(hwnd);
                 BringWindowToTop(hwnd);
             }
         }
         catch
         {
-            // Ignore — okno mogło zostać zamknięte między .Add a tick
+            // The window may have closed since it was tracked.
         }
     }
 

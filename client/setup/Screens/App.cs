@@ -199,11 +199,7 @@ internal sealed class App
         Child = child,
     };
 
-    public static string? InstalledVersion()
-    {
-        var v = AppVersion.Of(VigilLayout.PathOf(VigilLayout.WatchdogExe));
-        return AppVersion.IsUnversioned(v) ? null : v;
-    }
+    public static string? InstalledVersion() => AppVersion.Of(VigilLayout.PathOf(VigilLayout.WatchdogExe));
 }
 
 internal enum PairOutcome { Done, Failed, Cancelled, OtherServer }

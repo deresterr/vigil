@@ -36,8 +36,8 @@ jobs:
               - '.github/workflows/ci.yml'
             client:
               - 'client/**'
-              - 'installer/**'
               - 'build-package.ps1'
+              - 'Build.cmd'
               - 'e2e/**'
               - '.github/workflows/ci.yml'
 
@@ -66,11 +66,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse PowerShell scripts (Windows PowerShell 5.1, the version the installer runs on)
+      - name: Parse PowerShell scripts (Windows PowerShell 5.1, which Build.cmd runs build-package.ps1 with)
         shell: powershell
         run: |
           $bad = 0
-          Get-ChildItem -Recurse -Include *.ps1 -Path installer, e2e, build-package.ps1 | ForEach-Object {
+          Get-ChildItem -Recurse -Include *.ps1 -Path e2e, build-package.ps1 | ForEach-Object {
             $errs = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
             foreach ($e in $errs) { $bad++; "::error file=$($_.Name),line=$($e.Extent.StartLineNumber)::$($e.Message)" }

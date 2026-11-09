@@ -148,8 +148,10 @@ kill it. The watchdog creates the pipe first, then waits ≤ 10 s for the connec
 dies) and accepts only the PID it spawned. After a respawn it re-sends the lock and tray state, because
 a new UI starts unlocked. Lock = `set_state`, unlock = `unlock`; the UI hides the taskbar while locked
 and restores it on unlock and on start (an instance killed while locked leaves it hidden). Orphans in
-the session (previous watchdog instance; `vigil_lockscreen`/`vigil_tray` of versions before v0.6) are
-killed before a spawn. The UI quits when the pipe connect fails and 30 s after losing the pipe.
+the session (a previous watchdog instance's vigil_ui) are killed before a spawn. Its environment (D24) is
+built by the watchdog from a fixed list (system values, the profile folders from the token,
+`DOTNET_EnableDiagnostics=0`), nothing from the child's own (`HKCU\Environment` is writable without
+elevation); its native WPF libraries sit next to it in ProgramData, nothing is extracted at run time. The UI quits when the pipe connect fails and 30 s after losing the pipe.
 Diagnostics: `%LOCALAPPDATA%\Vigil\ui.log`.
 
 The TOTP field accepts only digits (typed or pasted, max 6) and regains focus after each check.
@@ -186,7 +188,7 @@ the installer removes both.
 ## Windows footprint
 
 ```
-C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_ui.exe, vigil_setup.exe (the guardian, #65),
+C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_ui.exe + its native WPF DLLs, vigil_setup.exe (the guardian),
                         vigil.toml (server_url only), signing.dat, totp.dat, guardian.dat,
                         backup\vigil_watchdog.exe
                         ACL: SYSTEM full, Administrators modify, Authenticated Users read+execute (inherited)

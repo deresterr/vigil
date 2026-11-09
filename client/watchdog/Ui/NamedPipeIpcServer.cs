@@ -27,10 +27,10 @@ public sealed class NamedPipeIpcServer : IDisposable
     private Task? _readerTask;
     private bool _disposed;
 
-    /// <summary>Wywoływany dla każdego received message. Subscriber decyduje co robić.</summary>
+    /// <summary>Raised for every message received; the subscriber decides what to do.</summary>
     public event Func<object, Task>? MessageReceived;
 
-    /// <summary>True kiedy klient (lockscreen) jest podpięty.</summary>
+    /// <summary>True while vigil_ui is connected.</summary>
     public bool IsConnected => _pipe?.IsConnected ?? false;
 
     public NamedPipeIpcServer(ILogger<NamedPipeIpcServer> logger)
@@ -87,7 +87,7 @@ public sealed class NamedPipeIpcServer : IDisposable
     {
         if (_pipe is null || !_pipe.IsConnected)
         {
-            throw new InvalidOperationException("Pipe nie podłączony — nie można wysłać.");
+            throw new InvalidOperationException("The pipe is not connected");
         }
 
         var json = IpcSerializer.Serialize(message);
@@ -129,7 +129,7 @@ public sealed class NamedPipeIpcServer : IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Disconnect pipe — ignoruję");
+                _logger.LogDebug(ex, "Pipe disconnect failed; ignored");
             }
             _pipe.Dispose();
             _pipe = null;
@@ -142,7 +142,7 @@ public sealed class NamedPipeIpcServer : IDisposable
 
         var buffer = new byte[4096];
         var lineBuf = new MemoryStream();
-        const int maxLineBytes = 64 * 1024;  // 64 KB guard — zapobiega OOM przy braku '\n'
+        const int maxLineBytes = 64 * 1024;  // guard against unbounded growth without a newline
 
         try
         {
@@ -155,7 +155,7 @@ public sealed class NamedPipeIpcServer : IDisposable
                 }
                 catch (IOException ex)
                 {
-                    // Pipe broken — klient zniknął. Zwykle przy zamknięciu lockscreen.
+                    // The client went away (usually vigil_ui exiting).
                     _logger.LogInformation("Pipe broken: {Message}", ex.Message);
                     break;
                 }
@@ -173,8 +173,8 @@ public sealed class NamedPipeIpcServer : IDisposable
                     {
                         if (lineBuf.Length >= maxLineBytes)
                         {
-                            // Klient wysłał >64 KB bez newline — najpewniej bug lub atak. Resetuj bufor.
-                            _logger.LogWarning("Pipe: linia przekroczyła {Limit} bajtów — porzucam bufor", maxLineBytes);
+                            // More than 64 KB without a newline: a bug or an attack. Drop the buffer.
+                            _logger.LogWarning("Pipe: a line exceeded {Limit} bytes; buffer dropped", maxLineBytes);
                             lineBuf.SetLength(0);
                         }
                         lineBuf.WriteByte(buffer[i]);
@@ -210,7 +210,7 @@ public sealed class NamedPipeIpcServer : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MessageReceived handler crashed dla {Type}", msg.GetType().Name);
+            _logger.LogError(ex, "MessageReceived handler crashed for {Type}", msg.GetType().Name);
         }
     }
 
@@ -223,13 +223,13 @@ public sealed class NamedPipeIpcServer : IDisposable
                 System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
             PipeAccessRights.FullControl,
             System.Security.AccessControl.AccessControlType.Allow));
-        // Administrators full (administracja, rzadko używane)
+        // Administrators full
         sec.AddAccessRule(new PipeAccessRule(
             new System.Security.Principal.SecurityIdentifier(
                 System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null),
             PipeAccessRights.FullControl,
             System.Security.AccessControl.AccessControlType.Allow));
-        // Authenticated Users RW — child user też tu wpada, lockscreen się dostanie
+        // Authenticated Users RW: the child's vigil_ui; the PID check keeps other programs out
         sec.AddAccessRule(new PipeAccessRule(
             new System.Security.Principal.SecurityIdentifier(
                 System.Security.Principal.WellKnownSidType.AuthenticatedUserSid, null),

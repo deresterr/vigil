@@ -18,7 +18,7 @@ internal static class MainMenu
         string? Installed, string Package, string? PackageProblem, string? ServerUrl, bool Responds,
         ServiceControllerStatus? Service, bool KeyPresent, ChildAccountChoice Child)
     {
-        /// <summary>&gt; 0: the package is newer than the installation (one from before v0.8 counts as older).</summary>
+        /// <summary>&gt; 0: the package is newer than the installation (an unreadable version counts as older).</summary>
         public int PackageVsInstalled => Installed is null ? 1 : AppVersion.Compare(Package, Installed);
     }
 
@@ -90,7 +90,7 @@ internal static class MainMenu
         string Good(string t) => $"[green]{Theme.Esc(t)}[/]";
         string Bad(string t) => $"[red]{Theme.Esc(t)}[/]";
 
-        yield return (Strings.UiStatusVersion, Theme.Esc(Strings.UiStatusVersionValue(s.Installed ?? Strings.UiVersionOld, s.Package)));
+        yield return (Strings.UiStatusVersion, Theme.Esc(Strings.UiStatusVersionValue(s.Installed ?? Strings.UiVersionUnknown, s.Package)));
         yield return (Strings.UiStatusServer, s.ServerUrl is null ? Bad(Strings.UiStatusNoConfig)
             : $"[aqua]{Theme.Esc(s.ServerUrl)}[/] [grey]·[/] " + (s.Responds ? Good(Strings.UiStatusResponds) : Bad(Strings.UiStatusNoAnswer)));
         yield return (Strings.UiStatusService, s.Service switch
@@ -131,7 +131,7 @@ internal static class MainMenu
         }
 
         header();
-        Theme.Text(c, Strings.UiConfirmUpdate(state.Installed ?? Strings.UiVersionOld, state.Package));
+        Theme.Text(c, Strings.UiConfirmUpdate(state.Installed ?? Strings.UiVersionUnknown, state.Package));
         Theme.Blank(c);
         var go = Prompts.Menu(c, new[]
         {

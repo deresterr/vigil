@@ -6,10 +6,8 @@ using Vigil.Watchdog.Native;
 namespace Vigil.Watchdog.Detection;
 
 /// <summary>
-/// Wykrywa czy ktoś jest aktualnie zalogowany (sesja Active lub Connected).
-///
-/// Spec: tylko jedno konto na PC dziecka, więc dowolna aktywna sesja = sesja dziecka.
-/// Nie filtrujemy po SID — watchdog jest service'em, ma dostęp do wszystkich sesji.
+/// Whether someone is logged on (a session in Active or Connected state). The child's account is the only
+/// interactive one (D12), so any such session is the child's; no filtering by SID.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class SessionDetector
@@ -22,8 +20,8 @@ public sealed class SessionDetector
     }
 
     /// <summary>
-    /// Zwraca (sessionActive, sessionId). sessionId może być null jeśli nikt nie jest zalogowany.
-    /// sessionActive=true gdy state == WTSActive lub WTSConnected.
+    /// (Active, SessionId): Active when a session is WTSActive or WTSConnected; SessionId null when nobody is
+    /// logged on.
     /// </summary>
     public (bool Active, uint? SessionId) DetectActiveSession()
     {
@@ -46,7 +44,7 @@ public sealed class SessionDetector
                 var element = (IntPtr)((long)sessionInfoPtr + i * size);
                 var info = Marshal.PtrToStructure<Win32.WTS_SESSION_INFO>(element);
 
-                // SessionId 0 to "Services" session, ignorujemy
+                // Session 0 is the services session: skipped
                 if (info.SessionId == 0) continue;
 
                 if (info.State == Win32.WTS_CONNECTSTATE_CLASS.WTSActive

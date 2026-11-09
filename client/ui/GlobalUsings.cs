@@ -1,8 +1,7 @@
-// Global using directives dla vigil-lockscreen.
+// Explicit global usings for vigil_ui.
 //
-// WPF SDK generuje "wpftmp" intermediate csproj do kompilacji XAML, który nie zawsze
-// dziedziczy ImplicitUsings z głównego csproj — efekt: random CS0246 dla typów które
-// powinny być dostępne. Tutaj są jawne globals które wpftmp na pewno zobaczy.
+// The WPF SDK compiles XAML through an intermediate "wpftmp" project that does not always inherit
+// ImplicitUsings (random CS0246); these it always sees.
 
 global using System;
 global using System.Collections.Generic;

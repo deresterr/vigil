@@ -76,7 +76,7 @@ class LockscreenKilled(_Wire):
 
 
 class GuardianRepaired(_Wire):
-    """One vigil_guardian.ps1 finding (#36); the watchdog maps its Event Log IDs to `check`."""
+    """One finding of the guardian (#36); the watchdog maps its Event Log IDs to `check`."""
 
     type: Literal["guardian_repaired"]
     check: GuardianCheck

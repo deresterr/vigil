@@ -4,10 +4,11 @@
 
 .DESCRIPTION
     Starts the server from this checkout on localhost with a temporary database, completes the setup
-    wizard over HTTP and drives the installers in parameter mode:
+    wizard over HTTP and drives vigil_setup.exe in parameter mode:
 
-        PowerShell install (an installation from before D22)
-        -> vigil_setup update (migration: same key, no pairing)
+        vigil_setup install
+        -> vigil_setup update (same key, no pairing)
+        -> the one-file package: installed files = the parts; copies without a payload refuse to update
         -> broken installs (verify must fail; update repairs)
         -> vigil_setup update-config with re-pairing
         -> vigil_setup uninstall (goodbye)
@@ -17,9 +18,6 @@
         -> vigil_setup uninstall -> nothing left
         -> the wizard (key script): unreachable address, wrong code, install -> verify
         -> the menu (key script): check, uninstall -> nothing left
-
-    Verify is vigil_setup.exe's. The PowerShell one (installer\vigil_install.ps1, the oracle until #64 proved
-    both equal at every point) checks only the PowerShell install: it does not know the C# guardian (#65).
 
     Server side, through the admin API: the PC comes online after each install, keeps its key through an
     update, comes back with the new key after re-pairing, every guardian repair reaches the journal as
@@ -37,8 +35,8 @@
     Default: ..\dist next to this script.
 
 .PARAMETER PartsDir
-    The binaries on their own (build-package.ps1's build\parts): the PowerShell install from before D22, and
-    the reference for what the package unpacks. Default: ..\build\parts next to this script.
+    The files on their own (build-package.ps1's build\parts): the reference for what the package unpacks.
+    Default: ..\build\parts next to this script.
 
 .PARAMETER ServerDir
     The server\ folder of the checkout; its requirements (plus tzdata on Windows) must be installed.
@@ -64,8 +62,6 @@ $PartsDir = (Resolve-Path $PartsDir).Path
 $ServerDir = (Resolve-Path $ServerDir).Path
 
 $ServerUrl = "http://127.0.0.1:$Port"
-$Installer = (Resolve-Path (Join-Path $PSScriptRoot '..\installer\vigil_install.ps1')).Path
-$PsGuardian = (Resolve-Path (Join-Path $PSScriptRoot '..\installer\vigil_guardian.ps1')).Path
 # Not $Setup: PowerShell names are case-insensitive and the scenario has a $setup (the wizard's JSON).
 $SetupExe = Join-Path $PackageDir 'vigil_setup.exe'
 $InstallDir = 'C:\ProgramData\Vigil'
@@ -91,16 +87,6 @@ function Wait-Until([scriptblock]$Condition, [int]$Seconds, [string]$What) {
     throw "FAILED after ${Seconds} s: $What"
 }
 
-function Invoke-Installer {
-    # The PowerShell installer as Install.cmd ran it before D22 (Windows PowerShell 5.1), on the package's
-    # binaries, but -NonInteractive: a question fails instead of hanging. No param() on purpose: the
-    # installer's own parameters (-Mode ...) stay in $args.
-    Write-Host "> vigil_install.ps1 $($args -join ' ')" -ForegroundColor DarkGray
-    & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Installer @args `
-        -SourceDir $PsPackageDir | Out-Host
-    return $LASTEXITCODE
-}
-
 function Invoke-Setup {
     # vigil_setup.exe from the package, parameter mode (input redirected: the wizard can never start).
     Write-Host "> vigil_setup.exe $($args -join ' ')" -ForegroundColor DarkGray
@@ -124,15 +110,9 @@ function Assert-Setup([string]$What) {
     Assert-That ($rc -eq 0) "${What}: exit code 0 (got $rc)"
 }
 
-function Assert-Verify([int]$Expected, [string]$What, [switch]$WithOracle) {
-    $cs = Invoke-Setup -Mode verify
-    if ($WithOracle) {
-        $ps = Invoke-Installer -Mode verify
-        Assert-That ($ps -eq $Expected -and $cs -eq $Expected) `
-            "${What}: verify exit code $Expected (vigil_install.ps1 $ps, vigil_setup.exe $cs)"
-    } else {
-        Assert-That ($cs -eq $Expected) "${What}: verify exit code $Expected (got $cs)"
-    }
+function Assert-Verify([int]$Expected, [string]$What) {
+    $rc = Invoke-Setup -Mode verify
+    Assert-That ($rc -eq $Expected) "${What}: verify exit code $Expected (got $rc)"
 }
 
 function Invoke-Guardian([string]$What) {
@@ -276,27 +256,20 @@ try {
     $script:AdminSession = $session
     Assert-That ((Invoke-Admin Get 'status').children.Count -eq 1) 'setup wizard completed, one child'
 
-    Write-Section "PowerShell install, as before D22 (child account: $ChildUsername)"
-    # The package of those days: the binaries and the PowerShell guardian (not in dist\ since #65).
-    $script:PsPackageDir = Join-Path $WorkDir 'package-ps'
-    New-Item -ItemType Directory -Path $PsPackageDir -Force | Out-Null
-    Copy-Item -Path (Join-Path $PartsDir '*') -Destination $PsPackageDir -Recurse
-    Copy-Item -Path $PsGuardian -Destination $PsPackageDir
+    Write-Section "vigil_setup install (child account: $ChildUsername)"
     New-ChildAccount $ChildUsername
     $code = New-PairingCode @{ child_id = 1; device_name = 'CI runner' }
-    $rc = Invoke-Installer -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
-    Assert-That ($rc -eq 0) "PowerShell install exit code 0 (got $rc)"
+    Assert-Setup 'install' -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
     Wait-Until { (Get-Device).online } 60 'the PC is online (signed heartbeats accepted)'
-    Assert-Verify 0 'PowerShell install (vigil_setup verify: the old guardian is a warning)' -WithOracle
+    Assert-Verify 0 'vigil_setup install'
 
-    Write-Section 'vigil_setup update over the PowerShell install (migration, same key)'
+    Write-Section 'vigil_setup update (same key, no pairing)'
     $keyBefore = Get-KeyHash
     Assert-Setup 'update' -Mode update
     Assert-That ((Get-KeyHash) -eq $keyBefore) 'signing.dat kept as it was'
     Wait-Heartbeat 'heartbeats with the same key after the update'
     Assert-That (@((Invoke-Admin Get 'status').child.devices).Count -eq 1) 'still one device (no new pairing)'
     Assert-Verify 0 'after the update'
-    Assert-That (-not (Test-Path (Join-Path $InstallDir 'vigil_guardian.ps1'))) 'the PowerShell guardian removed'
     $action = (Get-ScheduledTask -TaskName 'Vigil Guardian').Actions[0]
     Assert-That ($action.Execute -eq (Join-Path $InstallDir 'vigil_setup.exe') -and $action.Arguments -eq 'guardian') `
         "the guardian task runs vigil_setup.exe guardian (got $($action.Execute) $($action.Arguments))"
@@ -307,7 +280,8 @@ try {
     $bareSetup = Join-Path $PartsDir 'vigil_setup.exe'
     Assert-That ((Get-FileHash $installedSetup).Hash -eq (Get-FileHash $bareSetup).Hash) `
         'ProgramData\vigil_setup.exe is vigil_setup.exe without the payload'
-    foreach ($name in 'vigil_watchdog.exe', 'vigil_ui.exe') {
+    # Everything else the build produced: the watchdog, vigil_ui and its native libraries (D24).
+    foreach ($name in (Get-ChildItem -Path $PartsDir -File | Where-Object Name -ne 'vigil_setup.exe').Name) {
         Assert-That ((Get-FileHash (Join-Path $InstallDir $name)).Hash -eq (Get-FileHash (Join-Path $PartsDir $name)).Hash) `
             "$name unpacked as built"
     }
@@ -356,7 +330,7 @@ try {
     Wait-Until { (Get-ServiceStopCount) -gt $stopsBefore } 20 'the server logged a normal service stop (goodbye)'
     Assert-Verify 0 'after uninstall (nothing left)'
 
-    Write-Section 'vigil_setup install'
+    Write-Section 'vigil_setup install again (after the uninstall)'
     $code = New-PairingCode @{ device_id = (Get-Device).id }
     Assert-Setup 'install' -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
     Wait-Heartbeat 'the PC is online again'

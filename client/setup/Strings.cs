@@ -89,9 +89,9 @@ public static class Strings
     public static string UiWorking => T("Chwileczkę…", "One moment…");
     public static string UiCancelled => T("Instalacja przerwana — niczego nie zmieniono.", "Setup cancelled — nothing was changed.");
     public static string UiScriptEnded => T("Skrypt klawiszy (-Keys) się skończył.", "The key script (-Keys) ran out.");
-    public static string UiPackageIncomplete(string dir, IEnumerable<string> missing) => T(
-        $"Obok vigil_setup.exe brakuje plików paczki ({List(missing)}). Uruchom go z rozpakowanej paczki ({dir}).",
-        $"Package files are missing next to vigil_setup.exe ({List(missing)}). Run it from the unpacked package ({dir}).");
+    public static string NoPackage(string path) => T(
+        $"Ten vigil_setup.exe nie zawiera paczki ({path}): to kopia z C:\\ProgramData\\Vigil albo niepełne pobranie. Uruchom pobrany vigil_setup.exe.",
+        $"This vigil_setup.exe carries no package ({path}): a copy from C:\\ProgramData\\Vigil or an incomplete download. Run the downloaded vigil_setup.exe.");
 
     // Server address
     public static string UiServerTitle => T("Adres serwera", "Server address");
@@ -273,7 +273,7 @@ public static class Strings
     public static string BackupMatches => T("backup\\vigil_watchdog.exe = vigil_watchdog.exe", "backup\\vigil_watchdog.exe = vigil_watchdog.exe");
     public static string GuardianHashMatches => T("guardian.dat: hash zgodny z vigil_watchdog.exe", "guardian.dat: hash matches vigil_watchdog.exe");
     public static string DoesNotDecrypt(string file, string error) => T($"{file} nie odszyfrowuje się: {error}", $"{file} does not decrypt: {error}");
-    public static string PackageMatches(string dir) => T($"Zainstalowane binarki = paczka w {dir}", $"Installed binaries = package in {dir}");
+    public static string PackageMatches(string path) => T($"Zainstalowane binarki = paczka {path}", $"Installed binaries = package {path}");
     public static string SigningKeyDecrypted(int bytes) => T($"signing.dat: klucz odszyfrowany ({bytes} B)", $"signing.dat: key decrypted ({bytes} B)");
     public static string ConfigServerUrl(string? url) => T($"vigil.toml: server_url = {url}", $"vigil.toml: server_url = {url}");
     public static string ConfigNoBearer => T("vigil.toml: bez bearer_token (protokół v1)", "vigil.toml: no bearer_token (protocol v1)");
@@ -365,8 +365,11 @@ public static class Strings
     public static string SourceFilesMissing(string dir, IEnumerable<string> missing) => T(
         $"W {dir} brakuje plików paczki: {List(missing)}", $"Package files missing in {dir}: {List(missing)}");
     public static string RunFromPackage => T(
-        "Uruchom instalator z rozpakowanej paczki, nie z C:\\ProgramData\\Vigil.",
-        "Run the installer from the unpacked package, not from C:\\ProgramData\\Vigil.");
+        "Uruchom pobrany vigil_setup.exe, nie kopię z C:\\ProgramData\\Vigil.",
+        "Run the downloaded vigil_setup.exe, not the copy in C:\\ProgramData\\Vigil.");
+    public static string PackageCorrupt(string path, string what) => T(
+        $"Paczka {path} jest uszkodzona ({what}) — pobierz vigil_setup.exe ponownie.",
+        $"The package {path} is damaged ({what}) — download vigil_setup.exe again.");
     public static string PrivilegeMissing(string name) => T(
         $"Brak uprawnienia {name} — uruchom jako administrator.", $"Privilege {name} missing — run as administrator.");
 

@@ -20,6 +20,7 @@ obj/
 
 # Build output
 dist/
+build/
 
 # Editors / OS
 .idea/

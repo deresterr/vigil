@@ -16,10 +16,12 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
 - `installer/` — `vigil_install.ps1` + `vigil_guardian.ps1` (the old installer and guardian: only the e2e's
   "install from before D22", not in the package; no .cmd shortcuts since #66, vigil_setup.exe does it all).
-  `build-package.ps1 -Version` → `dist/` (three exes).
+  `build-package.ps1 -Version` → `dist\vigil_setup.exe`, the whole client in one file (#76: the watchdog and
+  vigil_ui appended, format in `client/setup/Core/Package.cs`) + `build\parts\` (the binaries on their own).
   `docs/installer.md` describes the installer, the README the emergency path from WinRE.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
-  (server of the same commit on localhost; PowerShell install → vigil_setup update → broken installs → re-pair →
+  (server of the same commit on localhost; PowerShell install → vigil_setup update → one-file package checks →
+  broken installs → re-pair →
   uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" → uninstall,
   then the wizard and the menu through a key script). Never on a real PC.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
@@ -93,6 +95,9 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
   APIs, task XML, CSV columns by position, exit codes. The SCM keeps its own copy of a service's config until a
   reboot: a `Start` edited in the registry is not what `Get-Service` shows.
 - `vigil_setup` is trimmed: no built-in COM (Task Scheduler goes through `schtasks.exe`), no `dynamic`.
+- The package (#76) is data appended after vigil_setup.exe's .NET bundle (the host ignores it), not a managed
+  resource: the bundle is compressed, and a ~100 MB resource would be unpacked at every guardian start. The
+  installer writes only the part before the payload to ProgramData; that copy has no package by design.
 - The guardian task runs `C:\ProgramData\Vigil\vigil_setup.exe` (holding it open, up to 75 s on a stopped service)
   and would "repair" a service being replaced: install/update end and delete the task before copying files,
   uninstall before deleting the folder. Anything else that deletes the folder on purpose (the e2e's emergency

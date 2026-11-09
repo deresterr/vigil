@@ -33,7 +33,12 @@
     Local account created as the child's (administrator, profile without a logon).
 
 .PARAMETER PackageDir
-    The dist\ package (build-package.ps1). Default: ..\dist next to this script.
+    The dist\ package (build-package.ps1): vigil_setup.exe carrying the other binaries (#76).
+    Default: ..\dist next to this script.
+
+.PARAMETER PartsDir
+    The binaries on their own (build-package.ps1's build\parts): the PowerShell install from before D22, and
+    the reference for what the package unpacks. Default: ..\build\parts next to this script.
 
 .PARAMETER ServerDir
     The server\ folder of the checkout; its requirements (plus tzdata on Windows) must be installed.
@@ -42,6 +47,7 @@
 [CmdletBinding()]
 param(
     [string] $PackageDir = '',
+    [string] $PartsDir = '',
     [string] $ServerDir = '',
     [int] $Port = 8089,
     [string] $ChildUsername = 'vigilchild'
@@ -51,8 +57,10 @@ $ErrorActionPreference = 'Stop'
 
 # $PSScriptRoot is empty inside param() defaults (Windows PowerShell 5.1)
 if (-not $PackageDir) { $PackageDir = Join-Path $PSScriptRoot '..\dist' }
+if (-not $PartsDir) { $PartsDir = Join-Path $PSScriptRoot '..\build\parts' }
 if (-not $ServerDir) { $ServerDir = Join-Path $PSScriptRoot '..\server' }
 $PackageDir = (Resolve-Path $PackageDir).Path
+$PartsDir = (Resolve-Path $PartsDir).Path
 $ServerDir = (Resolve-Path $ServerDir).Path
 
 $ServerUrl = "http://127.0.0.1:$Port"
@@ -272,7 +280,7 @@ try {
     # The package of those days: the binaries and the PowerShell guardian (not in dist\ since #65).
     $script:PsPackageDir = Join-Path $WorkDir 'package-ps'
     New-Item -ItemType Directory -Path $PsPackageDir -Force | Out-Null
-    Copy-Item -Path (Join-Path $PackageDir '*') -Destination $PsPackageDir -Recurse
+    Copy-Item -Path (Join-Path $PartsDir '*') -Destination $PsPackageDir -Recurse
     Copy-Item -Path $PsGuardian -Destination $PsPackageDir
     New-ChildAccount $ChildUsername
     $code = New-PairingCode @{ child_id = 1; device_name = 'CI runner' }
@@ -293,6 +301,24 @@ try {
     Assert-That ($action.Execute -eq (Join-Path $InstallDir 'vigil_setup.exe') -and $action.Arguments -eq 'guardian') `
         "the guardian task runs vigil_setup.exe guardian (got $($action.Execute) $($action.Arguments))"
 
+    Write-Section 'One-file package (#76)'
+    Assert-That (@(Get-ChildItem -Path $PackageDir).Count -eq 1) 'dist\ holds the package only (vigil_setup.exe)'
+    $installedSetup = Join-Path $InstallDir 'vigil_setup.exe'
+    $bareSetup = Join-Path $PartsDir 'vigil_setup.exe'
+    Assert-That ((Get-FileHash $installedSetup).Hash -eq (Get-FileHash $bareSetup).Hash) `
+        'ProgramData\vigil_setup.exe is vigil_setup.exe without the payload'
+    foreach ($name in 'vigil_watchdog.exe', 'vigil_ui.exe') {
+        Assert-That ((Get-FileHash (Join-Path $InstallDir $name)).Hash -eq (Get-FileHash (Join-Path $PartsDir $name)).Hash) `
+            "$name unpacked as built"
+    }
+    foreach ($exe in $installedSetup, $bareSetup) {
+        # The installed copy and a copy without a payload have nothing to install from.
+        Write-Host "> $exe -Mode update" -ForegroundColor DarkGray
+        $null | & $exe -Mode update | Out-Host
+        Assert-That ($LASTEXITCODE -eq 1) "$exe refuses to update (exit code 1, got $LASTEXITCODE)"
+    }
+    Assert-Verify 0 'the refused updates changed nothing'
+
     Write-Section 'Verify must fail on a broken install; update repairs it'
     $safeBoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\vigil_watchdog'
     Remove-Item -Path $safeBoot -Recurse -Force
@@ -304,7 +330,7 @@ try {
     $backup = Join-Path $InstallDir 'backup\vigil_watchdog.exe'
     Remove-Item -Path $backup -Force
     try { Assert-Verify 1 'without backup\vigil_watchdog.exe' }
-    finally { Copy-Item -Path (Join-Path $PackageDir 'vigil_watchdog.exe') -Destination $backup }
+    finally { Copy-Item -Path (Join-Path $PartsDir 'vigil_watchdog.exe') -Destination $backup }
     Assert-Verify 0 'repaired again'
 
     Write-Section 'Re-pair (vigil_setup update-config)'

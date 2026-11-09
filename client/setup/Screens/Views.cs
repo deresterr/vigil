@@ -110,11 +110,11 @@ internal sealed class VerifyView : IReport
     public void Info(string message) { }
 
     /// <summary>Runs verify behind a spinner (it takes a few seconds: tasks, Event Log, the server).</summary>
-    public static VerifyView Run(IAnsiConsole c, LogReport log, string? childUserName)
+    public static VerifyView Run(IAnsiConsole c, LogReport log, string? childUserName, Package? package)
     {
         var view = new VerifyView();
         c.Status().Spinner(Theme.SpinnerFor(c)).SpinnerStyle(Theme.Accent).Start(Theme.Esc(Strings.UiVerifyRunning), _ =>
-            new Verify(new TeeReport(view, log), childUserName, AppContext.BaseDirectory).Run());
+            new Verify(new TeeReport(view, log), childUserName, package).Run());
         log.Info(Strings.VerifySummary(view.Pass, view.Fail, view.Warn));
         return view;
     }

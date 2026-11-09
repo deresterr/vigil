@@ -243,11 +243,15 @@ public sealed class Installer
         }
     }
 
-    /// <summary>Before v0.5: emergency.dat and a forgeable bypass.flag (#9); before D8: two exes (#35).</summary>
+    /// <summary>Before v0.5: emergency.dat and a forgeable bypass.flag (#9); before D8: two exes (#35). The old
+    /// exes only once vigil_ui.exe is in place: update-config keeps the installed binaries, and on an install
+    /// from before D8 they are still the lock screen.</summary>
     private void RemoveLegacyFiles()
     {
+        var uiInstalled = File.Exists(P(VigilLayout.UiExe));
         foreach (var path in VigilLayout.LegacyPaths)
         {
+            if (!uiInstalled && path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
             try
             {
                 if (File.Exists(path)) File.Delete(path);

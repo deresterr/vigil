@@ -133,13 +133,16 @@ public static class ScheduledTasks
         $"  <Actions Context=\"Author\"><Exec><Command>{SecurityElement.Escape(command)}</Command>" +
         $"<Arguments>{SecurityElement.Escape(arguments)}</Arguments></Exec></Actions>\n";
 
+    /// <summary>Task XML wants local time without an offset; invariant digits and separators.</summary>
+    private static string LocalNow() => DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+
     /// <summary>The guardian: at boot and every 5 minutes, as SYSTEM, at most 5 minutes per run.</summary>
     public static string GuardianTaskXml(string command, string arguments) =>
         Header +
         "  <Triggers>\n" +
         "    <BootTrigger><Enabled>true</Enabled></BootTrigger>\n" +
         $"    <TimeTrigger><Repetition><Interval>PT5M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>" +
-        $"<StartBoundary>{DateTime.Now:yyyy-MM-ddTHH:mm:ss}</StartBoundary><Enabled>true</Enabled></TimeTrigger>\n" +
+        $"<StartBoundary>{LocalNow()}</StartBoundary><Enabled>true</Enabled></TimeTrigger>\n" +
         "  </Triggers>\n" +
         SystemPrincipal +
         "  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" +

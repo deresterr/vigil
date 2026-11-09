@@ -177,6 +177,11 @@ function Invoke-AsSystem([string]$Command, [scriptblock]$Until, [int]$Seconds, [
     }
 }
 
+function Get-PairedCount {
+    $days = (Invoke-Admin Get 'journal?days=2').days
+    @($days | ForEach-Object { $_.entries } | Where-Object { $_.type -eq 'device_paired' }).Count
+}
+
 function Get-ServiceStopCount {
     $days = (Invoke-Admin Get 'journal?days=2').days
     @($days | ForEach-Object { $_.entries } | Where-Object { $_.type -eq 'tamper_service_stopped' }).Count
@@ -294,6 +299,7 @@ try {
 
     Write-Section 'The wizard (key script)'
     $code = New-PairingCode @{ device_id = (Get-Device).id }
+    $pairedBefore = Get-PairedCount
     $wrong = ([int]::Parse($code.Substring(0, 1)) + 1) % 10
     $wrong = "$wrong$($code.Substring(1))"
     Invoke-Screens 'wizard install' @(
@@ -306,9 +312,7 @@ try {
         '{Enter}'               # installed, verify table -> the menu
         '{0}'                   # menu: Exit
     )
-    $failedPairing = @((Invoke-Admin Get 'journal?days=2').days | ForEach-Object { $_.entries } |
-        Where-Object { $_.type -eq 'pairing_failed' }).Count
-    Assert-That ($failedPairing -ge 1) 'the wrong code reached the server (pairing_failed)'
+    Assert-That ((Get-PairedCount) -eq $pairedBefore + 1) 'paired once: the wrong code changed nothing'
     Wait-Heartbeat 'the PC is online after the wizard'
     Assert-Verify 0 'installed by the wizard'
 

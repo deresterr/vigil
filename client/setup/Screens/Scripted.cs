@@ -34,6 +34,9 @@ internal sealed class ScriptedConsole : IAnsiConsole
             ColorSystem = ColorSystemSupport.NoColors,
             Interactive = InteractionSupport.Yes,
             Out = new AnsiConsoleOutput(Console.Out),
+            // The CI enrichers (GitHub Actions) would switch ANSI back on: cursor moves and screen clears as
+            // junk in the log.
+            Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
         });
         inner.Profile.Width = 100;
         return new ScriptedConsole(inner, new ScriptedInput(File.ReadAllLines(scriptFile)));

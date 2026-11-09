@@ -75,6 +75,153 @@ public static class Strings
     public static string CodeFormat => T(
         "Kod parowania ma 8 cyfr (np. 1234 5678).", "The pairing code has 8 digits (e.g. 1234 5678).");
 
+    // === Wizard and menu (Screens/) ===
+
+    public static string UiSetupTitle => T("Instalacja", "Setup");
+    public static string UiMenuTitle => T("Instalator", "Installer");
+    public static string UiStep(int n, int total, string title) => T($"Krok {n} z {total} · {title}", $"Step {n} of {total} · {title}");
+    public static string UiMenuHint => T("Strzałki i Enter albo cyfra", "Arrow keys and Enter, or a digit");
+    public static string UiFieldHint => T("Enter zatwierdza, Esc czyści pole", "Enter confirms, Esc clears the field");
+    public static string UiPressEnter => T("Enter — dalej", "Enter — continue");
+    public static string UiPressEnterMenu => T("Enter — powrót do menu", "Enter — back to the menu");
+    public static string UiPressEnterExit => T("Enter — zakończ", "Enter — exit");
+    public static string UiDetailsInLog(string path) => T($"Szczegóły w logu: {path}", $"Details in the log: {path}");
+    public static string UiWorking => T("Chwileczkę…", "One moment…");
+    public static string UiCancelled => T("Instalacja przerwana — niczego nie zmieniono.", "Setup cancelled — nothing was changed.");
+    public static string UiScriptEnded => T("Skrypt klawiszy (-Keys) się skończył.", "The key script (-Keys) ran out.");
+    public static string UiPackageIncomplete(string dir, IEnumerable<string> missing) => T(
+        $"Obok vigil_setup.exe brakuje plików paczki ({List(missing)}). Uruchom go z rozpakowanej paczki ({dir}).",
+        $"Package files are missing next to vigil_setup.exe ({List(missing)}). Run it from the unpacked package ({dir}).");
+
+    // Server address
+    public static string UiServerTitle => T("Adres serwera", "Server address");
+    public static string UiServerHelp => T(
+        "Adres serwera Vigil w Twojej sieci — ten sam, pod którym otwierasz panel rodzica.",
+        "The address of the Vigil server on your network — the one you open the parent panel at.");
+    public static string UiServerExample => T(
+        "Na przykład 192.168.1.5 albo http://192.168.1.5:8088 (bez portu przyjmę 8088).",
+        "For example 192.168.1.5 or http://192.168.1.5:8088 (without a port, 8088).");
+    public static string UiServerChangeHelp => T(
+        "Ten sam serwer pod innym adresem (np. nowe IP): klucz komputera zostaje. Inny serwer wymaga ponownego parowania.",
+        "The same server at a different address (e.g. a new IP): the computer's key stays. Another server needs re-pairing.");
+    public static string UiEmptyGoesBack => T("Puste pole i Enter — powrót do menu.", "An empty field and Enter — back to the menu.");
+    public static string UiServerPrompt => T("Adres serwera:", "Server address:");
+    public static string UiServerChecking(string url) => T($"Sprawdzam połączenie z {url}…", $"Checking the connection to {url}…");
+    public static string UiServerInvalid => T(
+        "To nie wygląda na adres serwera. Wpisz adres IP albo nazwę, np. 192.168.1.5.",
+        "That does not look like a server address. Type an IP address or a name, e.g. 192.168.1.5.");
+    public static string UiServerNoAnswer(string url) => T(
+        $"Serwer {url} nie odpowiada. Sprawdź adres i czy serwer działa (panel rodzica otwiera się pod nim w przeglądarce).",
+        $"The server {url} does not respond. Check the address and that the server is running (the parent panel opens at it in a browser).");
+
+    // Pairing code
+    public static string UiCodeTitle => T("Kod parowania", "Pairing code");
+    public static string UiCodeHelp => T(
+        "Kod łączy ten komputer z dzieckiem w panelu. Wygeneruj go w panelu rodzica: Ustawienia → Komputery dziecka → Dodaj komputer.",
+        "The code links this computer to the child in the panel. Create it in the parent panel: Settings → Child's computers → Add computer.");
+    public static string UiCodeHelpRepair => T(
+        "Nowy klucz dla tego komputera. Wygeneruj kod w panelu rodzica: Ustawienia → Komputery dziecka → Sparuj ponownie (przy tym komputerze).",
+        "A new key for this computer. Create the code in the parent panel: Settings → Child's computers → Re-pair (next to this computer).");
+    public static string UiCodeValidity => T("Kod ma 8 cyfr i działa 10 minut.", "The code has 8 digits and works for 10 minutes.");
+    public static string UiCodePrompt => T("Kod parowania:", "Pairing code:");
+    public static string UiCodeNeeded => T(
+        "Brakuje klucza tego komputera (signing.dat) — potrzebny jest kod parowania.",
+        "This computer's key (signing.dat) is missing — a pairing code is needed.");
+
+    // Child's account
+    public static string UiAccountTitle => T("Konto dziecka", "Child's account");
+    public static string UiAccountHelp => T(
+        "Na tym komputerze jest kilka kont. Wybierz to, na którym loguje się dziecko — na nie trafią ustawienia ochrony.",
+        "There are several accounts on this computer. Choose the one the child signs in to — the protection settings go to it.");
+    public static string UiAccountNone => T(
+        "Nie znaleziono konta dziecka — ustawienia trafią tylko do profilu domyślnego (konta tworzone później).",
+        "No child's account found — the settings go to the default profile only (accounts created later).");
+
+    // Summary
+    public static string UiSummaryTitle => T("Podsumowanie", "Summary");
+    public static string UiSummaryServer => T("Serwer", "Server");
+    public static string UiSummaryAccount => T("Konto dziecka", "Child's account");
+    public static string UiSummaryVersion => T("Wersja", "Version");
+    public static string UiSummaryNoAccount => T("brak — tylko profil domyślny", "none — default profile only");
+    public static string UiSummaryWhat => T("Co się stanie:", "What happens:");
+    public static string UiSummaryService => T(
+        "Vigil zostanie zainstalowany jako usługa systemowa i od razu zacznie liczyć czas dziecka.",
+        "Vigil is installed as a system service and starts counting the child's time right away.");
+    public static string UiSummaryLock => T(
+        "Gdy skończy się limit albo zacznie cisza nocna, komputer pokaże ekran blokady.",
+        "When the limit runs out or quiet hours start, the computer shows the lock screen.");
+    public static string UiSummaryPolicies(string? account) => T(
+        $"Na koncie {account ?? "domyślnym"} zostaną wyłączone Menedżer zadań, zmiana hasła, skróty ułatwień dostępu i gesty touchpada. To jedno konto, więc dotyczy to też Ciebie.",
+        $"On the {account ?? "default"} account Task Manager, password change, accessibility shortcuts and touchpad gestures are turned off. It is one account, so this applies to you too.");
+    public static string UiSummaryNothingYet => T(
+        "Do tej chwili niczego nie zmieniono. Kod zostanie użyty dopiero po wybraniu „Zainstaluj”.",
+        "Nothing has been changed so far. The code is used only once you choose “Install”.");
+    public static string UiChoiceInstall => T("Zainstaluj", "Install");
+    public static string UiChoiceEdit => T("Popraw dane", "Change the details");
+    public static string UiChoiceCancel => T("Anuluj", "Cancel");
+
+    // Progress and results
+    public static string UiInstalling => T("Instalacja", "Installing");
+    public static string UiInstalled => T("Gotowe — Vigil działa na tym komputerze.", "Done — Vigil runs on this computer.");
+    public static string UiActionDone => T("Gotowe.", "Done.");
+    public static string UiActionDoneWarnings => T("Gotowe, z ostrzeżeniami (wyżej).", "Done, with warnings (above).");
+    public static string UiActionFailed => T("Nie udało się.", "It did not work.");
+    public static string UiServerTrouble => T("Co dalej?", "What now?");
+    public static string UiChoiceRetry => T("Spróbuj ponownie", "Try again");
+    public static string UiChoiceOtherServer => T("Zmień adres serwera", "Change the server address");
+    public static string UiVerifyTitle => T("Sprawdzenie instalacji", "Installation check");
+    public static string UiVerifyRunning => T("Sprawdzam instalację…", "Checking the installation…");
+    public static string UiVerifyArea => T("Obszar", "Area");
+    public static string UiVerifyResult => T("Wynik", "Result");
+    public static string UiVerifyAllOk => T("Wszystko w porządku.", "Everything is in order.");
+    public static string UiVerifyProblems(int fail, int warn) => T(
+        $"Błędy: {fail}, ostrzeżenia: {warn} — szczegóły niżej i w logu.",
+        $"Failures: {fail}, warnings: {warn} — details below and in the log.");
+
+    // Menu: status
+    public static string UiStatusChecking => T("Sprawdzam stan…", "Checking the status…");
+    public static string UiStatusVersion => T("Wersja", "Version");
+    public static string UiStatusVersionValue(string installed, string package) => T(
+        $"{installed} (w paczce: {package})", $"{installed} (in this package: {package})");
+    public static string UiVersionOld => T("sprzed v0.8", "before v0.8");
+    public static string UiStatusServer => T("Serwer", "Server");
+    public static string UiStatusResponds => T("odpowiada", "responds");
+    public static string UiStatusNoAnswer => T("nie odpowiada", "does not respond");
+    public static string UiStatusNoConfig => T("brak konfiguracji", "no configuration");
+    public static string UiStatusService => T("Usługa", "Service");
+    public static string UiServiceRunning => T("działa", "running");
+    public static string UiServiceStopped => T("zatrzymana", "stopped");
+    public static string UiServiceMissing => T("nie zarejestrowana", "not registered");
+    public static string UiServiceOther(string state) => T($"stan: {state}", $"state: {state}");
+    public static string UiStatusKey => T("Klucz komputera", "Computer's key");
+    public static string UiKeyPresent => T("jest", "present");
+    public static string UiKeyMissing => T("brak — potrzebne parowanie", "missing — pairing needed");
+    public static string UiStatusAccount => T("Konto dziecka", "Child's account");
+    public static string UiAccountSeveral => T("kilka kont — zapytam przy zmianach", "several accounts — asked when needed");
+
+    // Menu: items
+    public static string UiMenuVerify => T("Sprawdź instalację", "Check the installation");
+    public static string UiMenuUpdate(string version) => T($"Zaktualizuj do {version}", $"Update to {version}");
+    public static string UiMenuRepair => T("Napraw (zainstaluj ponownie pliki tej wersji)", "Repair (reinstall this version's files)");
+    public static string UiMenuDowngrade(string version) => T(
+        $"Zainstaluj starszą wersję z paczki ({version})", $"Install the older version from this package ({version})");
+    public static string UiMenuServer => T("Zmień adres serwera", "Change the server address");
+    public static string UiMenuRepair2 => T("Sparuj ponownie", "Re-pair");
+    public static string UiMenuUninstall => T("Odinstaluj", "Uninstall");
+    public static string UiMenuExit => T("Zakończ", "Exit");
+
+    // Menu: confirmations
+    public static string UiConfirmUpdate(string from, string to) => T(
+        $"Zainstalować wersję {to} (teraz {from})? Usługa zatrzyma się na chwilę; adres serwera i klucz komputera zostają.",
+        $"Install version {to} (now {from})? The service stops for a moment; the server address and the computer's key stay.");
+    public static string UiConfirmUninstall => T(
+        "Odinstalować Vigil? Usługa zostanie zatrzymana, a pliki i ustawienia konta usunięte. W Dzienniku panelu rodzica pojawi się wpis o zatrzymaniu usługi.",
+        "Uninstall Vigil? The service stops, its files and account settings are removed. The parent panel's Journal shows that the service was stopped.");
+    public static string UiUninstalled => T("Vigil odinstalowany.", "Vigil uninstalled.");
+    public static string UiUninstallLeft => T(
+        "Nie wszystko udało się usunąć — szczegóły wyżej. Uruchom komputer ponownie i odinstaluj jeszcze raz.",
+        "Not everything could be removed — details above. Restart the computer and uninstall again.");
+
     // === Accounts ===
 
     public static string AccountNotFound(string name) => T(

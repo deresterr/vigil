@@ -109,6 +109,10 @@ he knows the stack deeply — be direct, skip basics, fix root causes, apply a f
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via
   `CreateProcessAsUser` (`UiProcessLauncher`), with the user's `CreateEnvironmentBlock`: without it the process
   inherits SYSTEM's environment (#72: no ui.log, single-file extraction to `C:\Windows\Temp`).
+- Windows logs the session off (closing vigil_ui) before it stops services, also on shutdown, and the service
+  hears of it only from the SCM (`VigilServiceLifetime.OnSessionChange`/`OnShutdown`), maybe after vigil_ui is
+  gone. So `UiManager` respawns an exit at once but judges it as a kill only 10 s later (VM 1/2: restarts gave
+  "exited before connecting"; locked, 1 s ticks could reach 3 exits = a false `lockscreen_killed`).
 - vigil_ui runs with a process DACL that denies the user `PROCESS_TERMINATE`/`WRITE_DAC`: never open the
   own process by PID inside it (e.g. `Process.GetCurrentProcess().MainModule`) — use pseudo-handles or
   `GetModuleHandle(null)`.

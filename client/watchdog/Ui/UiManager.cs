@@ -18,6 +18,11 @@ namespace Vigil.Watchdog.Ui;
 ///   logs the session off and reports tamper_lockscreen_killed. Friction + detection: the process
 ///   DACL already stops non-elevated killers (UiProcessLauncher); an elevated admin can stop the
 ///   watchdog itself, which the server reports (#7).
+/// - An exit is respawned at once (protection) but judged only ExitSettle later (detection): Windows closes
+///   vigil_ui when it logs the session off, also on shutdown, before it stops the service. An exit with a
+///   logoff of its session or a system shutdown reported by the SCM around it (VigilServiceLifetime) is the
+///   session ending, not a kill: Information only, no warning, no logoff, no alert. Order-independent: the
+///   SCM's notification may come before or after vigil_ui is gone.
 ///
 /// Not thread-safe: called from the Worker loop only. Pipe messages arrive on the reader task and
 /// only raise the events.
@@ -28,6 +33,11 @@ public sealed class UiManager : IUiManager, IDisposable
     private const int KillsBeforeLogoff = 3;
     private static readonly TimeSpan KillWindow = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
+    /// <summary>How long an exit waits for the SCM to report its session ending before it counts as a kill.</summary>
+    private static readonly TimeSpan ExitSettle = TimeSpan.FromSeconds(10);
+    /// <summary>A logoff reported up to this long before an exit still explains it (the logoff closes
+    /// vigil_ui only after the notification).</summary>
+    private static readonly TimeSpan LogoffBeforeExit = TimeSpan.FromSeconds(30);
 
     private readonly NamedPipeIpcServer _pipe;
     private readonly UiProcessLauncher _launcher;
@@ -36,7 +46,8 @@ public sealed class UiManager : IUiManager, IDisposable
     private readonly HeartbeatClient _client;
     private readonly ILogger<UiManager> _logger;
 
-    private readonly Queue<DateTime> _unexpectedExits = new();
+    private readonly List<DateTime> _pendingExits = new();      // seen, waiting for ExitSettle
+    private readonly Queue<DateTime> _unexpectedExits = new();  // judged kills within KillWindow
     private bool _expectedRunning;   // we started it and did not tell it to exit
     private uint? _uiSession;
     private string? _lastSpawnError;  // log a failing spawn once, not every tick
@@ -78,13 +89,18 @@ public sealed class UiManager : IUiManager, IDisposable
             ForgetProcess();
             return false;
         }
-        if (_uiSession == sessionId && _launcher.IsRunning && _pipe.IsConnected) return true;
-
         if (_uiSession != sessionId)
+        {
             ForgetProcess();  // a new logon; whatever ran before went with its session
-        else if (_expectedRunning && !_launcher.IsRunning
-                 && await HandleUnexpectedExitAsync(sessionId.Value, ct).ConfigureAwait(false))
+        }
+        else if (_expectedRunning && !_launcher.IsRunning)
+        {
+            _pendingExits.Add(DateTime.UtcNow);
+            _logger.LogInformation("vigil_ui exited, respawning (judged in {Settle}s)", (int)ExitSettle.TotalSeconds);
+        }
+        if (await JudgeExitsAsync(sessionId.Value, ct).ConfigureAwait(false))
             return false;     // session logged off
+        if (_uiSession == sessionId && _launcher.IsRunning && _pipe.IsConnected) return true;
 
         if (!await SpawnAndConnectAsync(sessionId.Value, ct).ConfigureAwait(false)) return false;
 
@@ -150,8 +166,8 @@ public sealed class UiManager : IUiManager, IDisposable
             ct.ThrowIfCancellationRequested();
             if (done == exited)
             {
-                // Counted as an unexpected exit on the next tick.
-                _logger.LogWarning("vigil_ui pid={Pid} exited before connecting to the pipe", pid);
+                // Counted as an exit on the next tick, and judged there.
+                _logger.LogInformation("vigil_ui pid={Pid} exited before connecting to the pipe", pid);
                 return false;
             }
             _logger.LogError("vigil_ui pid={Pid} did not connect within {Timeout}s, killing it",
@@ -222,6 +238,7 @@ public sealed class UiManager : IUiManager, IDisposable
     private void ForgetProcess()
     {
         _expectedRunning = false;
+        _pendingExits.Clear();
         _unexpectedExits.Clear();
         _uiSession = null;
     }
@@ -233,17 +250,30 @@ public sealed class UiManager : IUiManager, IDisposable
     }
 
     /// <summary>
-    /// The UI we expected to be running is gone. Returns true if the session was logged off.
+    /// Judges the exits older than ExitSettle: the session ending (SCM) or a kill. Returns true if the kill loop
+    /// logged the session off.
     /// </summary>
-    private async Task<bool> HandleUnexpectedExitAsync(uint sessionId, CancellationToken ct)
+    private async Task<bool> JudgeExitsAsync(uint sessionId, CancellationToken ct)
     {
+        if (_pendingExits.Count == 0) return false;
+        if (VigilServiceLifetime.SessionEndedSince(sessionId, _pendingExits[0] - LogoffBeforeExit))
+        {
+            _logger.LogInformation("vigil_ui exited {Count}x while session {Session} was ending: not a kill",
+                _pendingExits.Count, sessionId);
+            _pendingExits.Clear();
+            return false;
+        }
         var now = DateTime.UtcNow;
-        _unexpectedExits.Enqueue(now);
-        while (_unexpectedExits.Count > 0 && now - _unexpectedExits.Peek() > KillWindow)
+        var settled = _pendingExits.TakeWhile(t => now - t >= ExitSettle).ToList();
+        if (settled.Count == 0) return false;
+        _pendingExits.RemoveRange(0, settled.Count);
+
+        foreach (var t in settled) _unexpectedExits.Enqueue(t);
+        var last = settled[^1];
+        while (_unexpectedExits.Count > 0 && last - _unexpectedExits.Peek() > KillWindow)
             _unexpectedExits.Dequeue();
         var count = _unexpectedExits.Count;
-        _logger.LogWarning("vigil_ui exited unexpectedly ({Count} in {Window}s), respawning",
-            count, (int)KillWindow.TotalSeconds);
+        _logger.LogWarning("vigil_ui exited unexpectedly ({Count} in {Window}s)", count, (int)KillWindow.TotalSeconds);
         if (count < KillsBeforeLogoff) return false;
 
         ForgetProcess();

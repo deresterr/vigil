@@ -102,7 +102,7 @@ Compared with the same device's previous heartbeat (`devices.wd_*`, reset when i
 | same instance, awake gap > 90 s, 0 failed attempts | `tamper_watchdog_silent` (suspended/frozen) |
 | same instance, awake gap > 90 s, retries | `watchdog_offline` (info) |
 | new boot / goodbye `shutdown` | `watchdog_started` / `watchdog_shutdown` (info) |
-| vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
+| vigil_ui we spawned exits on its own 3× within 60 s (kill loop), locked or not; respawned at once, judged 10 s later — an exit with a logoff of its session or a shutdown reported by the SCM around it is the session ending, not a kill | session logged off (`WTSLogoffSession`) + `tamper_lockscreen_killed` via `POST /v1/tamper_event` |
 
 | the guardian repaired something (Event Log 7001–7006) | `tamper_guardian_repaired` (`check`, `repaired`), stamped with the repair time; sent by `GuardianReporter` every minute, deduped by record id + time |
 

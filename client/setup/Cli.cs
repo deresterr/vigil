@@ -16,6 +16,8 @@ public sealed class Cli
     public string? ChildUserName { get; private set; }
     public bool DisableWinRE { get; private set; }
     public bool NoUserPolicies { get; private set; }
+    /// <summary>-Keys &lt;file&gt;: the wizard and menu driven by a key script (CI e2e only, not in the usage).</summary>
+    public string? KeysFile { get; private set; }
 
     public static Cli Parse(IReadOnlyList<string> args)
     {
@@ -40,6 +42,7 @@ public sealed class Cli
                 case "-childusername": cli.ChildUserName = Value(); break;
                 case "-disablewinre": cli.DisableWinRE = true; break;
                 case "-nouserpolicies": cli.NoUserPolicies = true; break;
+                case "-keys": cli.KeysFile = Value(); break;
                 default: throw new CliException(Strings.UnknownParameter(name));
             }
         }

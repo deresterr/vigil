@@ -23,9 +23,14 @@ catch (CliException ex)
 using var log = new LogReport();
 if (cli.Mode is null)
 {
-    // The wizard and the menu need a person at a console; a script without parameters gets the usage.
-    Console.WriteLine(Strings.Usage);
-    return 2;
+    // The wizard and the menu need a person at a console (or the CI key script); a script without
+    // parameters gets the usage instead of a prompt that waits forever.
+    if (cli.KeysFile is null && (Console.IsInputRedirected || Console.IsOutputRedirected))
+    {
+        Console.WriteLine(Strings.Usage);
+        return 2;
+    }
+    return Vigil.Setup.Screens.App.Run(cli, log);
 }
 
 int exitCode;

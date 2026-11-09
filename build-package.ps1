@@ -29,7 +29,7 @@
 
 .PARAMETER Version
     Wersja wszystkich binarek (-p:Version): release z taga (np. 0.8.0), CI 0.0.0-ci.<run>.
-    Default: 0.0.0-dev (client\Directory.Build.props). vigil_setup porownuje wersje
+    Default: 0.0.0-dev (jak client\Directory.Build.props). vigil_setup porownuje wersje
     zainstalowana z wersja paczki.
 
 .PARAMETER SkipBuild
@@ -40,7 +40,7 @@
 param(
     [string] $OutputDir = '',
     [ValidateSet('Release','Debug')] [string] $Configuration = 'Release',
-    [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')] [string] $Version = '',
+    [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')] [string] $Version = '0.0.0-dev',
     [switch] $SkipBuild
 )
 
@@ -93,12 +93,11 @@ foreach ($p in $projects) {
         Write-Host "==> Build $($p.Dir)" -ForegroundColor Cyan
         Push-Location $projDir
         try {
-            $versionArgs = if ($Version) { @("-p:Version=$Version") } else { @() }
             dotnet publish -c $Configuration -r win-x64 `
                 -p:PublishSingleFile=true `
                 -p:SelfContained=true `
                 -p:IncludeNativeLibrariesForSelfExtract=true `
-                @versionArgs `
+                "-p:Version=$Version" `
                 --nologo
             if ($LASTEXITCODE -ne 0) {
                 throw "dotnet publish failed for $($p.Dir) (exit $LASTEXITCODE)"

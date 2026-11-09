@@ -1,4 +1,4 @@
-﻿﻿<#
+﻿<#
 .SYNOPSIS
     Builds the client and puts the package together: one vigil_setup.exe (#76).
 

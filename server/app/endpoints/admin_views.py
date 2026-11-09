@@ -1,6 +1,6 @@
-"""HTML routes dla admin UI: /admin (panel), /admin/login (form), /admin/logout.
+"""Panel pages: /admin (the panel), /admin/login (form), /admin/logout.
 
-Frontend (admin.html) jest SPA z vanilla JS — woła /admin/api/* przez fetch.
+admin.html is a single page in plain JS that calls /admin/api/* with fetch.
 """
 
 from __future__ import annotations
@@ -26,9 +26,8 @@ router = APIRouter()
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_panel(request: Request) -> Response:
-    """Główny panel. Cookie session sprawdzamy po stronie JS — jeśli /admin/api/status
-    zwróci 401, frontend przekierowuje na /admin/login. Sam /admin nie waliduje cookie
-    żeby uniknąć podwójnego renderu.
+    """The panel. The session is checked by its API calls: a 401 from /admin/api/status sends the page to
+    /admin/login, so /admin itself does not check the cookie.
     """
     return HTMLResponse(page("admin.html"))
 
@@ -44,7 +43,7 @@ async def admin_login_submit(
     password: str = Form(...),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
-    """Walidacja hasła. Sukces → set cookie + redirect na /admin. Błąd → redirect z error param."""
+    """Password check: session cookie and /admin, or back to the form with an error."""
     ip = request.client.host if request.client else "unknown"
     wait = login_lockout_remaining(ip)
     if wait:
@@ -69,9 +68,7 @@ async def admin_login_submit(
 
 @router.post("/admin/logout")
 async def admin_logout(request: Request) -> Response:
-    """Czyści cookie i przekierowuje na login. Nie wymaga ważnej sesji — możesz wylogować
-    się z expired session.
-    """
+    """Clears the cookie and goes to the login form; works with an expired session too."""
     response = RedirectResponse(url="/admin/login", status_code=303)
     clear_session_cookie(response)
     return response

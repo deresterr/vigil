@@ -36,7 +36,7 @@ def client(tmp_path, monkeypatch):
 
 
 def add_child(name: str, weekday: int = 120, weekend: int = 240, night: tuple[str, str] = ("21:30", "06:30")) -> int:
-    """A child with the pre-#48 week shape: `weekday` limit Mon–Thu, `weekend` Fri–Sun, one night window."""
+    """A child with the wizard's week shape: `weekday` limit Mon–Thu, `weekend` Fri–Sun, one night window."""
     with app.db.get_connection() as conn:
         child_id = conn.execute("INSERT INTO children(name, created_utc) VALUES (?, ?)",
                                 (name, datetime.now(UTC).isoformat())).lastrowid

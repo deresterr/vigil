@@ -1,8 +1,8 @@
-"""Warstwa SQLite: connection management + schema bootstrap + query helpers.
+"""SQLite: connections, schema setup, query helpers.
 
-Świadomy wybór: bez ORM. Ręczny SQL, parametry przez `?`, sqlite3.Row dla dict-like access.
-Single-worker uvicorn + WAL mode — ale asyncio nadal obsługuje kilka requestów współbieżnie
-(między await-ami). Dlatego get_db() używa asyncio.Lock: jeden request naraz ma dostęp do DB.
+No ORM on purpose: plain SQL, `?` parameters, sqlite3.Row. One uvicorn worker with WAL, but asyncio still
+interleaves requests between awaits, so get_db() holds an asyncio.Lock: one request at a time touches the
+database (the time accounting relies on it, CLAUDE.md).
 
 One server, many children (D7): per-child settings in `children`, devices with their signing keys
 in `devices`, per-child days in `child_daily`. Server-wide settings and secrets (totp_secret,
@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_connection(conn: sqlite3.Connection) -> None:
-    """Pragmy i row factory na każde nowe połączenie."""
+    """Pragmas and row factory of every new connection."""
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 30000")  # 30s — wystarcza dla burst kliknięć w admin UI
+    conn.execute("PRAGMA busy_timeout = 30000")  # 30 s
 
 
 def init_database() -> None:
@@ -49,12 +49,11 @@ def init_database() -> None:
 
 @contextmanager
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
-    """Context manager dla jednego połączenia. Auto-commit przy wyjściu bez exception, rollback przy exception.
+    """One connection: commit when the block ends normally, rollback on an exception.
 
-    `check_same_thread=False`: FastAPI dispatchuje request między wątkami (sync endpoints w threadpool,
-    BaseHTTPMiddleware w innym wątku niż dependencies). WAL mode + GIL = bezpieczne dla naszego use case'u.
-
-    `timeout=30`: Python-level busy retry przy SQLITE_BUSY — belt-and-suspenders obok asyncio.Lock w get_db().
+    `check_same_thread=False`: FastAPI moves a request between threads (sync endpoints in its threadpool,
+    middleware on another thread than dependencies); access is serialized by get_db's lock anyway.
+    `timeout=30`: SQLite's busy retry, a safety net next to that lock.
     """
     conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=30.0)
     _configure_connection(conn)
@@ -68,14 +67,13 @@ def get_connection() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-# asyncio.Lock serializes wszystkie requesty do DB — zapobiega "database is locked" gdy
-# heartbeat i pause_toggle / admin API trafiają jednocześnie w tę samą pętlę asyncio.
-# Przy single-worker uvicorn to jedyna warstwa potrzebna; WAL + timeout jako safety net.
+# Serializes every request's database access: heartbeats, pause toggles and panel calls interleave in one
+# asyncio loop. With one uvicorn worker this is the only layer needed; WAL and the timeout are a safety net.
 _db_lock = asyncio.Lock()
 
 
 async def get_db() -> AsyncGenerator[sqlite3.Connection, None]:
-    """FastAPI dependency. Jeden request na raz przez asyncio.Lock."""
+    """FastAPI dependency: one request at a time (asyncio.Lock)."""
     async with _db_lock:
         with get_connection() as conn:
             yield conn
@@ -99,7 +97,7 @@ def get_config_values(conn: sqlite3.Connection, keys: tuple[str, ...]) -> dict[s
 def get_config_int(conn: sqlite3.Connection, key: str) -> int:
     val = get_config_value(conn, key)
     if val is None:
-        raise RuntimeError(f"Brak wartości w config dla klucza: {key!r}")
+        raise RuntimeError(f"No config value for {key!r}")
     return int(val)
 
 

@@ -118,9 +118,7 @@ hash is stored, with its target: `pairing_*` config keys); `vigil_setup.exe` sen
 returned key in `signing.dat`. Re-pairing replaces that device's key (the old install fails closed); "Odłącz"
 deletes the device row, so its key stops working. There is no way to read a device key in the panel.
 
-Migration from a single-PC database (v0.4/v0.5, `migrations._m002_children_devices`): it becomes child 1
-(named after its `device_name`) with device 1 (its old key, if the PC ever connected); production needs a
-re-pair anyway, because v0.4 speaks protocol v1.
+Schema: `migrations.py`, migration 1 = the v0.8 schema (D26: databases of earlier versions are not migrated).
 
 Journal tab (`endpoints/journal.py`, `GET /admin/api/journal?days=&before=&child_id=`): per local day, newest first
 by `ts_utc` (not insertion order: `watchdog_offline` and `offline_unlock` arrive on reconnect and carry the

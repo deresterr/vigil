@@ -94,7 +94,7 @@
 
   <div id="err" class="error" hidden></div>
 
-  <!-- Krok 1: Pierwsze dziecko -->
+  <!-- Step 1: the first child -->
   <div class="step active" id="s1">
     <label for="childName" data-i18n>Imię dziecka</label>
     <input type="text" id="childName" placeholder="np. Jaś" maxlength="40" autofocus data-i18n-attr="placeholder">
@@ -104,7 +104,7 @@
     </div>
   </div>
 
-  <!-- Krok 2: Hasło -->
+  <!-- Step 2: password -->
   <div class="step" id="s2">
     <label for="pass1" data-i18n>Hasło rodzica (min. 8 znaków)</label>
     <input type="password" id="pass1" placeholder="Hasło" data-i18n-attr="placeholder">
@@ -116,7 +116,7 @@
     </div>
   </div>
 
-  <!-- Krok 3: TOTP -->
+  <!-- Step 3: TOTP -->
   <div class="step" id="s3">
     <div class="info" data-i18n>
       Zeskanuj kod QR aplikacją TOTP (np. Aegis, Google Authenticator) i wpisz kod weryfikacyjny.
@@ -133,10 +133,10 @@
     </div>
   </div>
 
-  <!-- Krok 4: Ustawienia -->
+  <!-- Step 4: settings -->
   <div class="step" id="s4">
     <label for="tz" data-i18n>Strefa czasowa</label>
-    <input type="text" id="tz" value="Europe/Warsaw" list="tzList">
+    <input type="text" id="tz" value="UTC" list="tzList">
     <datalist id="tzList">
       <option value="Europe/Warsaw">
       <option value="Europe/London">
@@ -174,7 +174,7 @@
     </div>
   </div>
 
-  <!-- Krok 5: Podsumowanie + adres serwera -->
+  <!-- Step 5: summary + server address -->
   <div class="step" id="s5">
     <label for="srvUrl" data-i18n>Adres serwera Vigil</label>
     <input type="text" id="srvUrl" placeholder="http://192.168.1.5:8088">
@@ -194,6 +194,11 @@
 <!-- i18n -->
 <script>
 applyI18n();
+// The browser's time zone as the default (the panel can change it later).
+try {
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (browserTz) document.getElementById('tz').value = browserTz;
+} catch (e) { /* keep UTC */ }
 const TOTAL = 5;
 let currentStep = 1;
 let totpVerified = false;
@@ -272,7 +277,7 @@ function verifyTotp() {
   const code = document.getElementById('totpCode').value.trim();
   if (!code) { skipTotp(); return; }
   if (!/^\d{6}$/.test(code)) { showError(t('Kod TOTP musi mieć 6 cyfr.')); return; }
-  // Weryfikacja nastąpi po stronie serwera przy finalizacji
+  // The server checks it when the wizard completes
   totpVerified = true;
   goTo(4);
 }

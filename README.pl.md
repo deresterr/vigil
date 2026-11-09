@@ -6,9 +6,9 @@ Samodzielnie hostowana kontrola czasu dziecka przy komputerze z Windows 10/11.
 Serwer w Dockerze w domowej sieci liczy czas i decyduje o blokadzie; usługa na PC dziecka
 pokazuje pełnoekranową blokadę. Rodzic zarządza z przeglądarki i odblokowuje kodem TOTP z telefonu.
 
-> **Status: v0.7, przed wydaniem 1.0.** Działa w codziennym użyciu. Dziecko z uprawnieniami administratora
+> **Status: przed wydaniem 1.0.** Działa w codziennym użyciu. Dziecko z uprawnieniami administratora
 > jest w stanie Vigila obejść — Vigil ma to utrudnić i pokazać rodzicowi, nie uniemożliwić
-> (patrz [Model zagrożeń](#model-zagrożeń)). Plan dalszych prac: [`docs/review-2026-11.md`](docs/review-2026-11.md).
+> (patrz [Model zagrożeń](#model-zagrożeń)). Decyzje projektowe (po angielsku): [`docs/decisions.md`](docs/decisions.md).
 
 ## Co potrafi
 
@@ -65,7 +65,7 @@ który odczytał klucz z dysku.
 - PC dziecka: Windows 10/11 x64, Home lub Pro; konto dziecka jest jedynym kontem użytkownika
   i może mieć uprawnienia administratora (rodzic serwisuje PC z tego samego konta),
 - telefon rodzica z aplikacją TOTP (Aegis, Google Authenticator, …),
-- do budowania klienta: Windows z .NET 8 SDK (albo gotowy `vigil_setup.exe` z wydania lub z GitHub Actions).
+- do budowania klienta: Windows z .NET 8 SDK (albo gotowy `vigil_setup.exe` z wydania).
 
 ## Szybki start
 
@@ -100,8 +100,9 @@ Potem (w nowym oknie, żeby `dotnet` był w PATH):
 Build.cmd            → dist\vigil_setup.exe
 ```
 
-`vigil_setup.exe` to cały klient: instalator niesie w sobie usługę i ekran blokady. Zamiast budować lokalnie
-możesz go pobrać z artefaktu `vigil-client-…` ostatniego przebiegu CI (zakładka Actions).
+`vigil_setup.exe` to cały klient: instalator niesie w sobie usługę i ekran blokady. Zamiast go budować, możesz
+pobrać go z najnowszego wydania:
+[`releases/latest/download/vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe).
 
 **3. Instalacja na PC dziecka** — skopiuj `vigil_setup.exe` na PC dziecka i uruchom go (sam poprosi
 o uprawnienia administratora; pobrany plik może najpierw dostać od SmartScreen „System Windows ochronił
@@ -130,7 +131,7 @@ Bez swoich plików Vigil nie startuje, więc nie ma blokady. Na zwykłą blokad�
 | `client/` | usługa Windows (`watchdog`), ekran blokady z ikoną w zasobniku (`ui`), instalator (`setup`) |
 | `client/setup/` | instalator `vigil_setup.exe`: kreator, menu, verify, strażnik integralności |
 | `e2e/` | test end-to-end instalatora (CI, jednorazowy Windows) |
-| `docs/` | architektura, przegląd i roadmapa |
+| `docs/` | architektura, instalator, guardian, decyzje projektowe (po angielsku) |
 
 ## Bezpieczeństwo
 

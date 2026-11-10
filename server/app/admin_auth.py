@@ -3,6 +3,10 @@
 The panel uses a cookie, the watchdog signed requests. SameSite=Strict against CSRF, HttpOnly against
 script access, the itsdangerous signature (key `admin_session_key`) against forged cookies.
 
+Revocation: the cookie carries `admin_session_generation`; a logout or a password change bumps it, which
+ends every session issued before. The parent often logs in on the child's PC (one Windows account, D12),
+where the child can copy the browser's cookies: after a logout such a copy is worthless.
+
 The parent's password is an argon2id hash in `config.parent_password_hash`.
 """
 
@@ -15,7 +19,7 @@ from fastapi import Depends, HTTPException, Request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from .crypto import verify_password as _crypto_verify_password
-from .db import get_config_value, get_db
+from .db import get_config_value, get_db, set_config_value
 
 # Cookie name + properties
 SESSION_COOKIE = "vigil_session"
@@ -42,9 +46,33 @@ def verify_admin_password(db: sqlite3.Connection, password: str) -> bool:
     return _crypto_verify_password(password, stored_hash)
 
 
+def _generation(db: sqlite3.Connection) -> int:
+    return int(get_config_value(db, "admin_session_generation") or 0)
+
+
 def issue_session_cookie(db: sqlite3.Connection) -> str:
-    """A signed session token (the cookie value)."""
-    return _serializer(db).dumps({"sub": "parent"})
+    """A signed session token (the cookie value) of the current generation."""
+    return _serializer(db).dumps({"sub": "parent", "gen": _generation(db)})
+
+
+def revoke_sessions(db: sqlite3.Connection) -> None:
+    """Every session cookie issued so far stops working."""
+    set_config_value(db, "admin_session_generation", _generation(db) + 1)
+
+
+def session_payload(db: sqlite3.Connection, cookie: str | None) -> dict:
+    """The payload of a valid, unexpired, unrevoked session cookie; HTTPException 401 otherwise."""
+    if not cookie:
+        raise HTTPException(status_code=401, detail="no_session")
+    try:
+        payload = _serializer(db).loads(cookie, max_age=SESSION_MAX_AGE_SECONDS)
+    except SignatureExpired as e:
+        raise HTTPException(status_code=401, detail="session_expired") from e
+    except BadSignature as e:
+        raise HTTPException(status_code=401, detail="invalid_session") from e
+    if not isinstance(payload, dict) or payload.get("gen") != _generation(db):
+        raise HTTPException(status_code=401, detail="session_revoked")
+    return payload
 
 
 def set_session_cookie(response, cookie_value: str) -> None:
@@ -68,23 +96,11 @@ async def require_admin_session(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """Dependency of /admin/api/*: 401 without a valid, unexpired session cookie.
+    """Dependency of /admin/api/*: 401 without a valid, unexpired, unrevoked session cookie.
 
-    Returns the cookie's payload ({"sub": "parent"}).
+    Returns the cookie's payload ({"sub": "parent", "gen": N}).
     """
-    cookie = request.cookies.get(SESSION_COOKIE)
-    if not cookie:
-        raise HTTPException(status_code=401, detail="no_session")
-
-    serializer = _serializer(db)
-    try:
-        payload = serializer.loads(cookie, max_age=SESSION_MAX_AGE_SECONDS)
-    except SignatureExpired as e:
-        raise HTTPException(status_code=401, detail="session_expired") from e
-    except BadSignature as e:
-        raise HTTPException(status_code=401, detail="invalid_session") from e
-
-    return payload
+    return session_payload(db, request.cookies.get(SESSION_COOKIE))
 
 
 # === Login throttling ===

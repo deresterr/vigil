@@ -23,6 +23,16 @@ def test_time_accumulates_while_active(watchdog):
     assert state_for("2026-11-04")["seconds_used"] == 60
 
 
+def test_fractions_of_a_second_add_up(watchdog):
+    """Heartbeats come every 5 s plus the round trip: the remainder carries over instead of being dropped (#86)."""
+    with time_machine.travel(NOON, tick=False) as t:
+        watchdog.heartbeat()
+        for _ in range(10):
+            t.shift(5.3)
+            watchdog.heartbeat()
+    assert state_for("2026-11-04")["seconds_used"] == 53
+
+
 def test_inactive_session_does_not_count(watchdog):
     with time_machine.travel(NOON, tick=False) as t:
         watchdog.heartbeat()

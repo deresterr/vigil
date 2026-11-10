@@ -1,7 +1,9 @@
 """POST /v1/heartbeat (+ /v1/goodbye, /v1/tamper_event) — time accounting and lock decision.
 
 Reactive: the server has no clock of its own; every heartbeat of a device moves its child's counter
-by `delta` (clamped 0..heartbeat_delta_max) when the device was active recently (gap detection).
+by `delta` (clamped 0..heartbeat_delta_max) when the device was active recently (gap detection). Whole
+seconds are counted; the device keeps the remaining milliseconds for its next heartbeat (heartbeats come
+every 5 s plus the round trip, and dropping the fraction each time undercounted by 1–2 %).
 Per device (D7): delta and gap come from that device's own last heartbeat; the seconds go to its
 child, so two PCs used at once count twice (decision: time = sum over devices). Locks are per child.
 """
@@ -27,12 +29,11 @@ router = APIRouter()
 def _load_hb_cfg(db: sqlite3.Connection) -> dict:
     """Server-wide settings for one heartbeat, read fresh every time (one SELECT; no cache)."""
     v = get_config_values(db, ("timezone", "heartbeat_delta_max", "gap_detection_threshold",
-                               "totp_secret", "events_retention_days"))
+                               "events_retention_days"))
     return {
         "timezone": v["timezone"],
         "heartbeat_delta_max": int(v["heartbeat_delta_max"]),
         "gap_detection_threshold": int(v["gap_detection_threshold"]),
-        "totp_secret": v["totp_secret"],
         "events_retention_days": int(v["events_retention_days"]),
     }
 
@@ -68,7 +69,7 @@ async def heartbeat(
     now_local = now_utc.astimezone(tz)
     child = get_child(db, device.child_id)
     ids = {"child_id": device.child_id, "device_id": device.id}
-    dev = db.execute("SELECT last_heartbeat_utc, last_active_utc FROM devices WHERE id = ?",
+    dev = db.execute("SELECT last_heartbeat_utc, last_active_utc, delta_carry_ms FROM devices WHERE id = ?",
                      (device.id,)).fetchone()
 
     # Pre-lock check: while the child is locked no time accrues (invariant).
@@ -77,20 +78,20 @@ async def heartbeat(
     active = body.session_active and body.user_active
 
     # === 1. Time from this device ===
-    seconds_added = 0
+    seconds_added = carry_ms = 0
     if today["lock_reason"] is None and active and dev["last_heartbeat_utc"] and dev["last_active_utc"]:
         delta = (now_utc - parse_iso_utc(dev["last_heartbeat_utc"])).total_seconds()
         delta = max(0.0, min(float(cfg["heartbeat_delta_max"]), delta))
         if (now_utc - parse_iso_utc(dev["last_active_utc"])).total_seconds() <= cfg["gap_detection_threshold"]:
-            seconds_added = int(delta)
+            seconds_added, carry_ms = divmod(int(delta * 1000) + dev["delta_carry_ms"], 1000)
 
     # === 2. Update device and child ===
     db.execute(
         "UPDATE devices SET last_heartbeat_utc = ?, last_active_utc = COALESCE(?, last_active_utc), "
-        "seconds_today = CASE WHEN seconds_date = ? THEN seconds_today + ? ELSE ? END, seconds_date = ? "
-        "WHERE id = ?",
+        "seconds_today = CASE WHEN seconds_date = ? THEN seconds_today + ? ELSE ? END, seconds_date = ?, "
+        "delta_carry_ms = ? WHERE id = ?",
         (now_utc.isoformat(), now_utc.isoformat() if active else None, today_local.isoformat(), seconds_added,
-         seconds_added, today_local.isoformat(), device.id),
+         seconds_added, today_local.isoformat(), carry_ms, device.id),
     )
     new_seconds_used = state["seconds_used"] + seconds_added
     if seconds_added:
@@ -125,13 +126,12 @@ async def heartbeat(
 
     # === 5. UI state (only while locked) ===
     # No sentences: vigil_ui words the lock screen in the child's Windows language from lock_reason (i18n, #52).
+    # The retry and shutdown buttons are the watchdog's defaults (retry only offline, shutdown always).
     ui_state = None
     if lock_reason:
         ui_state = {
-            "show_totp_field": bool(cfg["totp_secret"]) and lock_reason in ("limit", "night", "manual"),
+            "show_totp_field": lock_reason in ("limit", "night", "manual"),
             "show_resume_button": lock_reason == "pause",
-            "show_retry_button": False,
-            "show_shutdown_button": True,
             "current_time_display": now_local.strftime("%H:%M"),
         }
 

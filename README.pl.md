@@ -93,7 +93,8 @@ nic nie jest odporne na manipulację. Każdy mechanizm należy do jednej z trzec
 - każdą naprawę strażnika (wyłączona usługa, podmieniony plik, …),
 - serie błędnych kodów TOTP, nieudane logowania do panelu, unieważniony kod parowania.
 
-**Nie wykrywa:** trwałego zatrzymania usługi (panel pokazuje PC jako offline), uruchomienia innego systemu
+**Nie wykrywa:** trwałego zatrzymania usługi (panel pokazuje PC jako offline), usuniętej lub uszkodzonej
+konfiguracji na PC (`vigil.toml`, `signing.dat`: usługa nie startuje, też offline), uruchomienia innego systemu
 z pendrive'a (też offline) ani sfałszowanych żądań od administratora, który odczytał klucz z dysku.
 
 **Sieć:** serwer mówi zwykłym HTTP. Żądania i odpowiedzi są podpisane, ale odpowiedź parowania niesie klucz PC
@@ -126,7 +127,7 @@ docker compose up -d
 ```
 
 Od razu otwórz `http://<ip-serwera>:8088/setup` — kreator jest dostępny bez logowania, dopóki nie zostanie
-ukończony: imię dziecka, hasło rodzica, TOTP, strefa czasowa i limity oraz adres, którego będą używać komputery.
+ukończony: imię dziecka, hasło rodzica, TOTP, strefa czasowa i limity.
 Każdy dzień tygodnia ustawisz potem w panelu: Ustawienia → Harmonogram tygodnia.
 
 **2. PC dziecka.** Pobierz [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe)

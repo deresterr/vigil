@@ -50,9 +50,5 @@ def run_bootstrap() -> None:
             "INSERT OR REPLACE INTO config(key, value) VALUES (?, ?)",
             secrets,
         )
-        conn.execute(
-            "INSERT INTO events(event_type, details_json) VALUES (?, ?)",
-            ("vigil_started", '{"phase": "bootstrap"}'),
-        )
 
     sys.stdout.flush()

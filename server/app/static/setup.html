@@ -174,15 +174,8 @@
     </div>
   </div>
 
-  <!-- Step 5: summary + server address -->
+  <!-- Step 5: summary -->
   <div class="step" id="s5">
-    <label for="srvUrl" data-i18n>Adres serwera Vigil</label>
-    <input type="text" id="srvUrl" placeholder="http://192.168.1.5:8088">
-    <div class="info" data-i18n>
-      Adres, który wpisujesz w instalatorze (<code>vigil_setup.exe</code>). Musi być osiągalny z PC dziecka.
-      Jeśli używasz DNS rewritingu w przeglądarce (np. <em>kontrola.test</em>), wpisz tu
-      bezpośredni adres IP serwera.
-    </div>
     <div id="summary"></div>
     <div class="actions">
       <button class="btn btn-secondary" onclick="goTo(4)" data-i18n>← Wróć</button>
@@ -237,15 +230,7 @@ function goTo(step) {
     if (p1.length < 8) { showError(t('Hasło musi mieć co najmniej 8 znaków.')); return; }
     if (p1 !== p2) { showError(t('Hasła nie są zgodne.')); return; }
   }
-  if (step === 5) {
-    // Prefill server URL from window.location
-    const urlEl = document.getElementById('srvUrl');
-    if (!urlEl.value) {
-      const port = window.location.port || '8088';
-      urlEl.value = window.location.protocol + '//' + window.location.hostname + ':' + port;
-    }
-    buildSummary();
-  }
+  if (step === 5) buildSummary();
   document.getElementById('s' + currentStep).classList.remove('active');
   currentStep = step;
   document.getElementById('s' + currentStep).classList.add('active');
@@ -292,15 +277,16 @@ function buildSummary() {
     [t('Cisza nocna'), document.getElementById('nightS').value + ' – ' + document.getElementById('nightE').value],
   ];
   document.getElementById('summary').innerHTML = rows.map(([k, v]) =>
-    '<div class="summary-row"><span class="key">' + k + '</span><span class="val">' + v + '</span></div>'
+    '<div class="summary-row"><span class="key">' + esc(k) + '</span><span class="val">' + esc(v) + '</span></div>'
   ).join('') + '<div style="margin-top:16px"></div>';
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function finish() {
   showError('');
-  const srvUrl = document.getElementById('srvUrl').value.trim();
-  if (!srvUrl.startsWith('http')) { showError(t('Podaj adres serwera (http://...).')); return; }
-
   const totpCode = totpVerified ? document.getElementById('totpCode').value.trim() : '';
 
   const payload = {
@@ -312,7 +298,6 @@ function finish() {
     daily_limit_weekend:  parseInt(document.getElementById('limWe').value, 10),
     night_lock_start:     document.getElementById('nightS').value,
     night_lock_end:       document.getElementById('nightE').value,
-    watchdog_server_url:  srvUrl,
   };
 
   const btn = document.getElementById('btnFinish');

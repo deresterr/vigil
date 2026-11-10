@@ -61,3 +61,21 @@ def test_failed_migration_leaves_the_previous_version(db_path, monkeypatch):
         app.db.init_database()
     assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
     assert _query(db_path, "SELECT name FROM sqlite_master WHERE name = 'half_done'") == []
+
+
+def test_v08_database_migrates(db_path):
+    """A database of v0.8.0 (schema 1) gets the heartbeat remainder and loses the wizard's server address."""
+    import app.migrations as migrations
+
+    with closing(sqlite3.connect(db_path, isolation_level=None)) as conn:
+        conn.execute("BEGIN")
+        migrations.MIGRATIONS[0][1](conn)
+        conn.execute("PRAGMA user_version = 1")
+        conn.execute("INSERT INTO config VALUES ('watchdog_server_url', 'http://pc:8088')")
+        conn.execute("INSERT INTO children(name, created_utc) VALUES ('Ola', '2026-11-01T00:00:00+00:00')")
+        conn.execute("INSERT INTO devices(child_id, name, signing_key, paired_utc) VALUES (1, 'PC', 'k', 'x')")
+        conn.execute("COMMIT")
+    app.db.init_database()
+    assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
+    assert _query(db_path, "SELECT delta_carry_ms FROM devices") == [(0,)]
+    assert _query(db_path, "SELECT 1 FROM config WHERE key = 'watchdog_server_url'") == []

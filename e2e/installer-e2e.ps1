@@ -250,7 +250,7 @@ $failed = $true
 try {
     Write-Section "Server $ServerUrl (database in $WorkDir)"
     Start-Server
-    $setup = @{ child_name = 'CI'; password = 'e2e-parent-password'; watchdog_server_url = $ServerUrl } | ConvertTo-Json
+    $setup = @{ child_name = 'CI'; password = 'e2e-parent-password' } | ConvertTo-Json
     Invoke-RestMethod "$ServerUrl/setup/complete" -Method Post -Body $setup -ContentType 'application/json' `
         -SessionVariable session | Out-Null
     $script:AdminSession = $session

@@ -39,7 +39,7 @@ def test_pairing_adds_a_device_of_the_child_and_is_single_use(client):
 
     r = client.post("/v1/pair", json={"code": code})  # "1234 5678" format is accepted
     assert r.status_code == 200
-    assert r.json()["server_url"]
+    assert set(r.json()) == {"signing_key"}  # the address is the one the installer reached
     assert _devices() == [(1, 1, "PC"), (2, 1, "Laptop")]
 
     assert client.post("/v1/pair", json={"code": code}).status_code == 404
@@ -53,8 +53,7 @@ def test_repairing_a_device_rotates_only_its_key(client):
     _login(client)
     old = Watchdog(client, 1)
     code = _new_code(client, device_id=1).replace(" ", "")
-    as_sent = int(code) if code[0] != "0" else code  # ConvertTo-Json may send it as a number
-    assert client.post("/v1/pair", json={"code": as_sent}).status_code == 200
+    assert client.post("/v1/pair", json={"code": code}).status_code == 200
     assert _devices() == [(1, 1, "PC")]
     assert old.post("/v1/heartbeat", HB, verify=False).status_code == 401
     assert Watchdog(client, 1).post("/v1/heartbeat", HB).status_code == 200
@@ -105,3 +104,11 @@ def test_new_code_replaces_previous(client):
     if first != second:
         assert client.post("/v1/pair", json={"code": first}).status_code == 401
     assert client.post("/v1/pair", json={"code": second}).status_code == 200
+
+
+def test_code_must_be_a_string(client):
+    """A number would lose leading zeros ("01234567"): only the string form is accepted."""
+    _login(client)
+    code = _new_code(client).replace(" ", "")
+    assert client.post("/v1/pair", json={"code": int(code)}).status_code == 422
+    assert client.post("/v1/pair", json={"code": code}).status_code == 200

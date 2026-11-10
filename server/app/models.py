@@ -89,7 +89,14 @@ class GuardianRepaired(_Wire):
 TamperEvent = Annotated[LockscreenKilled | GuardianRepaired, Field(discriminator="type")]
 
 
-class PairRequest(BaseModel):
-    """Unauthenticated (pairing.py). Lax: the installer's ConvertTo-Json may send the code as a number."""
+class PairRequest(_Wire):
+    """Unauthenticated (pairing.py). The code as a string: a number would lose its leading zeros."""
 
-    code: str | int = ""
+    code: Annotated[str, Field(max_length=32)] = ""
+
+
+class PauseRequest(_Wire):
+    """/v1/pause_toggle. `paused` = the state wanted ("I'm back" on the lock screen: false); missing = toggle
+    (the tray icon). A target makes a repeated click harmless."""
+
+    paused: bool | None = None

@@ -1,7 +1,8 @@
 """Pairing a child PC with the server using a one-time code (replaces the open claim_credentials).
 
 Flow: the parent generates a code in the panel (POST /admin/api/pairing_code), the installer on the
-child PC sends it to POST /v1/pair and receives a freshly generated signing key + server URL.
+child PC sends it to POST /v1/pair and receives a freshly generated signing key. The server address is
+the one the installer reached it at.
 
 The code is made for one target (D7): a new device of a given child (name entered in the panel), or
 an existing device being re-paired (reinstall). Re-pairing replaces that device's key, so the old
@@ -73,19 +74,9 @@ def active_pairing_expiry(db: sqlite3.Connection, now: datetime) -> datetime | N
     return expires if now < expires else None
 
 
-def _server_url(db: sqlite3.Connection, request: Request) -> str:
-    url = get_config_value(db, "watchdog_server_url")
-    if url:
-        return url
-    # Fallback from the Host header; may be wrong behind a reverse proxy, hence the wizard asks for it.
-    host = request.headers.get("host", "")
-    scheme = request.headers.get("x-forwarded-proto", "http")
-    return f"{scheme}://{host}"
-
-
 @router.post("/v1/pair")
 async def pair(body: PairRequest, request: Request, db: sqlite3.Connection = Depends(get_db)):
-    code = _normalize(str(body.code))
+    code = _normalize(body.code)
     now = datetime.now(timezone.utc)
     remote = request.client.host if request.client else "unknown"
 
@@ -118,4 +109,4 @@ async def pair(body: PairRequest, request: Request, db: sqlite3.Connection = Dep
         ).lastrowid
     clear_pairing_code(db)
     log_event(db, "device_paired", {"remote": remote}, child_id=child_id, device_id=device_id)
-    return {"signing_key": signing_key, "server_url": _server_url(db, request)}
+    return {"signing_key": signing_key}

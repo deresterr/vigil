@@ -24,7 +24,7 @@ def utc_iso(dt: datetime) -> str:
 
 
 def parse_iso_utc(s: str) -> datetime:
-    """Parsuje ISO; 'Z' i naive interpretuje jako UTC."""
+    """Parses ISO 8601; 'Z' and a naive time are UTC."""
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
     dt = datetime.fromisoformat(s)

@@ -7,41 +7,67 @@ POST /setup/complete  saves everything and sets setup_complete
 
 from __future__ import annotations
 
-import io
-import re
 import sqlite3
 from datetime import datetime, timezone
+from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyotp
-import qrcode
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
 from ..admin_auth import issue_session_cookie, set_session_cookie
 from ..config import TOTP_ACCOUNT, TOTP_ISSUER, week_schedule
 from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
 from ..pages import page
-from .admin_api import ChildCreate, DayPlan, insert_child
+from .admin_api import HHMM, ChildCreate, DayPlan, Minutes, Name, insert_child, png_qr_base64
 
 router = APIRouter()
 
-_HHMM_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+
+class SetupBody(BaseModel):
+    """The wizard's form (setup.html). Lax on purpose: the page sends parseInt() numbers and may send a
+    field the server no longer reads; every problem is reported per field (`detail`: field → code)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    child_name: Annotated[Name, StringConstraints(strip_whitespace=True)]
+    password: Annotated[str, Field(min_length=8)]  # as typed: no stripping
+    totp_code: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
+    timezone: Annotated[str, StringConstraints(strip_whitespace=True)] = "UTC"
+    daily_limit_weekday: Minutes = 120
+    daily_limit_weekend: Minutes = 240
+    night_lock_start: HHMM = "21:30"
+    night_lock_end: HHMM = "06:30"
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_tz(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError("invalid") from e
+        return v
+
+    @model_validator(mode="after")
+    def _night_not_empty(self) -> SetupBody:
+        if self.night_lock_start == self.night_lock_end:
+            raise ValueError("night_lock_end: equals_start")
+        return self
 
 
-def _png_qr_base64(data: str) -> str:
-    import base64
-
-    from qrcode.image.pil import PilImage
-    qr = qrcode.QRCode(version=None, border=2, box_size=8,
-                       error_correction=qrcode.constants.ERROR_CORRECT_M)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(image_factory=PilImage, fill_color="black", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+def _field_errors(e: ValidationError) -> dict[str, str]:
+    """Pydantic's errors as the wizard shows them: {field: code}."""
+    errors: dict[str, str] = {}
+    for err in e.errors():
+        field = str(err["loc"][0]) if err["loc"] else "body"
+        msg = str(err.get("ctx", {}).get("error", "")) or err["type"]
+        if not err["loc"] and ": " in msg:  # model validator: "field: code"
+            field, msg = msg.split(": ", 1)
+        errors[field] = msg
+    return errors
 
 
 @router.get("/setup", response_class=HTMLResponse)
@@ -58,58 +84,23 @@ async def setup_totp_qr(db: sqlite3.Connection = Depends(get_db)) -> dict:
         raise HTTPException(status_code=404, detail="setup_already_complete")
     secret = get_config_value(db, "totp_secret")
     uri = pyotp.TOTP(secret).provisioning_uri(name=TOTP_ACCOUNT, issuer_name=TOTP_ISSUER)
-    return {"qr_png_base64": _png_qr_base64(uri), "uri": uri}
+    return {"qr_png_base64": png_qr_base64(uri), "uri": uri}
 
 
 @router.post("/setup/complete")
-async def setup_complete(request: Request,
+async def setup_complete(raw: Annotated[object, Body()] = None,
                          db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
     if get_config_value(db, "setup_complete") == "1":
         raise HTTPException(status_code=409, detail="already_configured")
-
-    body = await request.json()
-
-    # --- Walidacja ---
-    child_name        = str(body.get("child_name", "")).strip()
-    password          = str(body.get("password", ""))
-    totp_code         = str(body.get("totp_code", "")).strip()
-    timezone_str      = str(body.get("timezone", "UTC"))
-    limit_weekday     = body.get("daily_limit_weekday", 120)
-    limit_weekend     = body.get("daily_limit_weekend", 240)
-    night_start       = str(body.get("night_lock_start", "21:30"))
-    night_end         = str(body.get("night_lock_end",   "06:30"))
-    watchdog_server_url = str(body.get("watchdog_server_url", "")).strip()
-
-    errors = {}
-    if not 0 < len(child_name) <= 40:
-        errors["child_name"] = "required_max_40"
-    if len(password) < 8:
-        errors["password"] = "min_8_chars"
-    if not watchdog_server_url or not watchdog_server_url.startswith(("http://", "https://")):
-        errors["watchdog_server_url"] = "required_http_url"
-    if not _HHMM_RE.match(night_start):
-        errors["night_lock_start"] = "invalid_hhmm"
-    if not _HHMM_RE.match(night_end):
-        errors["night_lock_end"] = "invalid_hhmm"
-    elif night_end == night_start:
-        errors["night_lock_end"] = "equals_start"
     try:
-        ZoneInfo(timezone_str)
-    except (ZoneInfoNotFoundError, KeyError):
-        errors["timezone"] = "invalid"
-    try:
-        limit_weekday = max(0, int(limit_weekday))
-        limit_weekend = max(0, int(limit_weekend))
-    except (TypeError, ValueError):
-        errors["limits"] = "must_be_integers"
-    if errors:
-        raise HTTPException(status_code=422, detail=errors)
+        body = SetupBody.model_validate(raw)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=_field_errors(e)) from e
 
     # --- TOTP (optional) ---
-    if totp_code:
+    if body.totp_code:
         # A code was typed: it must match the secret
-        secret = get_config_value(db, "totp_secret")
-        totp_step = match_totp_step(secret, totp_code, datetime.now(timezone.utc))
+        totp_step = match_totp_step(get_config_value(db, "totp_secret"), body.totp_code, datetime.now(timezone.utc))
         if totp_step is None:
             raise HTTPException(status_code=422, detail={"totp_code": "invalid"})
         # The code typed in the wizard must not work again on the lockscreen.
@@ -117,22 +108,21 @@ async def setup_complete(request: Request,
 
     # --- Save ---
     settings = [
-        ("parent_password_hash", hash_password(password)),
-        ("timezone",             timezone_str),
-        ("watchdog_server_url",  watchdog_server_url),
+        ("parent_password_hash", hash_password(body.password)),
+        ("timezone",             body.timezone),
         ("setup_complete",       "1"),
     ]
     for key, value in settings:
         db.execute("INSERT OR REPLACE INTO config(key, value) VALUES (?, ?)", (key, value))
     # The first child (D7) gets the limits from the wizard; its PCs are paired from the panel.
     # The wizard asks for the week in its old shape (Mon–Thu, Fri–Sun, one night); the panel edits each day.
-    week = week_schedule(min(limit_weekday, 1440), min(limit_weekend, 1440), night_start, night_end)
-    child_id = insert_child(db, ChildCreate(name=child_name, schedule=[DayPlan(**d) for d in week]))
+    week = week_schedule(body.daily_limit_weekday, body.daily_limit_weekend, body.night_lock_start,
+                         body.night_lock_end)
+    child_id = insert_child(db, ChildCreate(name=body.child_name, schedule=[DayPlan(**d) for d in week]))
 
-    log_event(db, "setup_completed", {"child_name": child_name}, child_id=child_id)
+    log_event(db, "setup_completed", {"child_name": body.child_name}, child_id=child_id)
 
     # Logged in at once: the page goes straight to /admin
-    cookie_value = issue_session_cookie(db)
     response = JSONResponse({"ok": True})
-    set_session_cookie(response, cookie_value)
+    set_session_cookie(response, issue_session_cookie(db))
     return response

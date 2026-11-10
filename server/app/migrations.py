@@ -96,8 +96,16 @@ def _m001_baseline(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _m002_delta_carry(conn: sqlite3.Connection) -> None:
+    """The fraction of a second each heartbeat leaves over (heartbeat.py), and the wizard's dropped server
+    address (#86)."""
+    conn.execute("ALTER TABLE devices ADD COLUMN delta_carry_ms INTEGER NOT NULL DEFAULT 0")
+    conn.execute("DELETE FROM config WHERE key = 'watchdog_server_url'")
+
+
 MIGRATIONS: list[tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("baseline v0.8", _m001_baseline),
+    ("devices.delta_carry_ms", _m002_delta_carry),
 ]
 
 LATEST_VERSION = len(MIGRATIONS)

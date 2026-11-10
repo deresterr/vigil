@@ -5,8 +5,6 @@
 // (t('…'), tn(n, '…'), data-i18n, data-i18n-attr) has an entry, with the same {placeholders}.
 // Plurals: 'pl one|pl few|pl many' -> 'en one|en other' (Intl.PluralRules).
 const I18N_EN = /*I18N_EN*/{
-  "Adres serwera Vigil": "Vigil server address",
-  "Adres, który wpisujesz w instalatorze (<code>vigil_setup.exe</code>). Musi być osiągalny z PC dziecka. Jeśli używasz DNS rewritingu w przeglądarce (np. <em>kontrola.test</em>), wpisz tu bezpośredni adres IP serwera.": "The address you enter in the installer (<code>vigil_setup.exe</code>). The child's PC must be able to reach it. If your browser uses a rewritten DNS name (e.g. <em>control.test</em>), enter the server's direct IP address here.",
   "Akcje": "Actions",
   "Anuluj kod": "Cancel code",
   "Blokady": "Locks",
@@ -65,7 +63,6 @@ const I18N_EN = /*I18N_EN*/{
   "Kod TOTP": "TOTP code",
   "Kod TOTP (aplikacja w telefonie)": "TOTP code (phone app)",
   "Kod TOTP musi mieć 6 cyfr.": "The TOTP code has 6 digits.",
-  "Kod TOTP nie jest jeszcze ustawiony.": "The TOTP code is not set up yet.",
   "Kod parowania": "Pairing code",
   "Kod parowania unieważniony": "Pairing code invalidated",
   "Kod weryfikacyjny (6 cyfr)": "Verification code (6 digits)",
@@ -130,7 +127,6 @@ const I18N_EN = /*I18N_EN*/{
   "Pn Wt Śr Cz Pt So Nd": "Mo Tu We Th Fr Sa Su",
   "Pn → Wt–Pt": "Mo → Tu–Fr",
   "Po 5 błędnych próbach": "After 5 wrong attempts",
-  "Podaj adres serwera (http://...).": "Enter the server address (http://...).",
   "Podaj imię": "Enter a name",
   "Podaj imię dziecka.": "Enter the child's name.",
   "Pokaż obecny kod TOTP": "Show current TOTP code",

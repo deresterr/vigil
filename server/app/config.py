@@ -15,7 +15,6 @@ DATABASE_PATH: Path = Path(os.environ.get("DATABASE_PATH", "/data/vigil.db"))
 CONFIG_DEFAULTS: dict[str, str] = {
     # Set by the wizard
     "setup_complete":        "0",
-    "watchdog_server_url":   "",
     "timezone":              "Europe/Warsaw",
     # Technical parameters — not in the wizard
     # heartbeat_grace_seconds: admin UI only ("online"); the watchdog has its own hard-coded grace (30 s)
@@ -35,6 +34,8 @@ CONFIG_DEFAULTS: dict[str, str] = {
     "pairing_device_name":        "",
     # Last accepted TOTP time step (replay protection; one TOTP secret for all children). Not editable.
     "totp_last_step":             "0",
+    # Panel sessions: bumped by a logout or a password change, which revokes every session (admin_auth.py).
+    "admin_session_generation":   "0",
 }
 
 # Settings of a new child (setup wizard, "Add child" in the panel).

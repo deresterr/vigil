@@ -5,6 +5,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-10
+
 ### Client
 - "Shut down" on the lock screen works again: it did nothing since 0.8.0. A refused shutdown now shows
   its reason on the screen.
@@ -72,6 +74,7 @@ The first public release.
 - Lock screen and installer in English or Polish, following Windows (D21).
 - No upgrade from builds before 0.8 (D23); the server's database starts from the 0.8 schema (D26).
 
-[Unreleased]: https://github.com/deresterr/vigil/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/deresterr/vigil/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/deresterr/vigil/releases/tag/v0.8.2
 [0.8.1]: https://github.com/deresterr/vigil/releases/tag/v0.8.1
 [0.8.0]: https://github.com/deresterr/vigil/releases/tag/v0.8.0

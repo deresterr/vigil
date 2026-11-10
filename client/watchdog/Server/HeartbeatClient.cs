@@ -78,10 +78,11 @@ public sealed class HeartbeatClient : IDisposable
         await PostSignedAsync<GoodbyeResponse>("v1/goodbye", req, ct).ConfigureAwait(false);
     }
 
-    public async Task<PauseToggleResponse> SendPauseToggleAsync(CancellationToken ct)
+    /// <param name="paused">The state wanted ("I'm back": false), or null to toggle (the tray icon).</param>
+    public async Task<PauseToggleResponse> SendPauseToggleAsync(bool? paused, CancellationToken ct)
     {
         var (response, _) = await PostSignedAsync<PauseToggleResponse>(
-            "v1/pause_toggle", new { }, ct).ConfigureAwait(false);
+            "v1/pause_toggle", new PauseToggleRequest { Paused = paused }, ct).ConfigureAwait(false);
         return response;
     }
 

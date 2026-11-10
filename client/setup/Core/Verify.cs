@@ -68,11 +68,8 @@ public sealed class Verify
         var automatic = svc.Start == 2 && !svc.DelayedAutoStart;
         _r.Check(automatic, Strings.ServiceStart(automatic ? "Automatic" : $"Start={svc.Start}{(svc.DelayedAutoStart ? " (delayed)" : "")}"));
 
-        var exe = VigilLayout.PathOf(VigilLayout.WatchdogExe);
         var path = svc.ImagePath;
-        var quoted = path.StartsWith('"');
-        _r.Check(path.Trim('"').Equals(exe, StringComparison.OrdinalIgnoreCase) && (quoted || !exe.Contains(' ')),
-            Strings.ServicePath(path, unquoted: path.Length > 0 && !quoted));
+        _r.Check(svc.ImagePathAsInstalled, Strings.ServicePath(path, unquoted: path.Length > 0 && !path.StartsWith('"')));
 
         _r.Check(svc.RecoveryAsInstalled, Strings.ServiceRecovery(svc.FailureActionsOnNonCrash));
 

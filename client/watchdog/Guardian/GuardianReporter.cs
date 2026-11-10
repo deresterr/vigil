@@ -23,7 +23,7 @@ public sealed class GuardianReporter : BackgroundService
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan FirstRun = TimeSpan.FromSeconds(30);
 
-    // Contract with the guardian and server GUARDIAN_CHECKS: VigilLayout.GuardianChecks (7001–7006).
+    // Contract with the guardian and the server's models.GuardianCheck: VigilLayout.GuardianChecks (7001–7006).
     private static readonly IReadOnlyDictionary<int, string> Checks = VigilLayout.GuardianChecks;
 
     private const string Query =

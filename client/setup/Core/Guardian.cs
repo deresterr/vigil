@@ -16,9 +16,10 @@ namespace Vigil.Setup.Core;
 ///
 /// Checks, in this order (a replaced binary is restored with the service stopped and started only after the
 /// other repairs: an IFEO debugger left in place would hijack that start):
-///   7003 binary_replaced      vigil_watchdog.exe hash != guardian.dat → restore from backup\, start last
+///   7003 binary_replaced      vigil_watchdog.exe hash != guardian.dat → restore from backup\, (re)start last;
+///                             the service's ImagePath not the installed exe → set back, (re)start last
 ///   7004 ifeo_debugger        IFEO Debugger on vigil_watchdog.exe → removed
-///   7002 service_disabled     start type not automatic → automatic
+///   7002 service_disabled     start type not automatic, or delayed → automatic
 ///   7006 recovery_missing     restart actions not as installed → the installer's ones
 ///   7005 safeboot_missing     SafeBoot Minimal/Network entries → recreated
 ///   7001 service_not_running  still stopped after the recovery delay → started
@@ -62,30 +63,45 @@ public static class Guardian
             return;
         }
 
-        // Restored now, started last (reported then: the repair is only done once it runs again).
-        var restored = false;
+        // Put back now, (re)started last (reported then: the repair is only done once the real watchdog runs).
+        var replaced = new List<string>();
         if (!BinaryIntact())
         {
             try
             {
                 RestoreBinary();
-                restored = true;
+                replaced.Add(BinaryReplaced);
             }
             catch (Exception ex)
             {
                 Write(EventLogEntryType.Error, 7003, $"{BinaryReplaced} - repair failed: {ex.Message}");
             }
         }
+        if (!svc.ImagePathAsInstalled)
+        {
+            // Another program registered as the service: the watchdog's own file still matches its hash.
+            var what = $"service ImagePath changed ({svc.ImagePath})";
+            try
+            {
+                ServiceControl.SetImagePath();
+                replaced.Add(what);
+            }
+            catch (Exception ex)
+            {
+                Write(EventLogEntryType.Error, 7003, $"{what} - repair failed: {ex.Message}");
+            }
+        }
         if (IfeoDebugger() is { } debugger)
             Repair(7004, $"IFEO Debugger on vigil_watchdog.exe ({debugger})", RemoveIfeoDebugger);
-        if (svc.Start != 2)
-            Repair(7002, $"service start type {svc.Start?.ToString() ?? "missing"}, not automatic", ServiceControl.SetAutoStart);
+        if (svc.Start != 2 || svc.DelayedAutoStart)
+            Repair(7002, $"service start type {svc.Start?.ToString() ?? "missing"}{(svc.DelayedAutoStart ? " (delayed)" : "")}, " +
+                         "not automatic", ServiceControl.SetAutoStart);
         if (!svc.RecoveryAsInstalled)
             Repair(7006, "service recovery is not restart x3", ServiceControl.SetRecovery);
         if (!SafeBoot.Present())
             Repair(7005, "SafeBoot entries missing", SafeBoot.Write);
-        if (restored)
-            Repair(7003, BinaryReplaced, StartService);
+        if (replaced.Count > 0)
+            Repair(7003, string.Join("; ", replaced), RestartService);
         else if (!IsUp())
         {
             Thread.Sleep(RecoveryWait);
@@ -175,6 +191,21 @@ public static class Guardian
         using var sc = new ServiceController(VigilLayout.ServiceName);
         if (sc.Status != ServiceControllerStatus.Running) sc.Start();
         sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
+    }
+
+    /// <summary>Stops whatever runs as the service (a foreign ImagePath's program), then starts the real one.
+    /// SYSTEM may stop it (service DACL: SY GenericAll).</summary>
+    private static void RestartService()
+    {
+        using (var sc = new ServiceController(VigilLayout.ServiceName))
+        {
+            if (sc.Status != ServiceControllerStatus.Stopped)
+            {
+                if (sc.Status != ServiceControllerStatus.StopPending) sc.Stop();
+                sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
+            }
+        }
+        StartService();
     }
 
     private static string Sha256(string path)

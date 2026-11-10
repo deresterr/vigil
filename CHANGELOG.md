@@ -16,6 +16,14 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
   and reports invalid fields instead of failing with a server error.
 - Dependencies updated (FastAPI, Starlette, python-multipart, uvicorn): known vulnerabilities fixed.
 
+### Client
+- A PC sitting at the Windows logon screen no longer counts as used: before, the child's time ran there too.
+- After a logon, vigil_ui and any lock start at once instead of after up to a minute.
+- A closed lock screen comes back within a second (was five).
+- The guardian also puts back the service's program path and undoes a delayed start (alert in the Journal).
+- An install or update unpacks every file before it stops anything: a failure there (antivirus, disk space)
+  leaves the installed Vigil as it was.
+
 ### Documentation
 - README rewritten (English and Polish): how it works, a quick start from the release, updating.
 - The server's plain HTTP is named as a known limit in the README threat model and in SECURITY.md:

@@ -143,7 +143,6 @@ public partial class App : Application
             ShowTotpField = s.ShowTotpField,
             ShowResumeButton = s.ShowResumeButton,
             ShowRetryButton = s.ShowRetryButton,
-            ShowShutdownButton = s.ShowShutdownButton,
             MinutesRemaining = s.MinutesRemaining,
         };
         if (!string.IsNullOrEmpty(s.CurrentTimeDisplay))
@@ -280,7 +279,6 @@ public partial class App : Application
             LockReason = reason,
             ShowTotpField = true,
             ShowRetryButton = reason == "server_unreachable",
-            ShowShutdownButton = true,
         });
         if (exitAfter > 0)
         {

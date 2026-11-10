@@ -19,6 +19,18 @@ public sealed class WatchdogService
     public List<(int Type, int DelayMs)> FailureActions { get; private init; } = new();
     public bool FailureActionsOnNonCrash { get; private init; }
 
+    /// <summary>The service runs vigil_watchdog.exe from the install folder, path quoted (verify and guardian).
+    /// </summary>
+    public bool ImagePathAsInstalled
+    {
+        get
+        {
+            var exe = VigilLayout.PathOf(VigilLayout.WatchdogExe);
+            return ImagePath.Trim('"').Equals(exe, StringComparison.OrdinalIgnoreCase)
+                   && (ImagePath.StartsWith('"') || !exe.Contains(' '));
+        }
+    }
+
     /// <summary>Recovery as the installer sets it: restart ×3, also on a non-zero exit (verify and guardian).</summary>
     public bool RecoveryAsInstalled =>
         FailureActions.Count == VigilLayout.RecoveryRestarts && FailureActions.All(a => a.Type == 1)

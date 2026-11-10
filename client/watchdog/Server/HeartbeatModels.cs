@@ -140,14 +140,15 @@ public sealed class UiState
     [JsonPropertyName("show_resume_button")]
     public bool ShowResumeButton { get; init; }
 
-    [JsonPropertyName("show_retry_button")]
-    public bool ShowRetryButton { get; init; }
-
-    [JsonPropertyName("show_shutdown_button")]
-    public bool ShowShutdownButton { get; init; } = true;
-
     [JsonPropertyName("current_time_display")]
     public string? CurrentTimeDisplay { get; init; }
+}
+
+/// <summary>POST /v1/pause_toggle request: the target state, or none (null is not serialized) to toggle.</summary>
+public sealed class PauseToggleRequest
+{
+    [JsonPropertyName("paused")]
+    public bool? Paused { get; init; }
 }
 
 /// <summary>POST /v1/pause_toggle response.</summary>

@@ -66,23 +66,25 @@ per-user policies go to the Default profile only. Pairing always happens before 
 
 ## What an install does
 
-1. **Stopping**: the service stopped as SYSTEM through a one-off task (a normal stop: the watchdog says
+1. **Unpacking**: every file of the package to `<name>.new` next to its target in `C:\ProgramData\Vigil`,
+   checked against its SHA-256 — before anything is stopped, so a failure here (antivirus, disk space)
+   leaves the installation as it was.
+2. **Stopping**: the service stopped as SYSTEM through a one-off task (a normal stop: the watchdog says
    goodbye) and deleted; vigil_ui killed; the guardian task ended and deleted (it runs the copy of
    `vigil_setup.exe` being replaced).
-2. **Files** to `C:\ProgramData\Vigil`: `vigil_watchdog.exe`, `vigil_ui.exe` and its native WPF libraries
-   (`VigilLayout.UiNativeLibraries`, D24; unpacked from the package and checked against their SHA-256),
-   `vigil_setup.exe` (without the payload), `backup\vigil_watchdog.exe`.
-3. **Configuration**: `guardian.dat` (SHA-256 of the watchdog, DPAPI), `vigil.toml` (server address only),
+3. **Files** moved into place: `vigil_watchdog.exe`, `vigil_ui.exe` and its native WPF libraries
+   (`VigilLayout.UiNativeLibraries`, D24), `vigil_setup.exe` (without the payload), `backup\vigil_watchdog.exe`.
+4. **Configuration**: `guardian.dat` (SHA-256 of the watchdog, DPAPI), `vigil.toml` (server address only),
    `signing.dat` (the key, DPAPI with entropy) — kept on `update`, like `totp.dat`.
-4. **Service** `vigil_watchdog`: automatic, quoted path, recovery restart ×3 after 60 s (also on a non-zero
+5. **Service** `vigil_watchdog`: automatic, quoted path, recovery restart ×3 after 60 s (also on a non-zero
    exit), DACL: administrators query/start only.
-5. **Protection**: SafeBoot Minimal/Network, the task "Vigil Guardian" (`vigil_setup.exe guardian`, SYSTEM,
+6. **Protection**: SafeBoot Minimal/Network, the task "Vigil Guardian" (`vigil_setup.exe guardian`, SYSTEM,
    startup + every 5 min), F8 menu off (`bootmenupolicy Standard`), optionally WinRE off (`-DisableWinRE`).
-6. **Child's account**: the per-user policies (`VigilLayout.UserPolicies`) in the child's hive and the
+7. **Child's account**: the per-user policies (`VigilLayout.UserPolicies`) in the child's hive and the
    Default profile — live, or loaded as an app hive; never through `reg.exe` (D12: it may be blocked).
-7. **Permissions**: folder SYSTEM full / Administrators modify / Authenticated Users read+execute,
+8. **Permissions**: folder SYSTEM full / Administrators modify / Authenticated Users read+execute,
    secrets SYSTEM full / Administrators read.
-8. **Start** and a check that it runs.
+9. **Start** and a check that it runs.
 
 **Uninstall** reverses it best effort — every step runs even when one fails, also on a half-removed
 installation — and removes the Event Log sources. The F8 policy is left at Windows' default.

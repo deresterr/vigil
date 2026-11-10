@@ -12,7 +12,6 @@ public sealed record UiState
     public bool ShowTotpField { get; init; }
     public bool ShowRetryButton { get; init; }
     public bool ShowResumeButton { get; init; }   // "I'm back", pause only
-    public bool ShowShutdownButton { get; init; } = true;
     public int MinutesRemaining { get; init; }
 }
 

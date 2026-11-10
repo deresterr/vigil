@@ -156,7 +156,7 @@ public sealed class NamedPipeIpcClient : IDisposable
         var msg = IpcSerializer.TryDeserialize(line);
         if (msg is null) return;
 
-        // TOTP response → TCS, reszta → event
+        // A TOTP response completes the pending request; everything else is an event
         if (msg is IpcTotpResponse totpResp)
         {
             lock (_totpLock)

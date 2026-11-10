@@ -6,8 +6,9 @@ using Vigil.Watchdog.Native;
 namespace Vigil.Watchdog.Detection;
 
 /// <summary>
-/// Whether someone is logged on (a session in Active or Connected state). The child's account is the only
-/// interactive one (D12), so any such session is the child's; no filtering by SID.
+/// Whether someone is logged on (a session in Active state). The child's account is the only interactive one
+/// (D12), so any such session is the child's; no filtering by SID. Not Connected: that is the console at the
+/// logon screen with nobody signed in — counting it charged the child for a PC left at the logon screen.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class SessionDetector
@@ -20,8 +21,7 @@ public sealed class SessionDetector
     }
 
     /// <summary>
-    /// (Active, SessionId): Active when a session is WTSActive or WTSConnected; SessionId null when nobody is
-    /// logged on.
+    /// (Active, SessionId): Active when a session is WTSActive; SessionId null when nobody is logged on.
     /// </summary>
     public (bool Active, uint? SessionId) DetectActiveSession()
     {
@@ -47,8 +47,7 @@ public sealed class SessionDetector
                 // Session 0 is the services session: skipped
                 if (info.SessionId == 0) continue;
 
-                if (info.State == Win32.WTS_CONNECTSTATE_CLASS.WTSActive
-                    || info.State == Win32.WTS_CONNECTSTATE_CLASS.WTSConnected)
+                if (info.State == Win32.WTS_CONNECTSTATE_CLASS.WTSActive)
                 {
                     return (true, info.SessionId);
                 }

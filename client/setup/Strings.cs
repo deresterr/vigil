@@ -318,6 +318,7 @@ public static class Strings
     // === Install, update, update-config, uninstall: steps (what the parent sees) ===
 
     public static string StepPairing => T("Parowanie z serwerem", "Pairing with the server");
+    public static string StepUnpacking => T("Rozpakowywanie plików", "Unpacking files");
     public static string StepStopping => T("Zatrzymywanie usługi Vigil", "Stopping the Vigil service");
     public static string StepFiles => T("Kopiowanie plików", "Copying files");
     public static string StepConfig => T("Zapisywanie konfiguracji", "Saving the configuration");

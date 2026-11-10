@@ -45,12 +45,6 @@ try
 {
     exitCode = RunMode(cli, log);
 }
-catch (SetupException ex)
-{
-    log.Error(ex);
-    ConsoleReport.Summary(Strings.Failed, ex.Message, CheckLevel.Fail);
-    exitCode = 1;
-}
 catch (Exception ex)
 {
     log.Error(ex);

@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.ServiceProcess;
+using Vigil.Setup.Native;
 using Vigil.Shared;
 
 namespace Vigil.Setup.Core;
@@ -109,8 +111,32 @@ internal static class ServiceControl
         Sc("failureflag", Name, "1");
     }
 
-    /// <summary>Automatic start (the guardian, as SYSTEM: the DACL denies admins change-config).</summary>
-    public static void SetAutoStart() => Sc("config", Name, "start=", "auto");
+    /// <summary>Automatic start, not delayed (the guardian, as SYSTEM: the DACL denies admins change-config).
+    /// A delayed start would leave the PC without Vigil for the first minutes after boot.</summary>
+    public static void SetAutoStart()
+    {
+        Sc("config", Name, "start=", "auto");
+        var scm = Win32.OpenSCManagerW(null, null, Win32.SC_MANAGER_CONNECT);
+        if (scm == IntPtr.Zero) throw new Win32Exception();
+        try
+        {
+            var svc = Win32.OpenServiceW(scm, Name, Win32.SERVICE_CHANGE_CONFIG);
+            if (svc == IntPtr.Zero) throw new Win32Exception();
+            try
+            {
+                var delayed = 0;
+                if (!Win32.ChangeServiceConfig2W(svc, Win32.SERVICE_CONFIG_DELAYED_AUTO_START_INFO, ref delayed))
+                    throw new Win32Exception();
+            }
+            finally { Win32.CloseServiceHandle(svc); }
+        }
+        finally { Win32.CloseServiceHandle(scm); }
+    }
+
+    /// <summary>The service's binary back to the installed vigil_watchdog.exe, quoted (the guardian, as SYSTEM).
+    /// Takes effect at the next start.</summary>
+    public static void SetImagePath() =>
+        Sc("config", Name, "binPath=", $"\"{VigilLayout.PathOf(VigilLayout.WatchdogExe)}\"");
 
     /// <summary>Admins: query and start only (VigilLayout.ServiceSddl). Friction: an admin can still kill the
     /// process or act as SYSTEM, which is what this installer does. Detection is the server's job.</summary>

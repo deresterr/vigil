@@ -64,14 +64,46 @@ public sealed class Installer
     // === install / update ===
 
     /// <summary>
-    /// Everything from scratch on top of whatever is there: the service is stopped and registered again,
-    /// files copied, configuration written (or kept, update), protection, policies, ACLs, start.
+    /// Everything from scratch on top of whatever is there: the files unpacked first (a failure there leaves the
+    /// installation as it was), then the service stopped and registered again, files put in place,
+    /// configuration written (or kept, update), protection, policies, ACLs, start.
     /// </summary>
     public void Install(InstallRequest req)
     {
         CheckSourceFiles();
         if (req.SigningKey is null) RequireInstalledKey();
 
+        // Next to the targets (same volume: the moves below cannot fail half-way for lack of space). The folder
+        // lets administrators create files; Reclaim waits until the service is stopped.
+        _r.Section(Strings.StepUnpacking);
+        Directory.CreateDirectory(VigilLayout.InstallDir);
+        var staged = new List<(string Temp, string Target)>();
+        try
+        {
+            foreach (var name in PackageFiles)
+            {
+                staged.Add((_package!.Stage(name, P(name)), P(name)));
+                _r.Check(CheckLevel.Pass, name);
+            }
+        }
+        catch
+        {
+            DeleteStaged(staged);
+            throw;
+        }
+
+        try { ReplaceService(req, staged); }
+        finally { DeleteStaged(staged); }
+    }
+
+    private static void DeleteStaged(List<(string Temp, string Target)> staged)
+    {
+        foreach (var (temp, _) in staged)
+            try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    private void ReplaceService(InstallRequest req, List<(string Temp, string Target)> staged)
+    {
         _r.Section(Strings.StepStopping);
         if (ServiceControl.Status() is not null)
         {
@@ -85,13 +117,12 @@ public sealed class Installer
         RemoveTask(VigilLayout.GuardianTaskName);
 
         _r.Section(Strings.StepFiles);
-        Directory.CreateDirectory(VigilLayout.InstallDir);
         InstallAcls.Reclaim(VigilLayout.InstallDir);
         Directory.CreateDirectory(Path.Combine(VigilLayout.InstallDir, VigilLayout.BackupDir));
-        foreach (var name in PackageFiles)
+        foreach (var (temp, target) in staged)
         {
-            _package!.Extract(name, P(name));
-            _r.Check(CheckLevel.Pass, name);
+            File.Move(temp, target, overwrite: true);
+            _r.Check(CheckLevel.Pass, Path.GetFileName(target));
         }
         File.Copy(P(VigilLayout.WatchdogExe), VigilLayout.BackupWatchdogPath, overwrite: true);
         _r.Check(CheckLevel.Pass, $@"{VigilLayout.BackupDir}\{VigilLayout.WatchdogExe}");

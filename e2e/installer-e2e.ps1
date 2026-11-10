@@ -13,7 +13,8 @@
         -> vigil_setup update-config with re-pairing
         -> vigil_setup uninstall (goodbye)
         -> vigil_setup install
-        -> the guardian (vigil_setup.exe guardian, #65): five repairs in one run, then a stopped service
+        -> the guardian (vigil_setup.exe guardian, #65): five repairs in one run, then a stopped service,
+           then another program registered as the service with a delayed start
         -> C:\ProgramData\Vigil deleted with the watchdog stopped (the README's emergency path from WinRE)
         -> vigil_setup uninstall -> nothing left
         -> the wizard (key script): unreachable address, wrong code, install -> verify
@@ -376,6 +377,26 @@ try {
     Assert-That ((Get-Service vigil_watchdog).Status -eq 'Running') 'the watchdog runs again'
     Wait-Until { (Get-GuardianRepairs) -contains 'service_not_running' } 180 'journal: tamper_guardian_repaired service_not_running'
     Assert-Verify 0 'after the guardian started it'
+
+    Write-Section 'Guardian: another program as the service, a delayed start'
+    # Registry values an elevated child may change; the watchdog's own file still matches its hash.
+    $reportedBefore = (Get-GuardianRepairs).Count
+    Set-ItemProperty -Path $svcKey -Name ImagePath -Value '"C:\Windows\System32\notepad.exe"'
+    Set-ItemProperty -Path $svcKey -Name DelayedAutostart -Value 1 -Type DWord
+    Assert-Verify 1 'ImagePath and delayed start changed'
+    $since = Invoke-Guardian 'ImagePath and delayed start'
+    $events = Get-GuardianEvents $since
+    foreach ($id in 7003, 7002) {
+        Assert-That (@($events | Where-Object { $_.Id -eq $id -and $_.Level -eq 3 }).Count -eq 1) `
+            "event $id as a repair (Warning)"
+    }
+    Assert-That (@($events | Where-Object { $_.Level -le 2 }).Count -eq 0) 'no failed repair or crash (Error)'
+    $svc = Get-ItemProperty -Path $svcKey
+    Assert-That ($svc.ImagePath -eq ('"' + (Join-Path $InstallDir 'vigil_watchdog.exe') + '"')) "ImagePath back ($($svc.ImagePath))"
+    Assert-That ($svc.DelayedAutostart -ne 1) 'no delayed start'
+    Assert-That ((Get-Service vigil_watchdog).Status -eq 'Running') 'the watchdog runs again'
+    Assert-Verify 0 'after the guardian put the service back'
+    Wait-Until { (Get-GuardianRepairs).Count -ge $reportedBefore + 2 } 180 'the watchdog reported both repairs'
 
     Write-Section 'Emergency path: the folder deleted with the watchdog stopped (README, from WinRE)'
     # Offline nothing runs; online the guardian would start the watchdog again or hold vigil_setup.exe open.

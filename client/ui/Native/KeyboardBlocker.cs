@@ -114,7 +114,6 @@ public sealed class KeyboardBlocker : IDisposable
         if (_disposed) return;
         Uninstall();
         _disposed = true;
-        GC.SuppressFinalize(this);
     }
 
     [StructLayout(LayoutKind.Sequential)]

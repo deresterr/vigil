@@ -196,7 +196,7 @@ public sealed class NamedPipeIpcServer : IDisposable
         var msg = IpcSerializer.TryDeserialize(line);
         if (msg is null)
         {
-            _logger.LogWarning("Pipe: nieznany message (line truncated): {Line}",
+            _logger.LogWarning("Pipe: unknown message (line truncated): {Line}",
                 line.Length > 200 ? line[..200] + "..." : line);
             return;
         }

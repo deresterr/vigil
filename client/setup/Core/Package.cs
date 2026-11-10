@@ -103,11 +103,14 @@ public sealed class Package
         return Get(name).Sha256;
     }
 
-    /// <summary>Writes a file of the package to <paramref name="target"/>: unpacked and checked against its
-    /// SHA-256 before it replaces anything. vigil_setup.exe is the first part of the package.</summary>
-    public void Extract(string name, string target)
+    /// <summary>Unpacks a file of the package next to <paramref name="target"/> and checks it against its SHA-256;
+    /// returns the unpacked file (target + ".new"), which the caller moves over the target. Nothing existing is
+    /// touched, so the installer stages every file before it stops the service. vigil_setup.exe is the first
+    /// part of the package.</summary>
+    public string Stage(string name, string target)
     {
         var temp = target + ".new";
+        var done = false;
         try
         {
             using (var f = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -129,11 +132,12 @@ public sealed class Package
             }
             if (!Sha256File(temp).Equals(Sha256Of(name), StringComparison.Ordinal))
                 throw Corrupt(Path, name);
-            File.Move(temp, target, overwrite: true);
+            done = true;
+            return temp;
         }
         finally
         {
-            if (File.Exists(temp)) File.Delete(temp);
+            if (!done && File.Exists(temp)) File.Delete(temp);
         }
     }
 

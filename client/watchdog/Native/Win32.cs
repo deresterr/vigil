@@ -33,8 +33,8 @@ public static partial class Win32
 
     public enum WTS_CONNECTSTATE_CLASS
     {
-        WTSActive = 0,         // user logged on, active session
-        WTSConnected = 1,      // user logged on, session in the background
+        WTSActive = 0,         // user logged on, active session (also behind Win+L)
+        WTSConnected = 1,      // connected, nobody signed in yet: the console at the logon screen
         WTSConnectQuery = 2,
         WTSShadow = 3,
         WTSDisconnected = 4,   // user logged on, session disconnected (e.g. fast user switching)

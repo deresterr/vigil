@@ -12,7 +12,7 @@ public static class TaskbarHider
     private const uint SWP_NOSIZE      = 0x0001;
     private const uint SWP_NOZORDER    = 0x0004;
     private const uint SWP_SHOWWINDOW  = 0x0040;
-    private const uint SWP_FRAMECHANGED= 0x0020;   // wymusza WM_NCCALCSIZE → DWM refresh
+    private const uint SWP_FRAMECHANGED= 0x0020;   // forces WM_NCCALCSIZE → DWM refresh
 
     // WM_SETTINGCHANGE (26): Explorer rereads the shell state and redraws the taskbar. Needed on Windows 11,
     // where the taskbar is hosted in WinUI XAML Islands.

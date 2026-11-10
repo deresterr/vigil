@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.Versioning;
 using System.Threading;
@@ -236,14 +235,7 @@ public partial class LockWindow : Window
 
         try
         {
-            // shutdown /s /t 0: shut down now
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "shutdown.exe",
-                Arguments = "/s /t 0",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
+            Native.SystemShutdown.PowerOff();
         }
         catch (Exception ex)
         {

@@ -5,6 +5,10 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 
 ## [Unreleased]
 
+### Client
+- "Shut down" on the lock screen works again: it did nothing since 0.8.0. A refused shutdown now shows
+  its reason on the screen.
+
 ### Documentation
 - README: the "How it works" diagram is a picture readable at the page's width (the Mermaid chart was scaled
   down to about 9 px text); the third screenshot shows the whole Settings tab, not one card.

@@ -545,6 +545,8 @@ let pollTimer = null;
 
 // === Children (D7) ===
 // selectedChild: whose Status/Settings are shown. journalChild: 'all' or a child id (Journal tab only).
+// loadStatus() is the only place that keeps both in step with the server (and stores selectedChild): a child
+// removed meanwhile falls back to the first one, also in the remembered choice.
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode: not remembered */ } },
@@ -567,7 +569,11 @@ async function loadStatus() {
       s = await api('/admin/api/status');
     }
     status = s;
-    if (s.child) selectedChild = s.child.id;
+    if (s.child) {
+      selectedChild = s.child.id;
+      store.set('vigil.child', s.child.id);
+    }
+    if (journalChild !== 'all' && !s.children.some(c => c.id === journalChild)) journalChild = 'all';
     renderStatus(s);
   } catch (e) {
     document.getElementById('watchdogText').textContent = t('Błąd');
@@ -620,7 +626,6 @@ function pickChild(id) {
     return;
   }
   selectedChild = id;
-  store.set('vigil.child', id);
   loadStatus().then(() => fillChildSettings(true));
 }
 
@@ -1057,7 +1062,6 @@ function addChild() {
       const r = await api('/admin/api/children', {method: 'POST', body: {name}});
       closeModal();
       selectedChild = r.id;
-      store.set('vigil.child', r.id);
       notice(t('Dodano. Ustaw harmonogram i sparuj komputer.'), 'success');
       await loadStatus();
       fillChildSettings(true);

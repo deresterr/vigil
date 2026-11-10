@@ -15,6 +15,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - The setup wizard no longer asks for the server address (the installer always used the address typed in it),
   and reports invalid fields instead of failing with a server error.
 - Dependencies updated (FastAPI, Starlette, python-multipart, uvicorn): known vulnerabilities fixed.
+- The panel no longer asks for a deleted child at every refresh (a 404 in the server log) and forgets a Journal
+  filter for it.
 
 ### Documentation
 - README rewritten (English and Polish): how it works, a quick start from the release, updating.

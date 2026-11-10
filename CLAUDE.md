@@ -102,6 +102,9 @@ everywhere the same problem occurs, not only where it was reported.
   dotnet mangled (MSB1001). Pass such arguments as one quoted string: `"-p:Version=$Version"`.
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using
   removed: it clashes with WPF (`Application`, `KeyEventArgs`). Alias what you need (`using Forms = …`).
+- WTS session states: `WTSConnected` is the console at the logon screen with nobody signed in, not a background
+  session (that is `WTSDisconnected`). Counting it charged the child for a PC left at the logon screen (#87);
+  `SessionDetector` takes `WTSActive` only, and a logon wakes the worker (`VigilServiceLifetime.SessionLoggedOn`).
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via
   `CreateProcessAsUser` (`UiProcessLauncher`).
 - vigil_ui's environment (D24) is built by `UiProcessLauncher` from a fixed list, never the child's own

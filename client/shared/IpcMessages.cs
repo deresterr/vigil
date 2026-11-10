@@ -19,7 +19,6 @@ public sealed record IpcSetState
     [JsonPropertyName("show_totp_field")] public bool ShowTotpField { get; init; }
     [JsonPropertyName("show_resume_button")] public bool ShowResumeButton { get; init; }
     [JsonPropertyName("show_retry_button")] public bool ShowRetryButton { get; init; }
-    [JsonPropertyName("show_shutdown_button")] public bool ShowShutdownButton { get; init; } = true;
     [JsonPropertyName("minutes_remaining")] public int MinutesRemaining { get; init; }
     [JsonPropertyName("current_time_display")] public string? CurrentTimeDisplay { get; init; }
 }
@@ -71,12 +70,7 @@ public sealed record IpcRetryNow
     [JsonPropertyName("type")] public string Type => "retry_now";
 }
 
-public sealed record IpcShutdownRequest
-{
-    [JsonPropertyName("type")] public string Type => "shutdown_request";
-}
-
-/// <summary>"Jestem z powrotem" on the pause lock screen.</summary>
+/// <summary>"I'm back" on the pause lock screen.</summary>
 public sealed record IpcResumeFromPause
 {
     [JsonPropertyName("type")] public string Type => "resume_from_pause";
@@ -115,7 +109,6 @@ public static class IpcSerializer
                 "totp_response" => JsonSerializer.Deserialize<IpcTotpResponse>(line, _opts),
                 "totp_attempt" => JsonSerializer.Deserialize<IpcTotpAttempt>(line, _opts),
                 "retry_now" => JsonSerializer.Deserialize<IpcRetryNow>(line, _opts),
-                "shutdown_request" => JsonSerializer.Deserialize<IpcShutdownRequest>(line, _opts),
                 "resume_from_pause" => JsonSerializer.Deserialize<IpcResumeFromPause>(line, _opts),
                 "pause_toggle" => JsonSerializer.Deserialize<IpcPauseToggle>(line, _opts),
                 _ => null,

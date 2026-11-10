@@ -88,7 +88,7 @@ public static class VigilLayout
     /// <summary>Both sources, removed on uninstall (the writers create them again on their first entry).</summary>
     public static readonly string[] EventSources = { WatchdogEventSource, GuardianEventSource };
 
-    /// <summary>The guardian's findings: event ID → check code sent to the server (GUARDIAN_CHECKS).
+    /// <summary>The guardian's findings: event ID → check code sent to the server (models.GuardianCheck).
     /// Warning = repaired, Error = repair failed.</summary>
     public static readonly IReadOnlyDictionary<int, string> GuardianChecks = new Dictionary<int, string>
     {

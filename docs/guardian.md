@@ -12,9 +12,9 @@ Journal as a `tamper_guardian_repaired` alert.
 
 | Event ID | `check` | Finding | Repair |
 |---|---|---|---|
-| 7003 | `binary_replaced` | SHA-256 of `vigil_watchdog.exe` ≠ `guardian.dat` (DPAPI LocalMachine) | service stopped, copy from `backup\vigil_watchdog.exe`; started only after the other repairs (an IFEO debugger would take over that start), then the entry |
+| 7003 | `binary_replaced` | SHA-256 of `vigil_watchdog.exe` ≠ `guardian.dat` (DPAPI LocalMachine), or the service's `ImagePath` is not the installed, quoted `vigil_watchdog.exe` | service stopped, copy from `backup\vigil_watchdog.exe` / `sc.exe config binPath=`; (re)started only after the other repairs (an IFEO debugger would take over that start), then the entry |
 | 7004 | `ifeo_debugger` | `Debugger` in IFEO for `vigil_watchdog.exe` | value removed |
-| 7002 | `service_disabled` | the service's `Start` in the registry ≠ 2 (automatic) | `sc.exe config start= auto` |
+| 7002 | `service_disabled` | the service's `Start` in the registry ≠ 2 (automatic), or `DelayedAutostart` set | `sc.exe config start= auto`, delayed start off (`ChangeServiceConfig2`) |
 | 7006 | `recovery_missing` | `FailureActions` in the registry ≠ restart ×3, or without the "also on a non-crash failure" flag | the installer's actions (restart ×3 after 60 s) |
 | 7005 | `safeboot_missing` | no `SafeBoot\{Minimal,Network}\vigil_watchdog` = `Service` | keys recreated |
 | 7001 | `service_not_running` | the service is still stopped after 75 s (recovery restarts after 60 s) | service started |

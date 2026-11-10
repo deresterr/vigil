@@ -136,9 +136,12 @@ on the child's PC, whose browser cookies the child can copy).
 
 ## Watchdog loop (`Worker.cs`)
 
-Every 5 s (1 s while locked, up to 60 s if the server says so):
+Every 5 s (1 s while locked in a user's session, also while vigil_ui is being brought back; up to 60 s if the
+server says so — 30 s while nobody is logged on). A logon (the SCM's session-change notification) starts the
+next tick at once.
 1. `UiManager.EnsureRunningAsync` — vigil_ui running and connected in the active session (below).
-2. `SessionDetector` — any WTS session ≠ 0 in Active/Connected state.
+2. `SessionDetector` — any WTS session ≠ 0 in Active state. Not Connected: that is the console at the logon
+   screen with nobody signed in.
 3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, tray state.
 4. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message), unless an
    offline grant is active (see Offline unlock). Also on request timeouts and unexpected exceptions.
@@ -174,7 +177,7 @@ desktop of its own does not have): friction, like the rest of the overlay.
 
 | Pipe | Server | Client | Messages |
 |---|---|---|---|
-| `VigilUI` | watchdog | vigil_ui | → `set_state`, `unlock`, `tray_state` (`paused`, `can_pause`, `minutes_remaining`), `totp_response`, `exit`; ← `totp_attempt`, `retry_now`, `resume_from_pause`, `pause_toggle`, `shutdown_request` |
+| `VigilUI` | watchdog | vigil_ui | → `set_state`, `unlock`, `tray_state` (`paused`, `can_pause`, `minutes_remaining`), `totp_response`, `exit`; ← `totp_attempt`, `retry_now`, `resume_from_pause`, `pause_toggle` |
 
 Messages are defined once in `client/shared/IpcMessages.cs`, linked into both projects.
 Pipe DACL: SYSTEM + Administrators full, Authenticated Users read/write; the client PID check keeps

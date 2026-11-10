@@ -56,7 +56,9 @@ public sealed class UiManager : IUiManager, IDisposable
     private IpcTrayState? _trayState;
     private bool _disposed;
 
-    public bool IsLocked => _locked && _pipe.IsConnected;
+    /// <summary>A lock is wanted and there is a session for it: also while vigil_ui is gone (killed, starting),
+    /// so the worker ticks every second and brings it back. Not at the logon screen: nobody to lock.</summary>
+    public bool IsLocked => _locked && _uiSession is not null;
 
     public event Func<TotpFromLockscreen, CancellationToken, Task<TotpResult>>? OnTotpAttempt;
     public event Func<CancellationToken, Task>? OnRetryRequest;
@@ -196,7 +198,6 @@ public sealed class UiManager : IUiManager, IDisposable
             ShowTotpField = state.ShowTotpField,
             ShowResumeButton = state.ShowResumeButton,
             ShowRetryButton = state.ShowRetryButton,
-            ShowShutdownButton = state.ShowShutdownButton,
             MinutesRemaining = state.MinutesRemaining,
             CurrentTimeDisplay = state.CurrentTimeDisplay,
         };
@@ -333,16 +334,6 @@ public sealed class UiManager : IUiManager, IDisposable
                 break;
             case IpcPauseToggle:
                 if (OnPauseToggle is { } toggle) await toggle(CancellationToken.None).ConfigureAwait(false);
-                break;
-            case IpcShutdownRequest:
-                _logger.LogInformation("vigil_ui asked for a shutdown");
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "shutdown.exe",
-                    Arguments = "/s /t 0",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                });
                 break;
             default:
                 _logger.LogWarning("Pipe: unexpected message {Type}", message.GetType().Name);

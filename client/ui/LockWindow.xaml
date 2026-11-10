@@ -197,7 +197,6 @@
                 Background="Transparent"
                 BorderThickness="1"
                 Foreground="{StaticResource MutedBrush}"
-                Visibility="{Binding State.ShowShutdownButton, Converter={StaticResource BoolToVis}}"
                 Click="Shutdown_Click"/>
     </Grid>
 </Window>

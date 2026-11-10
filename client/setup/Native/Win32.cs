@@ -9,6 +9,8 @@ internal static class Win32
     // === Service control manager ===
 
     public const uint SC_MANAGER_CONNECT = 0x0001;
+    public const uint SERVICE_CHANGE_CONFIG = 0x0002;
+    public const uint SERVICE_CONFIG_DELAYED_AUTO_START_INFO = 3;
     public const uint READ_CONTROL = 0x00020000;
     public const uint DACL_SECURITY_INFORMATION = 0x00000004;
 
@@ -21,6 +23,10 @@ internal static class Win32
     [DllImport("advapi32.dll", SetLastError = true)]
     public static extern bool QueryServiceObjectSecurity(IntPtr service, uint securityInformation,
         byte[]? securityDescriptor, uint bufferSize, out uint bytesNeeded);
+
+    /// <summary>SERVICE_CONFIG_DELAYED_AUTO_START_INFO: the struct is a single BOOL.</summary>
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool ChangeServiceConfig2W(IntPtr service, uint infoLevel, ref int delayedAutostart);
 
     [DllImport("advapi32.dll", SetLastError = true)]
     public static extern bool CloseServiceHandle(IntPtr handle);

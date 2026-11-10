@@ -182,7 +182,7 @@ public partial class LockWindow : Window
             return;
         }
 
-        // SendTotpAsync robi request/response correlation w pipe client.
+        // SendTotpAsync pairs the request with its response in the pipe client.
         var ipc = ((App)System.Windows.Application.Current).IpcClient;
         if (ipc is null || !ipc.IsConnected)
         {

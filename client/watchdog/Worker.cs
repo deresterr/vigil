@@ -68,13 +68,21 @@ public sealed class Worker : BackgroundService
         _ui.OnRetryRequest += HandleRetryRequestAsync;
         _ui.OnResumeFromPause += HandleResumeFromPauseAsync;
         _ui.OnPauseToggle += HandlePauseToggleAsync;
+        // A logon: vigil_ui and any lock at once, not after the idle interval of an empty PC (30–60 s).
+        VigilServiceLifetime.SessionLoggedOn += WakeUp;
     }
 
     private readonly SemaphoreSlim _retrySignal = new(0, 1);
 
-    private Task HandleRetryRequestAsync(CancellationToken ct)
+    /// <summary>Starts the next tick now (each Release wakes one wait; a pending wake-up is enough).</summary>
+    private void WakeUp()
     {
         try { _retrySignal.Release(); } catch (SemaphoreFullException) { }
+    }
+
+    private Task HandleRetryRequestAsync(CancellationToken ct)
+    {
+        WakeUp();
         return Task.CompletedTask;
     }
 
@@ -82,7 +90,8 @@ public sealed class Worker : BackgroundService
     {
         try
         {
-            await _client.SendPauseToggleAsync(ct).ConfigureAwait(false);
+            // A target, not a toggle: a double click (or one per monitor) must not start the pause again.
+            await _client.SendPauseToggleAsync(paused: false, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -96,9 +105,9 @@ public sealed class Worker : BackgroundService
         cts.CancelAfter(TimeSpan.FromSeconds(8));
         try
         {
-            var result = await _client.SendPauseToggleAsync(cts.Token).ConfigureAwait(false);
+            var result = await _client.SendPauseToggleAsync(paused: null, cts.Token).ConfigureAwait(false);
             _logger.LogInformation("Pause toggle from tray: paused={Paused}", result.Paused);
-            try { _retrySignal.Release(); } catch (SemaphoreFullException) { }
+            WakeUp();
         }
         catch (Exception ex)
         {
@@ -142,7 +151,7 @@ public sealed class Worker : BackgroundService
             catch (OperationCanceledException) { break; }
         }
 
-        _logger.LogInformation("Vigil zatrzymany.");
+        _logger.LogInformation("Vigil stopped");
     }
 
     private HeartbeatRequest BuildRequest(bool sessionActive, bool userActive) => new()
@@ -261,7 +270,6 @@ public sealed class Worker : BackgroundService
                 ShowTotpField: canUnlock,  // vigil_ui words the message by it: code from the phone or wait
                 ShowResumeButton: false,
                 ShowRetryButton: true,
-                ShowShutdownButton: true,
                 MinutesRemaining: 0,
                 CurrentTimeDisplay: DateTime.Now.ToString("HH:mm")),
                 ct).ConfigureAwait(false);
@@ -280,8 +288,7 @@ public sealed class Worker : BackgroundService
                 Reason: response.LockReason ?? "unknown",
                 ShowTotpField: ui?.ShowTotpField ?? false,
                 ShowResumeButton: ui?.ShowResumeButton ?? false,
-                ShowRetryButton: ui?.ShowRetryButton ?? false,
-                ShowShutdownButton: ui?.ShowShutdownButton ?? true,
+                ShowRetryButton: false,  // retrying is for our own offline lock only
                 MinutesRemaining: response.MinutesRemaining,
                 CurrentTimeDisplay: ui?.CurrentTimeDisplay),
                 ct).ConfigureAwait(false);
@@ -307,10 +314,7 @@ public sealed class Worker : BackgroundService
         if (_offlineLocked)
         {
             var offline = _offline.TryUnlock(attempt.Code, attempt.MinutesToGrant);
-            if (offline.Ok)
-            {
-                try { _retrySignal.Release(); } catch (SemaphoreFullException) { }  // dismiss on the next tick now
-            }
+            if (offline.Ok) WakeUp();  // dismiss on the next tick now
             return offline;
         }
 

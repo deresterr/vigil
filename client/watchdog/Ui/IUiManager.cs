@@ -21,7 +21,8 @@ public interface IUiManager
     /// <summary>Tray tooltip state (sent after every heartbeat, re-sent after a respawn).</summary>
     Task SendTrayStateAsync(bool paused, bool canPause, int minutesRemaining, CancellationToken ct);
 
-    /// <summary>True while we want the overlay shown (set by EnsureLocked, cleared by Dismiss).</summary>
+    /// <summary>True while we want the overlay shown (set by EnsureLocked, cleared by Dismiss) and a user's
+    /// session is there to show it in.</summary>
     bool IsLocked { get; }
 
     /// <summary>TOTP code typed on the overlay. Handler → server (or offline check) → result to the UI.</summary>
@@ -42,7 +43,6 @@ public sealed record LockState(
     bool ShowTotpField,
     bool ShowResumeButton,
     bool ShowRetryButton,
-    bool ShowShutdownButton,
     int MinutesRemaining,
     string? CurrentTimeDisplay);
 

@@ -150,10 +150,8 @@ async def totp_attempt(
     now_utc = datetime.now(timezone.utc)
     tz = ZoneInfo(get_config_value(db, "timezone"))
 
-    # === 0. TOTP configured (as heartbeat.py checks it: the secret) ===
-    totp_secret = get_config_value(db, "totp_secret") or ""
-    if not totp_secret:
-        return JSONResponse({"ok": False, "reason": "totp_not_configured"}, status_code=200)
+    totp_secret = get_config_value(db, "totp_secret")  # generated at the first start (bootstrap.py)
+
     # === 1. Lockout check ===
     lockout_remaining = _check_lockout(db, now_utc)
     if lockout_remaining is not None:

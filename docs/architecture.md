@@ -40,15 +40,15 @@ signature like "server unreachable".
 | `POST /v1/heartbeat` | `session_active, user_active, current_time_utc, uptime_seconds` | → `lock_required, lock_reason, minutes_used, minutes_remaining, next_check_seconds, server_time_utc, ui_state` |
 | `POST /v1/goodbye` | `instance_id, reason` (`service_stop`\|`shutdown`) | sent from the service's StopAsync; see Tamper detection |
 | `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`; response `mode`, `minutes`, `until_local` (night). every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
-| `POST /v1/pause_toggle` | `{}` | refused while a higher-priority lock is active |
-| `POST /v1/pair` | `code` | **unauthenticated**; one-time 8-digit code from the panel (10 min, 5 attempts) → new `signing_key` + `server_url`. The code is made for a new device of a child, or for re-pairing a device (its key is replaced) |
+| `POST /v1/pause_toggle` | `{}` (toggle) or `{"paused": bool}` (target state) | starting a pause is refused while a higher-priority lock is active; a target equal to the current state changes nothing |
+| `POST /v1/pair` | `code` (string) | **unauthenticated**; one-time 8-digit code from the panel (10 min, 5 attempts) → new `signing_key` (the server address is the one the installer reached). The code is made for a new device of a child, or for re-pairing a device (its key is replaced) |
 | `POST /v1/tamper_event` | `type` `lockscreen_killed` \| `guardian_repaired` | see Tamper detection |
 
 Request bodies are Pydantic models in `app/models.py` (strict types, unknown fields ignored) — a contract with
 `HeartbeatModels.cs`.
 
-`ui_state` (only when locked): `show_totp_field`, `show_resume_button`, `show_retry_button`, `show_shutdown_button`,
-`current_time_display`.
+`ui_state` (only when locked): `show_totp_field`, `show_resume_button`, `current_time_display`. The retry
+and shutdown buttons are the watchdog's own (retry only on its offline lock, shutdown always).
 
 **Language (i18n, #52):** the server sends codes and numbers, never sentences: `lock_reason`, TOTP `mode` with
 `minutes` and (night) `until_local`. Each UI words them in its own environment's language — the panel by the
@@ -63,7 +63,8 @@ locks (limit, night, manual, pause) are **per child**: a lock or pause applies t
 Time is the **sum over the child's devices** (two PCs at once count twice).
 
 Per heartbeat of a device:
-1. `delta = now − devices.last_heartbeat_utc`, clamped to `0..heartbeat_delta_max` (15 s).
+1. `delta = now − devices.last_heartbeat_utc`, clamped to `0..heartbeat_delta_max` (15 s). Whole seconds are
+   counted; the remaining milliseconds wait in `devices.delta_carry_ms` for the next counted heartbeat.
 2. Counted only if this request has `session_active && user_active` **and** the device's previous active
    heartbeat (`devices.last_active_utc`) was ≤ `gap_detection_threshold` (30 s) ago.
 3. If the child is already locked (pre-lock check) nothing is counted.
@@ -129,7 +130,9 @@ highlighted and counted on the tab (`alerts_unacked` in `/status`), confirmed vi
 (`events.acked_utc`). The wording (Polish source text, English in `i18n.js`) and the filters live in `admin.html`.
 
 Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cookie `vigil_session`
-(24 h, HttpOnly, SameSite=Strict, path `/admin`). Password: argon2id.
+(24 h, HttpOnly, SameSite=Strict, path `/admin`). Password: argon2id. The cookie carries
+`admin_session_generation`; a logout or a password change bumps it and ends every session (the parent logs in
+on the child's PC, whose browser cookies the child can copy).
 
 ## Watchdog loop (`Worker.cs`)
 
@@ -185,7 +188,8 @@ grant ≤ 120 min, ended as soon as the server answers. The secret comes from th
 heartbeat response whenever the watchdog's `totp_fp` (sha256[:16]) differs — after pairing or a TOTP
 regeneration — and is stored in `totp.dat` (DPAPI LocalMachine, entropy `Vigil-Totp-v1`, SYSTEM full /
 Administrators read). Grants are queued and sent as `offline_grants` with the next successful heartbeat;
-the server logs `offline_unlock` (journal) and burns the step. Friction + detection: an admin child can
+the server logs `offline_unlock` per device (journal) and burns the step — at most up to the current one + 1,
+since a forged step far ahead would make every later code a replay. Friction + detection: an admin child can
 read `totp.dat`.
 
 ## Windows footprint

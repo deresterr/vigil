@@ -20,6 +20,7 @@ Server-wide:
 
 from __future__ import annotations
 
+import base64
 import io
 import sqlite3
 from datetime import datetime, timezone
@@ -29,9 +30,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import pyotp
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ..admin_auth import require_admin_session, verify_admin_password
+from ..admin_auth import (
+    issue_session_cookie,
+    require_admin_session,
+    revoke_sessions,
+    set_session_cookie,
+    verify_admin_password,
+)
 from ..config import TOTP_ACCOUNT, TOTP_ISSUER, default_schedule
 from ..crypto import hash_password
 from ..db import (
@@ -432,14 +440,13 @@ async def update_config(body: ConfigBody, db: sqlite3.Connection = Depends(get_d
 # === TOTP (one secret for all children) ===
 
 
-def _png_qr_base64(data: str) -> str:
+def png_qr_base64(data: str) -> str:
     """The QR code as base64 PNG (for a data: URL).
 
     The Pillow backend explicitly: qrcode otherwise falls back to PyPNGImage, whose save() has another
     signature, so a missing Pillow would surface as a puzzling TypeError instead of an ImportError.
+    Shared with the setup wizard.
     """
-    import base64
-
     from qrcode.image.pil import PilImage
     qr = qrcode.QRCode(
         version=None,
@@ -462,13 +469,11 @@ def _png_qr_base64(data: str) -> str:
 async def get_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
     """The current secret (not a new one) and its QR, to scan again on a new phone."""
     secret = get_config_value(db, "totp_secret")
-    if not secret:
-        raise HTTPException(status_code=404, detail="totp_not_configured")
     uri = pyotp.TOTP(secret).provisioning_uri(name=TOTP_ACCOUNT, issuer_name=TOTP_ISSUER)
     return {
         "secret": secret,
         "uri": uri,
-        "qr_png_base64": _png_qr_base64(uri),
+        "qr_png_base64": png_qr_base64(uri),
     }
 
 
@@ -488,7 +493,7 @@ async def regen_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
         "ok": True,
         "secret": new_secret,
         "uri": uri,
-        "qr_png_base64": _png_qr_base64(uri),
+        "qr_png_base64": png_qr_base64(uri),
     }
 
 
@@ -501,12 +506,15 @@ class PasswordBody(_Body):
 
 
 @router.post("/change_password")
-async def change_password(body: PasswordBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    """Existing sessions stay valid (admin_session_key is separate from the password)."""
+async def change_password(body: PasswordBody, db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
+    """Every other session ends (a stolen cookie with the old password); this one gets a fresh cookie."""
     if not verify_admin_password(db, body.current):
         log_event(db, "admin_password_change_failed")
         # 403, not 401: the session is valid; the panel answers every 401 with a redirect to the login.
         raise HTTPException(status_code=403, detail="wrong_current_password")
     set_config_value(db, "parent_password_hash", hash_password(body.new))
+    revoke_sessions(db)
     log_event(db, "admin_password_changed")
-    return {"ok": True}
+    response = JSONResponse({"ok": True})
+    set_session_cookie(response, issue_session_cookie(db))
+    return response

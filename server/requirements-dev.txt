@@ -1,5 +1,5 @@
 -r requirements.txt
-httpx==0.27.2
+httpx2==2.16.0
 pytest==8.3.3
 time-machine==2.16.0
 ruff==0.7.4

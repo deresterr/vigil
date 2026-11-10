@@ -7,15 +7,18 @@ from __future__ import annotations
 
 import sqlite3
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..admin_auth import (
+    SESSION_COOKIE,
     clear_session_cookie,
     issue_session_cookie,
     login_lockout_remaining,
     record_login_failure,
     reset_login_failures,
+    revoke_sessions,
+    session_payload,
     set_session_cookie,
     verify_admin_password,
 )
@@ -23,6 +26,7 @@ from ..db import get_db, log_event
 from ..pages import page
 
 router = APIRouter()
+
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_panel(request: Request) -> Response:
@@ -67,8 +71,17 @@ async def admin_login_submit(
 
 
 @router.post("/admin/logout")
-async def admin_logout(request: Request) -> Response:
-    """Clears the cookie and goes to the login form; works with an expired session too."""
+async def admin_logout(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """Ends every session (a copy of this cookie too) and goes to the login form.
+
+    Only a valid session revokes: an anonymous request (no cookie, an expired one) just clears the cookie,
+    so nobody can log the parent out from outside. Logging out on one device logs out the others too.
+    """
+    try:
+        session_payload(db, request.cookies.get(SESSION_COOKIE))
+        revoke_sessions(db)
+    except HTTPException:
+        pass
     response = RedirectResponse(url="/admin/login", status_code=303)
     clear_session_cookie(response)
     return response

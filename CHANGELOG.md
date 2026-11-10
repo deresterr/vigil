@@ -5,11 +5,24 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 
 ## [Unreleased]
 
+### Server
+- Logging out of the panel, or changing the password, ends every panel session — also a copy of the cookie
+  left in the browser of the child's PC. Logging out on one device logs out the others.
+- Time is counted to the millisecond across heartbeats: about 1–2 % of the time used was not counted before.
+- "I'm back" on the pause screen can no longer start the pause again on a double click.
+- An offline unlock reported by a PC can no longer block the parent's TOTP codes for good; the same code used
+  offline on two PCs shows as two unlocks in the Journal.
+- The setup wizard no longer asks for the server address (the installer always used the address typed in it),
+  and reports invalid fields instead of failing with a server error.
+- Dependencies updated (FastAPI, Starlette, python-multipart, uvicorn): known vulnerabilities fixed.
+
 ### Documentation
 - README rewritten (English and Polish): how it works, a quick start from the release, updating.
 - The server's plain HTTP is named as a known limit in the README threat model and in SECURITY.md:
   the pairing response carries the PC's key and the panel login its password; use a reverse proxy with TLS.
 - CONTRIBUTING.md, issue forms and a pull request template.
+- README threat model: a deleted or damaged configuration on the PC stops the service, which the panel shows only
+  as the PC being offline.
 
 ## [0.8.0] - 2026-11-09
 

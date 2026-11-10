@@ -93,8 +93,9 @@ tamper-proof. Every mechanism belongs to one of three groups.
 - every repair by the guardian (a disabled service, a replaced file, …),
 - runs of wrong TOTP codes, failed panel logins, an invalidated pairing code.
 
-**Does not detect:** a service stopped for good (the panel shows the PC as offline), another system booted from
-a USB stick (offline as well), or forged requests from an administrator who read the key from the disk.
+**Does not detect:** a service stopped for good (the panel shows the PC as offline), a deleted or damaged
+configuration on the PC (`vigil.toml`, `signing.dat`: the service does not start, offline as well), another system
+booted from a USB stick (offline as well), or forged requests from an administrator who read the key from the disk.
 
 **Network:** the server speaks plain HTTP. Requests and responses are signed, but the pairing response carries the
 PC's key in the clear, and the panel password travels unencrypted too: whoever can read that traffic can act as
@@ -126,7 +127,7 @@ docker compose up -d
 ```
 
 Open `http://<server-ip>:8088/setup` right away — the wizard is open without a login until it is completed:
-the child's name, the parent password, TOTP, the time zone and limits, and the address the PCs will use.
+the child's name, the parent password, TOTP, the time zone and limits.
 Set each day of the week later in the panel: Settings → Weekly schedule.
 
 **2. Child's PC.** Download [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe)

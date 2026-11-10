@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import date, datetime, time, timedelta, timezone
+from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..admin_auth import require_admin_session
 from ..db import get_config_value, get_db
@@ -140,17 +142,22 @@ async def journal(db: sqlite3.Connection = Depends(get_db), before: str | None =
     return {"days": out, "has_more": has_more}
 
 
+class AckBody(BaseModel):
+    """{"ids": [...]} confirms those alerts, {} all of them."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    ids: Annotated[list[int], Field(max_length=1000)] | None = None
+
+
 @router.post("/alerts/ack")
-async def ack_alerts(request: Request, db: sqlite3.Connection = Depends(get_db)) -> dict:
+async def ack_alerts(body: AckBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
     """Confirm alerts: body {"ids": [...]} for specific ones, {} for all."""
-    body = await request.json()
     now = datetime.now(timezone.utc).isoformat()
-    ids = body.get("ids") if isinstance(body, dict) else None
+    ids = body.ids
     if ids is None:
         cur = db.execute(f"UPDATE events SET acked_utc = ? WHERE {ALERT_WHERE} AND acked_utc IS NULL", (now,))
     else:
-        if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
-            raise HTTPException(status_code=422, detail="ids_must_be_int_list")
         marks = ",".join("?" * len(ids)) or "NULL"
         cur = db.execute(
             f"UPDATE events SET acked_utc = ? WHERE id IN ({marks}) AND {ALERT_WHERE} AND acked_utc IS NULL",

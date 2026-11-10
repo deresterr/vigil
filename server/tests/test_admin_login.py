@@ -66,3 +66,39 @@ def test_wrong_current_password_keeps_the_session(client):
     assert r.json() == {"ok": True}
     client.post("/admin/logout")
     assert _login(client, "nowe-haslo-1").status_code == 303
+
+
+def _status_with(client, cookie):
+    client.cookies.clear()
+    client.cookies.set("vigil_session", cookie)
+    return client.get("/admin/api/status").status_code
+
+
+def test_logout_revokes_a_copied_cookie(client):
+    """The parent logs in on the child's PC (one Windows account): a copy of the cookie dies at logout (#86)."""
+    _set_password()
+    _login(client, PASSWORD)
+    copied = client.cookies.get("vigil_session")
+    client.post("/admin/logout")
+    client.cookies.clear()
+    assert _status_with(client, copied) == 401
+
+
+def test_anonymous_logout_revokes_nothing(client):
+    _set_password()
+    _login(client, PASSWORD)
+    session = client.cookies.get("vigil_session")
+    client.cookies.clear()
+    client.post("/admin/logout")
+    assert _status_with(client, session) == 200
+
+
+def test_password_change_ends_other_sessions_and_keeps_this_one(client):
+    _set_password()
+    _login(client, PASSWORD)
+    other = client.cookies.get("vigil_session")  # e.g. the same login on another device
+    r = client.post("/admin/api/change_password", json={"current": PASSWORD, "new": "nowe-haslo-1"})
+    assert r.json() == {"ok": True}
+    assert client.get("/admin/api/status").status_code == 200  # the fresh cookie from the response
+    client.cookies.clear()
+    assert _status_with(client, other) == 401

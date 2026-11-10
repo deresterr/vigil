@@ -9,7 +9,7 @@ import time_machine
 from app.crypto import hash_password
 from app.db import get_connection, set_config_value
 from app.offline import totp_fingerprint
-from tests.conftest import config
+from tests.conftest import Watchdog, add_device, config
 
 TZ = ZoneInfo("Europe/Warsaw")
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)
@@ -56,3 +56,26 @@ def test_bad_offline_grants_are_rejected(watchdog):
                                         "current_time_utc": "2026-11-04T11:00:00Z", "uptime_seconds": 1,
                                         "offline_grants": [{"minutes": "60"}]}, verify=False)
     assert r.status_code == 422
+
+
+def test_a_future_step_burns_no_more_than_the_current_one(watchdog):
+    """The device key is readable by an admin child: a forged step far ahead must not turn every later code of
+    the parent into a "replay" (#86)."""
+    with time_machine.travel(NOON, tick=False) as t:
+        grant = {"at_utc": "2026-11-04T10:30:00Z", "minutes": 60, "step": 10**12}
+        watchdog.heartbeat(totp_fp="", offline_grants=[grant])
+        totp = pyotp.TOTP(config("totp_secret"))
+        assert int(config("totp_last_step")) == totp.timecode(datetime.now(TZ)) + 1
+        t.shift(60)  # two steps later the parent's code works again
+        assert watchdog.post("/v1/totp_attempt", {"code": totp.now()}).status_code == 200
+
+
+def test_the_same_code_offline_on_two_pcs_is_two_unlocks(client, watchdog):
+    second = Watchdog(client, add_device(1, "Laptop"))
+    grant = {"at_utc": "2026-11-04T10:30:00Z", "minutes": 60, "step": 5}
+    watchdog.heartbeat(offline_grants=[grant])
+    second.heartbeat(offline_grants=[grant])
+    second.heartbeat(offline_grants=[grant])  # resent
+    with get_connection() as conn:
+        rows = conn.execute("SELECT device_id FROM events WHERE event_type = 'offline_unlock' ORDER BY id").fetchall()
+    assert [r[0] for r in rows] == [1, 2]

@@ -70,6 +70,18 @@ def test_pause_on_one_pc_pauses_the_child(client):
         assert kuba.heartbeat()["lock_required"] is False
 
 
+def test_resume_with_a_target_is_idempotent(client):
+    """"I'm back" sends paused=false: a double click (or one per monitor) must not start the pause again (#86)."""
+    pc, laptop, kuba = _family(client)
+    with time_machine.travel(NOON, tick=False):
+        assert pc.post("/v1/pause_toggle", {}).json() == {"ok": True, "paused": True}
+        for _ in range(2):
+            assert pc.post("/v1/pause_toggle", {"paused": False}).json() == {"ok": True, "paused": False}
+        assert laptop.heartbeat()["lock_required"] is False
+        with get_connection() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM events WHERE event_type = 'pause_toggled'").fetchone()[0] == 2
+
+
 def test_totp_grant_goes_to_the_child_of_the_pc(client):
     pc, laptop, kuba = _family(client)
     set_schedule(1, daily_limit=0)

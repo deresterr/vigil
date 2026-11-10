@@ -46,8 +46,9 @@ public sealed class UiManager : IUiManager, IDisposable
     private readonly HeartbeatClient _client;
     private readonly ILogger<UiManager> _logger;
 
-    private readonly List<DateTime> _pendingExits = new();      // seen, waiting for ExitSettle
-    private readonly Queue<DateTime> _unexpectedExits = new();  // judged kills within KillWindow
+    // ServerClock.MonotonicMs (#92): a clock set forward between kills must not age them out of KillWindow.
+    private readonly List<long> _pendingExits = new();      // seen, waiting for ExitSettle
+    private readonly Queue<long> _unexpectedExits = new();  // judged kills within KillWindow
     private bool _expectedRunning;   // we started it and did not tell it to exit
     private uint? _uiSession;
     private string? _lastSpawnError;  // log a failing spawn once, not every tick
@@ -97,7 +98,7 @@ public sealed class UiManager : IUiManager, IDisposable
         }
         else if (_expectedRunning && !_launcher.IsRunning)
         {
-            _pendingExits.Add(DateTime.UtcNow);
+            _pendingExits.Add(ServerClock.MonotonicMs);
             _logger.LogInformation("vigil_ui exited, respawning (judged in {Settle}s)", (int)ExitSettle.TotalSeconds);
         }
         if (await JudgeExitsAsync(sessionId.Value, ct).ConfigureAwait(false))
@@ -257,21 +258,21 @@ public sealed class UiManager : IUiManager, IDisposable
     private async Task<bool> JudgeExitsAsync(uint sessionId, CancellationToken ct)
     {
         if (_pendingExits.Count == 0) return false;
-        if (VigilServiceLifetime.SessionEndedSince(sessionId, _pendingExits[0] - LogoffBeforeExit))
+        if (VigilServiceLifetime.SessionEndedSince(sessionId, _pendingExits[0] - (long)LogoffBeforeExit.TotalMilliseconds))
         {
             _logger.LogInformation("vigil_ui exited {Count}x while session {Session} was ending: not a kill",
                 _pendingExits.Count, sessionId);
             _pendingExits.Clear();
             return false;
         }
-        var now = DateTime.UtcNow;
-        var settled = _pendingExits.TakeWhile(t => now - t >= ExitSettle).ToList();
+        var now = ServerClock.MonotonicMs;
+        var settled = _pendingExits.TakeWhile(t => now - t >= ExitSettle.TotalMilliseconds).ToList();
         if (settled.Count == 0) return false;
         _pendingExits.RemoveRange(0, settled.Count);
 
         foreach (var t in settled) _unexpectedExits.Enqueue(t);
         var last = settled[^1];
-        while (_unexpectedExits.Count > 0 && last - _unexpectedExits.Peek() > KillWindow)
+        while (_unexpectedExits.Count > 0 && last - _unexpectedExits.Peek() > KillWindow.TotalMilliseconds)
             _unexpectedExits.Dequeue();
         var count = _unexpectedExits.Count;
         _logger.LogWarning("vigil_ui exited unexpectedly ({Count} in {Window}s)", count, (int)KillWindow.TotalSeconds);
@@ -351,8 +352,8 @@ public sealed class UiManager : IUiManager, IDisposable
         {
             if (_pipe.IsConnected)
                 _pipe.SendAsync(new IpcExit(), CancellationToken.None).Wait(TimeSpan.FromSeconds(1));
-            var deadline = DateTime.UtcNow.AddSeconds(1);
-            while (_launcher.IsRunning && DateTime.UtcNow < deadline) Thread.Sleep(100);
+            var deadline = ServerClock.MonotonicMs + 1000;
+            while (_launcher.IsRunning && ServerClock.MonotonicMs < deadline) Thread.Sleep(100);
         }
         catch { /* best effort on shutdown */ }
         _launcher.Kill();

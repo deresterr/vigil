@@ -664,6 +664,10 @@ const JOURNAL = {
                              sub: d.on_since ? t('Włączony od {since} ({time})', {since: d.on_since, time: fmtMin(d.minutes)}) : ''}),
   watchdog_offline:   d => ({cat: 'pc', icon: 'power', title: t('Brak połączenia z serwerem'),
                              sub: t('Przez ok. {time}', {time: mins(d.awake_gap_seconds)})}),
+  clock_drift:        d => ({cat: 'pc', icon: 'power',
+                             title: d.drift_seconds > 0 ? t('Zegar komputera spieszy się o {time}', {time: mins(d.drift_seconds)})
+                                                        : t('Zegar komputera spóźnia się o {time}', {time: mins(-d.drift_seconds)}),
+                             sub: t('Vigil używa czasu serwera')}),
   lock_started:       d => d.reason === 'night'
                              ? {cat: 'lock', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
                              : {cat: 'lock', icon: 'lock', title: t('Limit czasu wykorzystany — ekran zablokowany')},

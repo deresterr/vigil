@@ -144,3 +144,22 @@ def test_entries_are_ordered_by_event_time_not_arrival(client):
         entries = _today(client)["entries"]
     assert [(e["time"], e["type"]) for e in entries] == [
         ("00:41", "offline_unlock"), ("00:39", "watchdog_offline"), ("00:34", "watchdog_started")]
+
+
+def test_clock_drift_once_a_day_in_the_journal(client, watchdog):
+    """The watchdog signs with the server's time but reports its own clock (#92): an hour ahead is one Journal
+    entry per day, not one per heartbeat."""
+    noon = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)
+    with time_machine.travel(noon, tick=False) as t:
+        _login(client)  # inside: a session issued "in the future" is refused
+        for _ in range(3):
+            watchdog.heartbeat(current_time_utc=(datetime.now(TZ) + timedelta(hours=1)).isoformat())
+            t.shift(5)
+        watchdog.heartbeat()  # a clock set right logs nothing
+        entries = [e for e in _today(client)["entries"] if e["type"] == "clock_drift"]
+        assert len(entries) == 1 and entries[0]["details"]["drift_seconds"] >= 3595
+        t.shift(timedelta(days=1))
+        _login(client)  # the 24 h session has run out
+        watchdog.heartbeat(current_time_utc=(datetime.now(TZ) - timedelta(minutes=10)).isoformat())
+        drifts = [e["details"]["drift_seconds"] for e in _today(client)["entries"] if e["type"] == "clock_drift"]
+        assert drifts == [-600]

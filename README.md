@@ -146,7 +146,8 @@ re-pair, uninstall. Parameters for scripts: [`docs/installer.md`](docs/installer
 
 ### If Windows does not start or Vigil cannot be removed
 
-For an ordinary lock the parent's TOTP code is enough, also offline. If the PC itself must be freed from outside
+For an ordinary lock the parent's TOTP code is enough, also offline — once the PC has reached the server
+after its install (that is when it receives the secret). If the PC itself must be freed from outside
 Windows: Windows Recovery → Troubleshoot → Command Prompt → `rmdir /s /q D:\ProgramData\Vigil` (the Windows
 drive is often `D:` there; check with `dir D:\ProgramData`), restart, then uninstall from the menu and run
 `vigil_setup.exe -Mode verify`. Without its files Vigil does not start, so there is no lock.

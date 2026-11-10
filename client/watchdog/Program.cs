@@ -61,8 +61,9 @@ builder.Services.AddSingleton(vigilConfig);
 builder.Services.AddSingleton(sp => new TotpSecretStore(
     VigilLayout.PathOf(VigilLayout.TotpFile), sp.GetRequiredService<ILogger<TotpSecretStore>>()));
 builder.Services.AddSingleton<OfflineUnlock>();
+builder.Services.AddSingleton<ServerClock>();
 builder.Services.AddSingleton(sp => new HeartbeatClient(
-    vigilConfig, signingKey, sp.GetRequiredService<ILogger<HeartbeatClient>>()));
+    vigilConfig, signingKey, sp.GetRequiredService<ServerClock>(), sp.GetRequiredService<ILogger<HeartbeatClient>>()));
 builder.Services.AddSingleton<SessionDetector>();
 
 builder.Services.AddSingleton(new UiManagerOptions { UiExePath = VigilLayout.PathOf(VigilLayout.UiExe) });

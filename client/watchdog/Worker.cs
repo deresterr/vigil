@@ -28,17 +28,20 @@ public sealed class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly TotpSecretStore _totpStore;
     private readonly OfflineUnlock _offline;
+    private readonly ServerClock _clock;
     // True while the lock on screen is our own fail-closed lock (server unreachable): TOTP codes
     // are then verified locally (#9) instead of being forwarded to the server.
     private volatile bool _offlineLocked;
 
-    private readonly DateTime _startTime = DateTime.UtcNow;
+    // Durations on the monotonic clock (#92): with the wall clock, an administrator who set it back after the
+    // last heartbeat and then blocked the server got a negative "time since last success" — no lock (fail-open).
+    private readonly long _startMs = ServerClock.MonotonicMs;
 
     // Tamper telemetry: identity of this process + awake clock at its start (server/app/tamper.py).
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private readonly long _awakeMsAtStart = AwakeClock.NowMs;
     private int _failedAttempts;
-    private DateTime _lastSuccessfulHeartbeat = DateTime.MinValue;
+    private long? _lastSuccessMs;  // null: never reached the server since the service started
 
     // Tick interval: 5 s normally; 1 s while locked, so an unlock shows at once and a vanished vigil_ui
     // is back within a second instead of leaving the desktop open for 5 s.
@@ -54,6 +57,7 @@ public sealed class Worker : BackgroundService
         IUiManager ui,
         TotpSecretStore totpStore,
         OfflineUnlock offline,
+        ServerClock clock,
         ILogger<Worker> logger)
     {
         _config = config;
@@ -62,6 +66,7 @@ public sealed class Worker : BackgroundService
         _ui = ui;
         _totpStore = totpStore;
         _offline = offline;
+        _clock = clock;
         _logger = logger;
 
         _ui.OnTotpAttempt += HandleTotpFromLockscreenAsync;
@@ -158,8 +163,9 @@ public sealed class Worker : BackgroundService
     {
         SessionActive = sessionActive,
         UserActive = userActive,
+        // The PC's own clock on purpose (not ServerClock): the server journals its drift (clock_drift).
         CurrentTimeUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
-        UptimeSeconds = (int)(DateTime.UtcNow - _startTime).TotalSeconds,
+        UptimeSeconds = (int)SecondsSince(_startMs),
         InstanceId = _instanceId,
         AwakeMs = AwakeClock.NowMs,
         AwakeMsAtStart = _awakeMsAtStart,
@@ -211,7 +217,7 @@ public sealed class Worker : BackgroundService
         {
             response = await _client.SendHeartbeatAsync(req, ct).ConfigureAwait(false);
             serverOk = true;
-            _lastSuccessfulHeartbeat = DateTime.UtcNow;
+            _lastSuccessMs = ServerClock.MonotonicMs;
             _failedAttempts = 0;
             _offline.OnServerReachable(req.OfflineGrants);
             if (!string.IsNullOrEmpty(response.TotpSecret))
@@ -226,8 +232,8 @@ public sealed class Worker : BackgroundService
         {
             _failedAttempts++;
             _logger.LogWarning(ex,
-                "Heartbeat failed (last success {Ago:F0} s ago)",
-                (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds);
+                "Heartbeat failed (last success {Ago})",
+                _lastSuccessMs is { } at ? $"{SecondsSince(at):F0} s ago" : "never since the service started");
         }
 
         if (serverOk && response is not null)
@@ -252,16 +258,17 @@ public sealed class Worker : BackgroundService
     /// </summary>
     private async Task FailClosedIfOverdueAsync(CancellationToken ct)
     {
-        var graceSeconds = (DateTime.UtcNow - _startTime).TotalSeconds < 90 ? 90 : 30;
-        var timeSinceLastSuccess = (DateTime.UtcNow - _lastSuccessfulHeartbeat).TotalSeconds;
-        if (timeSinceLastSuccess > graceSeconds && _offline.IsGrantActive)
+        var graceSeconds = SecondsSince(_startMs) < 90 ? 90 : 30;
+        // Never reached the server since the start: overdue at the first failure, as before.
+        var overdue = _lastSuccessMs is not { } at || SecondsSince(at) > graceSeconds;
+        if (overdue && _offline.IsGrantActive)
         {
             // Parent unlocked with a TOTP code while offline (#9): stay unlocked until the grant ends.
             if (_offlineLocked)
                 await _ui.DismissAsync(ct).ConfigureAwait(false);
             _offlineLocked = false;
         }
-        else if (timeSinceLastSuccess > graceSeconds)
+        else if (overdue)
         {
             var canUnlock = _offline.HasSecret;
             _offlineLocked = true;
@@ -271,11 +278,13 @@ public sealed class Worker : BackgroundService
                 ShowResumeButton: false,
                 ShowRetryButton: true,
                 MinutesRemaining: 0,
-                CurrentTimeDisplay: DateTime.Now.ToString("HH:mm")),
+                CurrentTimeDisplay: _clock.LocalNow.ToString("HH:mm")),
                 ct).ConfigureAwait(false);
         }
         // Otherwise: still within the grace period.
     }
+
+    private static double SecondsSince(long monotonicMs) => (ServerClock.MonotonicMs - monotonicMs) / 1000.0;
 
     private async Task ApplyResponseAsync(HeartbeatResponse response, CancellationToken ct)
     {

@@ -116,13 +116,21 @@ async def heartbeat(
     minutes_used = new_seconds_used // 60
     minutes_remaining = max(0, today["effective_limit"] - minutes_used)
 
-    # === 4. Clock drift (informational) ===
+    # === 4. Clock drift (informational, Journal) ===
+    # current_time_utc is the PC's own clock; the watchdog signs with the server's time (#92), so a PC whose
+    # clock is off gets here. Once per device and local day: it would otherwise be every heartbeat.
     try:
-        drift = abs((parse_iso_utc(body.current_time_utc) - now_utc).total_seconds())
-        if drift > 180:
-            log_event(db, "clock_drift", {"drift_seconds": int(drift)}, **ids)
+        drift = (parse_iso_utc(body.current_time_utc) - now_utc).total_seconds()
     except ValueError:
-        pass
+        drift = 0.0
+    if abs(drift) > 180:
+        day_start_utc = now_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        logged = db.execute(
+            "SELECT 1 FROM events WHERE event_type = 'clock_drift' AND device_id = ? AND ts_utc >= ?",
+            (device.id, day_start_utc.isoformat()),
+        ).fetchone()
+        if not logged:
+            log_event(db, "clock_drift", {"drift_seconds": int(drift)}, **ids)
 
     # === 5. UI state (only while locked) ===
     # No sentences: vigil_ui words the lock screen in the child's Windows language from lock_reason (i18n, #52).

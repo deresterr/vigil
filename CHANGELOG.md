@@ -23,6 +23,10 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - The guardian also puts back the service's program path and undoes a delayed start (alert in the Journal).
 - An install or update unpacks every file before it stops anything: a failure there (antivirus, disk space)
   leaves the installed Vigil as it was.
+- A PC whose clock is off no longer stays locked with "server unreachable" for good: the watchdog uses the
+  server's time, and the Journal shows the PC's clock drift.
+- Setting the PC clock back no longer stops the lock when the server is unreachable, nor extends an offline
+  unlock.
 
 ### Documentation
 - README rewritten (English and Polish): how it works, a quick start from the release, updating.

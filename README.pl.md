@@ -15,7 +15,7 @@ wszystkim z przeglądarki i odblokowuje kodem TOTP z telefonu.
   &nbsp;
   <img src="docs/images/journal-alert.png" alt="Dziennik z alertem o ponownym uruchomieniu Vigila" width="260" align="top">
   &nbsp;
-  <img src="docs/images/panel-schedule.png" alt="Harmonogram tygodnia" width="260" align="top">
+  <img src="docs/images/panel-settings.png" alt="Ustawienia: harmonogram tygodnia i komputery dziecka" width="260" align="top">
 </p>
 
 > **Przed wersją 1.0, w codziennym użyciu.** Dziecko z uprawnieniami administratora jest w stanie Vigila obejść.
@@ -23,23 +23,9 @@ wszystkim z przeglądarki i odblokowuje kodem TOTP z telefonu.
 
 ## Jak to działa
 
-```mermaid
-flowchart LR
-    parent["Rodzic<br/>przeglądarka + aplikacja TOTP"]
-    subgraph home["Serwer domowy (Docker)"]
-        server["Serwer Vigil<br/>FastAPI + SQLite<br/>czas, harmonogram, blokady"]
-    end
-    subgraph pc["PC dziecka (Windows 10/11)"]
-        watchdog["vigil_watchdog<br/>usługa Windows (SYSTEM)"]
-        ui["vigil_ui<br/>ikona w zasobniku + ekran blokady"]
-        guardian["Vigil Guardian<br/>zadanie co 5 min"]
-    end
-    parent -- "panel /admin" --> server
-    watchdog -- "podpisany heartbeat" --> server
-    server -- "blokada czy nie, pozostałe minuty" --> watchdog
-    watchdog <-- "nazwany potok" --> ui
-    guardian -. "naprawy, zgłaszane jako alerty" .-> watchdog
-```
+<p align="center">
+  <img src="docs/images/how-it-works.pl.svg" alt="Jak działa Vigil: panel rodzica i usługi na PC dziecka rozmawiają z jednym serwerem" width="900">
+</p>
 
 - Usługa na PC co kilka sekund (w czasie blokady co sekundę) wysyła podpisany heartbeat.
 - Serwer dolicza czas dziecku — łącznie ze wszystkich jego komputerów — i decyduje o blokadzie: blokada ręczna,

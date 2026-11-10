@@ -15,7 +15,7 @@ manages everything from a browser and unlocks with a TOTP code from their phone.
   &nbsp;
   <img src="docs/images/journal-alert.png" alt="Journal with an alert about Vigil being restarted" width="260" align="top">
   &nbsp;
-  <img src="docs/images/panel-schedule.png" alt="Weekly schedule" width="260" align="top">
+  <img src="docs/images/panel-settings.png" alt="Settings: weekly schedule and the child's computers" width="260" align="top">
 </p>
 
 > **Before 1.0, in daily use.** A child with administrator rights can get around Vigil. Vigil makes that harder
@@ -23,23 +23,9 @@ manages everything from a browser and unlocks with a TOTP code from their phone.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    parent["Parent<br/>browser + TOTP app"]
-    subgraph home["Home server (Docker)"]
-        server["Vigil server<br/>FastAPI + SQLite<br/>time, schedule, locks"]
-    end
-    subgraph pc["Child's PC (Windows 10/11)"]
-        watchdog["vigil_watchdog<br/>Windows service (SYSTEM)"]
-        ui["vigil_ui<br/>tray icon + lock screen"]
-        guardian["Vigil Guardian<br/>task, every 5 min"]
-    end
-    parent -- "panel /admin" --> server
-    watchdog -- "signed heartbeat" --> server
-    server -- "lock or not, minutes left" --> watchdog
-    watchdog <-- "named pipe" --> ui
-    guardian -. "repairs, reported as alerts" .-> watchdog
-```
+<p align="center">
+  <img src="docs/images/how-it-works.svg" alt="How Vigil works: the parent's panel and the services on the child's PC talk to one server" width="900">
+</p>
 
 - The service on the PC sends a signed heartbeat every few seconds (every second while locked).
 - The server adds the time to the child — summed over all of the child's PCs — and decides whether to lock:

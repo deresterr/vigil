@@ -143,6 +143,8 @@ everywhere the same problem occurs, not only where it was reported.
   Update this file in the same PR when an invariant or gotcha changes.
 - User-visible changes get a line under `## [Unreleased]` in `CHANGELOG.md` in the same PR; at a release the
   maintainer moves it under the version, and the release notes are written from that section.
-- `README.md` and `README.pl.md` carry the same content; change both. `CONTRIBUTING.md` is the human version of
-  this file's rules — keep them in step. Nothing from the maintainer's environment (addresses, host names, paths,
+- `README.md` and `README.pl.md` carry the same content; change both. The "How it works" diagram is hand-written
+  SVG, `docs/images/how-it-works.svg` and `how-it-works.pl.svg` (Mermaid was scaled to ~9 px text in the README
+  column): change both when the architecture changes; keep them 900 px wide with text of 13 px or more.
+  `CONTRIBUTING.md` is the human version of this file's rules — keep them in step. Nothing from the maintainer's environment (addresses, host names, paths,
   test data) goes into the repo, issues, PRs or release notes.

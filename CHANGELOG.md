@@ -5,6 +5,10 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 
 ## [Unreleased]
 
+### Documentation
+- README: the "How it works" diagram is a picture readable at the page's width (the Mermaid chart was scaled
+  down to about 9 px text); the third screenshot shows the whole Settings tab, not one card.
+
 ## [0.8.1] - 2026-11-10
 
 ### Server

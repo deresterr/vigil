@@ -890,9 +890,11 @@ function lastSeen(local) {
     : local.slice(8, 10) + '.' + local.slice(5, 7) + ' ' + local.slice(11);
 }
 
+// The dot: green when any of the child's PCs is online, red otherwise (as in the PC list on the Status tab).
+// Not the lock state: the picker's dot shows that, next to its text.
 function renderChildrenList(s) {
   document.getElementById('childrenList').innerHTML = s.children.map(c =>
-    `<li><span class="sdot ${c.lock_reason || ''}" style="width:10px;height:10px"></span><div class="grow"><p class="nm">${esc(c.name)}</p></div>` +
+    `<li><span class="dd${c.devices_online ? ' on' : ''}"></span><div class="grow"><p class="nm">${esc(c.name)}</p></div>` +
     `<span class="mins">${pcsText(c.devices_total)}</span></li>`).join('')
     || `<li><p class="st">${t('Brak dzieci.')}</p></li>`;
 }

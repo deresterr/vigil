@@ -17,6 +17,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - Dependencies updated (FastAPI, Starlette, python-multipart, uvicorn): known vulnerabilities fixed.
 - The panel no longer asks for a deleted child at every refresh (a 404 in the server log) and forgets a Journal
   filter for it.
+- Settings → Children: the dot next to a child is green when any of its PCs is online and red otherwise (it showed
+  the lock state, so it was green almost always).
 
 ### Client
 - A PC sitting at the Windows logon screen no longer counts as used: before, the child's time ran there too.

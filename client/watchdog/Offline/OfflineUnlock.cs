@@ -15,6 +15,8 @@ namespace Vigil.Watchdog.Offline;
 /// accepted once, every 3rd failure locks for 60 s / 300 s / 900 s (cap).
 /// A successful code allows use for a limited time; the grant is reported to the server on
 /// reconnect (journal) and ends as soon as the server answers again.
+/// Codes are checked at the server's time (ServerClock), the lockout and the grant run on the monotonic clock:
+/// setting the PC clock back neither extends a grant nor ends a lockout (#92).
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class OfflineUnlock
@@ -24,17 +26,19 @@ public sealed class OfflineUnlock
     private static readonly int[] LockoutSteps = { 60, 300, 900 };
 
     private readonly TotpSecretStore _store;
+    private readonly ServerClock _clock;
     private readonly ILogger<OfflineUnlock> _logger;
     private readonly object _gate = new();
     private long _lastStep;
     private int _failures;
-    private DateTime _lockedUntilUtc = DateTime.MinValue;
-    private DateTime? _grantUntilUtc;
+    private long _lockedUntilMs = long.MinValue;   // ServerClock.MonotonicMs
+    private long? _grantUntilMs;
     private readonly List<OfflineGrantDto> _pending = new();
 
-    public OfflineUnlock(TotpSecretStore store, ILogger<OfflineUnlock> logger)
+    public OfflineUnlock(TotpSecretStore store, ServerClock clock, ILogger<OfflineUnlock> logger)
     {
         _store = store;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -42,7 +46,7 @@ public sealed class OfflineUnlock
 
     public bool IsGrantActive
     {
-        get { lock (_gate) return _grantUntilUtc is { } until && DateTime.UtcNow < until; }
+        get { lock (_gate) return _grantUntilMs is { } until && ServerClock.MonotonicMs < until; }
     }
 
     public TotpResult TryUnlock(string code, int minutesRequested)
@@ -53,11 +57,12 @@ public sealed class OfflineUnlock
 
         lock (_gate)
         {
-            var now = DateTime.UtcNow;
-            if (now < _lockedUntilUtc)
+            var nowMs = ServerClock.MonotonicMs;
+            if (nowMs < _lockedUntilMs)
                 return new TotpResult(false, Reason: "lockout",
-                                      LockoutSecondsRemaining: (int)Math.Ceiling((_lockedUntilUtc - now).TotalSeconds));
+                                      LockoutSecondsRemaining: (int)Math.Ceiling((_lockedUntilMs - nowMs) / 1000.0));
 
+            var now = _clock.UtcNow;
             var step = MatchStep(secret, code.Trim(), now);
             if (step is null || step.Value <= _lastStep)
             {
@@ -67,7 +72,7 @@ public sealed class OfflineUnlock
                 {
                     var idx = Math.Min(_failures / FailuresPerLockout, LockoutSteps.Length) - 1;
                     lockout = LockoutSteps[idx];
-                    _lockedUntilUtc = now.AddSeconds(lockout.Value);
+                    _lockedUntilMs = nowMs + lockout.Value * 1000L;
                 }
                 _logger.LogWarning("Offline unlock: wrong code (failures={Failures})", _failures);
                 return new TotpResult(false, Reason: "invalid_code", LockoutSecondsRemaining: lockout);
@@ -76,7 +81,7 @@ public sealed class OfflineUnlock
             var minutes = Math.Clamp(minutesRequested, 1, MaxGrantMinutes);
             _lastStep = step.Value;
             _failures = 0;
-            _grantUntilUtc = now.AddMinutes(minutes);
+            _grantUntilMs = nowMs + minutes * 60_000L;
             _pending.Add(new OfflineGrantDto
             {
                 AtUtc = now.ToString("yyyy-MM-ddTHH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture),
@@ -100,7 +105,7 @@ public sealed class OfflineUnlock
         lock (_gate)
         {
             if (reported is not null) _pending.RemoveAll(reported.Contains);
-            _grantUntilUtc = null;
+            _grantUntilMs = null;
         }
     }
 

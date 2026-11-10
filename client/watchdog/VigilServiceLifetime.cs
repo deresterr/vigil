@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vigil.Watchdog.Server;
 
 namespace Vigil.Watchdog;
 
@@ -21,7 +22,7 @@ namespace Vigil.Watchdog;
 public sealed class VigilServiceLifetime : WindowsServiceLifetime
 {
     private static volatile bool _systemShutdown;
-    private static readonly ConcurrentDictionary<int, DateTime> LogoffsUtc = new();
+    private static readonly ConcurrentDictionary<int, long> Logoffs = new();  // ServerClock.MonotonicMs
     private readonly ILogger _logger;
 
     public static bool IsSystemShutdown => _systemShutdown;
@@ -30,9 +31,9 @@ public sealed class VigilServiceLifetime : WindowsServiceLifetime
     public static event Action? SessionLoggedOn;
 
     /// <summary>True if the SCM reported a logoff of <paramref name="sessionId"/> at or after
-    /// <paramref name="sinceUtc"/>, or the system is shutting down.</summary>
-    public static bool SessionEndedSince(uint sessionId, DateTime sinceUtc) =>
-        _systemShutdown || (LogoffsUtc.TryGetValue((int)sessionId, out var at) && at >= sinceUtc);
+    /// <paramref name="sinceMs"/> (ServerClock.MonotonicMs), or the system is shutting down.</summary>
+    public static bool SessionEndedSince(uint sessionId, long sinceMs) =>
+        _systemShutdown || (Logoffs.TryGetValue((int)sessionId, out var at) && at >= sinceMs);
 
     public VigilServiceLifetime(
         IHostEnvironment environment,
@@ -56,7 +57,7 @@ public sealed class VigilServiceLifetime : WindowsServiceLifetime
     protected override void OnSessionChange(SessionChangeDescription changeDescription)
     {
         if (changeDescription.Reason == SessionChangeReason.SessionLogoff)
-            LogoffsUtc[changeDescription.SessionId] = DateTime.UtcNow;
+            Logoffs[changeDescription.SessionId] = ServerClock.MonotonicMs;
         _logger.LogInformation("Session {Session}: {Reason}", changeDescription.SessionId, changeDescription.Reason);
         if (changeDescription.Reason == SessionChangeReason.SessionLogon)
             SessionLoggedOn?.Invoke();

@@ -11,7 +11,7 @@ namespace Vigil.Watchdog.Server;
 
 /// <summary>
 /// HTTP client for the server (protocol v2, see server/app/auth.py). Every request carries:
-/// - X-Timestamp: unix ms (UTC)
+/// - X-Timestamp: unix ms (UTC), the server's time as far as we know it (ServerClock, #92)
 /// - X-Nonce: 16 random bytes, base64url without padding
 /// - X-Signature: base64(HMAC-SHA256(signing_key, "POST\n/v1/...\n" + ts + "\n" + nonce + "\n" + hex(sha256(body))))
 ///
@@ -23,6 +23,7 @@ public sealed class HeartbeatClient : IDisposable
     private readonly HttpClient _http;
     private readonly VigilConfig _config;
     private readonly byte[] _signingKey;
+    private readonly ServerClock _clock;
     private readonly ILogger<HeartbeatClient> _logger;
 
     private static readonly JsonSerializerOptions _json = new()
@@ -31,10 +32,11 @@ public sealed class HeartbeatClient : IDisposable
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public HeartbeatClient(VigilConfig config, byte[] signingKey, ILogger<HeartbeatClient> logger)
+    public HeartbeatClient(VigilConfig config, byte[] signingKey, ServerClock clock, ILogger<HeartbeatClient> logger)
     {
         _config = config;
         _signingKey = signingKey;
+        _clock = clock;
         _logger = logger;
         // Drop idle pooled connections well before the server does (uvicorn --timeout-keep-alive 75).
         // Otherwise a request sometimes reuses a connection the server is just closing -> 10054 reset.
@@ -96,7 +98,7 @@ public sealed class HeartbeatClient : IDisposable
         var nonceBytes = RandomNumberGenerator.GetBytes(16);
         var nonce = Base64UrlEncode(nonceBytes);
 
-        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+        var ts = new DateTimeOffset(_clock.UtcNow).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
 
         // Sign the exact bytes that go on the wire.
         var bodyBytes = JsonSerializer.SerializeToUtf8Bytes(body, body.GetType(), _json);
@@ -113,6 +115,11 @@ public sealed class HeartbeatClient : IDisposable
 
         using var resp = await _http.SendAsync(request, ct).ConfigureAwait(false);
         var responseBytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+
+        // Before anything can throw: a request rejected for its timestamp is what this is for.
+        if (resp.Headers.TryGetValues("X-Server-Time", out var timeVals)
+            && long.TryParse(timeVals.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out var serverMs))
+            _clock.Observe(serverMs);
 
         // 401/429 after authentication carry a meaningful, signed body (e.g. {"ok": false, "reason": "invalid_code"}).
         // A 401 before authentication (e.g. a reused nonce) is unsigned and handled below as an error.

@@ -105,6 +105,10 @@ everywhere the same problem occurs, not only where it was reported.
 - WTS session states: `WTSConnected` is the console at the logon screen with nobody signed in, not a background
   session (that is `WTSDisconnected`). Counting it charged the child for a PC left at the logon screen (#87);
   `SessionDetector` takes `WTSActive` only, and a logon wakes the worker (`VigilServiceLifetime.SessionLoggedOn`).
+- The watchdog never uses the PC's wall clock (#92): an admin can set it, a fresh VM may run an hour off. Real time
+  (request timestamp, offline TOTP check) = `ServerClock.UtcNow` (PC clock + the server's `X-Server-Time`);
+  durations = `ServerClock.MonotonicMs`. A wall-clock duration let a clock set back defeat fail-closed. Only
+  `current_time_utc` in the heartbeat is the raw clock, so the server can journal `clock_drift`.
 - Session 0 isolation: the service cannot touch user-session windows — anything UI runs via
   `CreateProcessAsUser` (`UiProcessLauncher`).
 - vigil_ui's environment (D24) is built by `UiProcessLauncher` from a fixed list, never the child's own

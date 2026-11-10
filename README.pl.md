@@ -146,7 +146,8 @@ serwera, ponowne parowanie, odinstalowanie. Parametry do skryptów (po angielsku
 
 ### Gdy Windows się nie uruchamia albo Vigila nie da się usunąć
 
-Na zwykłą blokadę wystarczy kod TOTP rodzica, także offline. Jeśli sam PC trzeba uwolnić spoza Windows:
+Na zwykłą blokadę wystarczy kod TOTP rodzica, także offline — gdy PC choć raz połączył się z serwerem
+po instalacji (wtedy dostaje sekret). Jeśli sam PC trzeba uwolnić spoza Windows:
 Środowisko odzyskiwania → Rozwiązywanie problemów → Wiersz polecenia → `rmdir /s /q D:\ProgramData\Vigil`
 (dysk z Windows ma tam często literę `D:`; sprawdź `dir D:\ProgramData`), restart, potem odinstalowanie z menu
 i `vigil_setup.exe -Mode verify`. Bez swoich plików Vigil się nie uruchomi, więc nie ma blokady.

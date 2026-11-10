@@ -27,6 +27,12 @@ bad signature, age > `max_request_age_seconds` (60), > 5 s in the future, reused
 pruned after `nonce_cache_seconds`). A rejected request never stores its nonce.
 Against an admin child this is friction: the key is in `signing.dat`, readable by an elevated process.
 
+Every `/v1` response, signed or not, carries `X-Server-Time` (unix ms). The watchdog signs with the PC clock
+corrected by it (`ServerClock`), so a PC clock that is off — a fresh VM an hour ahead — recovers at the next
+request instead of being rejected for good. Unsigned on purpose: a forged time only gets requests rejected.
+The heartbeat's `current_time_utc` stays the PC's own clock: more than 180 s off is journaled as `clock_drift`
+(once per device and local day).
+
 Which device (D7): every paired PC has its own key (`devices.signing_key`). Requests carry no device id; the
 server checks the HMAC with every device's key (all of them, no early exit) and the match is the sender
 (`auth.Device`: id, child_id). A key speaks only for its own device and child.
@@ -145,6 +151,9 @@ next tick at once.
 3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, tray state.
 4. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message), unless an
    offline grant is active (see Offline unlock). Also on request timeouts and unexpected exceptions.
+   Durations (grace, uptime, the kill window of vigil_ui) are measured on `Environment.TickCount64`, never on the
+   wall clock: an administrator who set the clock back after the last heartbeat would otherwise get a negative
+   "time since last success" and no lock.
 
 vigil_ui (D8) is spawned in the active session (`WTSQueryUserToken` → `CreateProcessAsUser`, desktop
 `WinSta0\Default`) with a process/thread DACL that gives the user no terminate, suspend or WRITE_DAC
@@ -187,9 +196,10 @@ other programs out.
 
 When the watchdog has failed closed (`server_unreachable`), a TOTP code typed on the lock overlay is
 verified by the watchdog itself: ±1 step, each step once, every 3rd failure locks 60/300/900 s (cap),
-grant ≤ 120 min, ended as soon as the server answers. The secret comes from the server in the signed
+grant ≤ 120 min, ended as soon as the server answers. Codes are checked at the server's time (`ServerClock`);
+the lockout and the grant run on the monotonic clock, which a clock change does not move. The secret comes from the server in the signed
 heartbeat response whenever the watchdog's `totp_fp` (sha256[:16]) differs — after pairing or a TOTP
-regeneration — and is stored in `totp.dat` (DPAPI LocalMachine, entropy `Vigil-Totp-v1`, SYSTEM full /
+regeneration; a PC that has never reached the server since its install has no secret and no offline unlock — and is stored in `totp.dat` (DPAPI LocalMachine, entropy `Vigil-Totp-v1`, SYSTEM full /
 Administrators read). Grants are queued and sent as `offline_grants` with the next successful heartbeat;
 the server logs `offline_unlock` per device (journal) and burns the step — at most up to the current one + 1,
 since a forged step far ahead would make every later code a replay. Friction + detection: an admin child can

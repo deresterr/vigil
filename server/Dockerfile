@@ -6,10 +6,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata curl \
     && rm -rf /var/lib/apt/lists/*
 
+# The server version in the start line of the log (app/logs.py); the release workflow passes the tag.
+ARG VIGIL_VERSION=dev
+
 # TZ (optional, from .env) only sets the time zone of the log timestamps.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    LISTEN_PORT=8088
+    LISTEN_PORT=8088 \
+    VIGIL_VERSION=${VIGIL_VERSION}
 
 WORKDIR /app
 

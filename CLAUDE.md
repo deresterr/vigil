@@ -133,6 +133,10 @@ everywhere the same problem occurs, not only where it was reported.
   `vigil_setup` speaks Windows' display language (`CurrentUICulture`), every text in `client/setup/Strings.cs`.
 - Versions: one for every client binary, `build-package.ps1 -Version` (release: the tag without "v"; CI:
   `0.0.0-ci.<run>`; local: `0.0.0-dev`).
+- Server log (`app/logs.py`, #100): the server's own state and its errors only — start/stop, migrations,
+  warnings, unhandled errors with the request. What happens on the PCs goes to `events` (the panel journal), never
+  to the log; HTTP requests are not logged (uvicorn's access log is off, its INFO lines replaced by the
+  lifespan's). A condition that repeats (healthcheck every 30 s) is logged when it starts and when it ends.
 - Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;
   panel bodies next to their endpoints); config through `get_config_value()`/`get_config_values()`, defaults in
   `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`

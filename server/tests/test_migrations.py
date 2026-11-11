@@ -25,9 +25,10 @@ def _columns(path, table):
     return {row[1] for row in _query(path, f"PRAGMA table_info({table})")}
 
 
-def test_fresh_database_gets_the_latest_schema(db_path):
+def test_fresh_database_gets_the_latest_schema(db_path, caplog):
     app.db.init_database()
     assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
+    assert caplog.records == []  # a new database is "new" in the start line, not a list of migrations
     tables = {r[0] for r in _query(db_path, "SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"config", "children", "child_schedule", "devices", "child_daily", "events", "totp_lockout",
             "used_nonces"} <= tables
@@ -63,7 +64,7 @@ def test_failed_migration_leaves_the_previous_version(db_path, monkeypatch):
     assert _query(db_path, "SELECT name FROM sqlite_master WHERE name = 'half_done'") == []
 
 
-def test_v08_database_migrates(db_path):
+def test_v08_database_migrates(db_path, caplog):
     """A database of v0.8.0 (schema 1) gets the heartbeat remainder and loses the wizard's server address."""
     import app.migrations as migrations
 
@@ -79,3 +80,4 @@ def test_v08_database_migrates(db_path):
     assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
     assert _query(db_path, "SELECT delta_carry_ms FROM devices") == [(0,)]
     assert _query(db_path, "SELECT 1 FROM config WHERE key = 'watchdog_server_url'") == []
+    assert [r.getMessage() for r in caplog.records] == ["Database migrated to schema 2 (devices.delta_carry_ms)"]

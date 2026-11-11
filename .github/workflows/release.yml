@@ -45,6 +45,7 @@ jobs:
           image="ghcr.io/${owner}/vigil-server"
           version="${GITHUB_REF_NAME#v}"
           docker build -t "${image}:${version}" -t "${image}:latest" \
+            --build-arg "VIGIL_VERSION=${version}" \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             --label "org.opencontainers.image.version=${version}" server
           docker push "${image}:${version}"

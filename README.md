@@ -119,7 +119,7 @@ also changed later in the panel: Settings → Weekly schedule).
 **2. Child's PC.** Download [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe)
 from the latest release and run it on the child's PC. It asks for administrator rights; a downloaded copy may
 first get SmartScreen's "Windows protected your PC" (More info → Run anyway). The wizard asks for the server
-address and a pairing code (panel: Settings → Child's computers → Add computer) and finds the child's account
+address and a pairing code (panel: Settings → Add computer) and finds the child's account
 itself. Nothing on the PC changes before you confirm the summary.
 
 Run `vigil_setup.exe` again later for the status and the menu: check, update, change the server address,

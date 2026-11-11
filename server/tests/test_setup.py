@@ -36,12 +36,11 @@ def test_wizard_saves_the_week_day_by_day(fresh):
     assert fresh.get("/admin/api/status").json()["child"]["schedule"] == WEEK
 
 
-def test_wizard_refuses_the_old_two_limit_fields(fresh):
-    """A page cached from before #102 sends the old fields without `schedule`: refused, nothing half-saved."""
-    old = {"child_name": "Ola", "password": "haslo-rodzica", "timezone": "UTC", "daily_limit_weekday": 90,
-           "daily_limit_weekend": 200, "night_lock_start": "21:00", "night_lock_end": "07:00"}
-    r = fresh.post("/setup/complete", json=old)
-    assert (r.status_code, r.json()["detail"]) == (422, {"schedule": "missing"})
+def test_wizard_without_a_schedule_gets_the_default_week(fresh):
+    """A script (the installer e2e) completes the wizard with a name and a password only (#104), as before #102."""
+    r = fresh.post("/setup/complete", json={"child_name": "CI", "password": "e2e-parent-password"})
+    assert r.status_code == 200
+    assert fresh.get("/admin/api/status").json()["child"]["schedule"] == default_schedule()
 
 
 def test_wizard_grid_starts_from_the_default_week(fresh):

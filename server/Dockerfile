@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/deresterr/vigil"
+
 # tzdata: zoneinfo (the time zone chosen in the wizard)
 # curl:   the compose healthcheck
 RUN apt-get update \

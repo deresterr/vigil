@@ -78,7 +78,7 @@ internal static class Wizard
     {
         c.Write(Theme.Facts(new[]
         {
-            (Strings.UiSummaryServer, $"[aqua]{Theme.Esc(url)}[/]"),
+            (Strings.UiSummaryServer, $"[{Theme.AccentTag}]{Theme.Esc(url)}[/]"),
             (Strings.UiSummaryAccount, child is null ? $"[yellow]{Theme.Esc(Strings.UiSummaryNoAccount)}[/]" : Theme.Esc(child.Name)),
             (Strings.UiSummaryVersion, Theme.Esc(AppVersion.Display)),
         }));

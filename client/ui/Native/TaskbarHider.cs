@@ -83,7 +83,7 @@ public static class TaskbarHider
             if (tray != IntPtr.Zero)
                 PostMessage(tray, WM_SETTINGCHANGE, IntPtr.Zero, IntPtr.Zero);
         }
-        catch { /* ignoruj */ }
+        catch { /* best effort: Explorer may be restarting */ }
     }
 
     private static void RestoreWindow(IntPtr h)
@@ -94,7 +94,7 @@ public static class TaskbarHider
             SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
         }
-        catch { /* ignoruj */ }
+        catch { /* best effort: Explorer may be restarting */ }
     }
 }
 

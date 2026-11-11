@@ -9,7 +9,7 @@ namespace Vigil.Ui.Native;
 /// <summary>
 /// Low-level keyboard hook (WH_KEYBOARD_LL) swallowing the keys that lead away from the lock screen:
 /// - Win (both keys), so every Win+… combination
-/// - Alt+Tab, Alt+Esc (switch window), Alt+F4 (close window)
+/// - Alt+Tab, Alt+Esc (switch window), Alt+F4 (close window), Alt+Space (the window's system menu: Move, Close)
 /// - Ctrl+Esc (Start) and Ctrl+Shift+Esc (Task Manager without the SAS screen)
 /// - F1 (Help can open a browser), F11 (full screen toggle), F12 (developer tools)
 ///
@@ -86,8 +86,8 @@ public sealed class KeyboardBlocker : IDisposable
         var altDown = (info.flags & LLKHF_ALTDOWN) != 0;
         var ctrlDown = (GetKeyState(0x11) & 0x8000) != 0;  // VK_CONTROL
 
-        // Alt+Tab, Alt+F4, Alt+Esc
-        if (altDown && (key == Key.Tab || key == Key.F4 || key == Key.Escape))
+        // Alt+Tab, Alt+F4, Alt+Esc, Alt+Space
+        if (altDown && (key == Key.Tab || key == Key.F4 || key == Key.Escape || key == Key.Space))
         {
             return (IntPtr)1;
         }

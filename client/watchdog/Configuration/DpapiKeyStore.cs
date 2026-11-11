@@ -1,7 +1,6 @@
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Logging;
 using Vigil.Shared;
 
 namespace Vigil.Watchdog.Configuration;
@@ -34,18 +33,4 @@ public static class DpapiKeyStore
         }
     }
 
-    /// <summary>SYSTEM full, Administrators read, no inheritance (FileAcls.SecretRules, the same table the
-    /// installer and verify use). Used by TotpSecretStore.</summary>
-    internal static void RestrictFileAcl(string path, ILogger logger)
-    {
-        // A failure (unusual file system) is only logged: the DPAPI file is useless off this machine anyway.
-        try
-        {
-            FileAcls.ProtectSecret(path);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not set the ACL of {Path}; continuing", path);
-        }
-    }
 }

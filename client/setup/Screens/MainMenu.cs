@@ -45,6 +45,8 @@ internal static class MainMenu
             items.Add(new('3', Strings.UiMenuServer, Item.Server));
             items.Add(new('4', Strings.UiMenuRepair2, Item.Repair));
             items.Add(new('5', Strings.UiMenuUninstall, Item.Uninstall));
+            // Digits in order also without "Update" (the payload-less copy from ProgramData); Exit stays 0.
+            items = items.Select((it, i) => it.Value == Item.Exit ? it : it with { Key = (char)('1' + i) }).ToList();
             items.Add(new('0', Strings.UiMenuExit, Item.Exit));
 
             var item = Prompts.Menu(c, items, escapeKey: '0');
@@ -92,7 +94,7 @@ internal static class MainMenu
 
         yield return (Strings.UiStatusVersion, Theme.Esc(Strings.UiStatusVersionValue(s.Installed ?? Strings.UiVersionUnknown, s.Package)));
         yield return (Strings.UiStatusServer, s.ServerUrl is null ? Bad(Strings.UiStatusNoConfig)
-            : $"[aqua]{Theme.Esc(s.ServerUrl)}[/] [grey]·[/] " + (s.Responds ? Good(Strings.UiStatusResponds) : Bad(Strings.UiStatusNoAnswer)));
+            : $"[{Theme.AccentTag}]{Theme.Esc(s.ServerUrl)}[/] [grey]·[/] " + (s.Responds ? Good(Strings.UiStatusResponds) : Bad(Strings.UiStatusNoAnswer)));
         yield return (Strings.UiStatusService, s.Service switch
         {
             ServiceControllerStatus.Running => Good(Strings.UiServiceRunning),

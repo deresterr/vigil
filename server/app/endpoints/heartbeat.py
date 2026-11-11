@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import Device, authenticate_request
 from ..db import get_child, get_config_values, get_db, log_event
-from ..lock_logic import child_today, compute_lock_reason, minutes_remaining, parse_iso_utc, utc_iso
+from ..lock_logic import child_today, compute_lock_reason, minutes_remaining, night_window_at, parse_iso_utc, utc_iso
 from ..models import GoodbyeRequest, GuardianRepaired, HeartbeatRequest, TamperEvent
 from ..offline import sync_offline_totp
 from ..tamper import process_goodbye, process_telemetry
@@ -142,6 +142,10 @@ async def heartbeat(
             "show_resume_button": lock_reason == "pause",
             "current_time_display": now_local.strftime("%H:%M"),
         }
+        # Night: when it ends, for "the computer unlocks at 06:30" (a night lock means no manual lock, and the
+        # new day's limit starts at midnight, before any night ends).
+        if lock_reason == "night" and (window := night_window_at(lock_cfg, now_local)):
+            ui_state["night_end_local"] = window[1].strftime("%H:%M")
 
     # === 6. Tamper telemetry (#7) ===
     if body.has_telemetry:

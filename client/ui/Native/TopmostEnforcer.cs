@@ -6,8 +6,9 @@ using System.Windows.Threading;
 namespace Vigil.Ui.Native;
 
 /// <summary>
-/// Every 500 ms puts the lock windows back on top and in the foreground: when another process took the
-/// focus or opened a topmost window over them, half a second later they are on top again.
+/// Every 500 ms puts the lock windows back on top, in place and in the foreground: when another process took
+/// the focus, opened a topmost window over them, or moved, hid or minimized one (any process of the same user
+/// can, #120), half a second later they cover their monitors again.
 ///
 /// SetForegroundWindow alone often fails silently (the foreground lock timeout, when the user's last input
 /// went to another app), so it runs with the foreground thread's input attached (AttachThreadInput).
@@ -16,17 +17,6 @@ namespace Vigil.Ui.Native;
 /// </summary>
 public sealed class TopmostEnforcer : IDisposable
 {
-    private const uint SWP_NOSIZE       = 0x0001;
-    private const uint SWP_NOMOVE       = 0x0002;
-    private const uint SWP_NOACTIVATE   = 0x0010;
-    private const uint SWP_SHOWWINDOW   = 0x0040;
-    private static readonly IntPtr HWND_TOPMOST = new(-1);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
-        int X, int Y, int cx, int cy, uint uFlags);
-
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
@@ -50,7 +40,7 @@ public sealed class TopmostEnforcer : IDisposable
     private static extern bool BringWindowToTop(IntPtr hWnd);
 
     private readonly DispatcherTimer _timer;
-    private readonly List<Window> _windows = new();
+    private readonly List<Vigil.Ui.LockWindow> _windows = new();
 
     public TopmostEnforcer()
     {
@@ -59,7 +49,7 @@ public sealed class TopmostEnforcer : IDisposable
         _timer.Tick += (_, _) => ReassertAll();
     }
 
-    public void Track(Window w)
+    public void Track(Vigil.Ui.LockWindow w)
     {
         _windows.Add(w);
         // On top at once, not only at the next tick
@@ -86,16 +76,15 @@ public sealed class TopmostEnforcer : IDisposable
         TaskbarHider.Hide();
     }
 
-    private static void ReassertSingle(Window w)
+    private static void ReassertSingle(Vigil.Ui.LockWindow w)
     {
         try
         {
             var hwnd = new WindowInteropHelper(w).Handle;
             if (hwnd == IntPtr.Zero) return;
 
-            // 1. Z-order only (SWP_NOACTIVATE); the focus is step 2.
-            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+            // 1. Z-order, and back over its monitor if moved, hidden or minimized (no activation: step 2).
+            WindowFrame.Restore(hwnd, w.ScreenBounds);
 
             // 2. Take the focus back from another window.
             var fg = GetForegroundWindow();

@@ -25,7 +25,7 @@ internal static class Prompts
             {
                 var label = Theme.Esc(items[i].Label.PadRight(width));
                 c.MarkupLine(i == selected
-                    ? $" [bold aqua]›[/] [aqua]{items[i].Key}[/]  [bold]{label}[/]"
+                    ? $" [bold {Theme.AccentTag}]›[/] [{Theme.AccentTag}]{items[i].Key}[/]  [bold]{label}[/]"
                     : $"   [grey]{items[i].Key}[/]  {label}");
             }
             c.MarkupLine($"[grey]{Theme.Esc(Strings.UiMenuHint)}[/]");
@@ -65,7 +65,7 @@ internal static class Prompts
                 }
                 selected = moved;
                 if (chosen < 0) continue;
-                if (!ansi) c.MarkupLine($" [bold aqua]›[/] [bold]{Theme.Esc(items[chosen].Label)}[/]");
+                if (!ansi) c.MarkupLine($" [bold {Theme.AccentTag}]›[/] [bold]{Theme.Esc(items[chosen].Label)}[/]");
                 c.WriteLine();
                 return items[chosen].Value;
             }

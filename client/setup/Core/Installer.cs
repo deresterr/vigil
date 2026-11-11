@@ -319,7 +319,7 @@ public sealed class Installer
         var key = Pairing.DecodeKey(base64Url);
         try
         {
-            File.WriteAllBytes(P(VigilLayout.SigningFile), ProtectedData.Protect(key,
+            FileAcls.WriteSecret(P(VigilLayout.SigningFile), ProtectedData.Protect(key,
                 Encoding.UTF8.GetBytes(VigilLayout.SigningKeyEntropy), DataProtectionScope.LocalMachine));
         }
         finally { Array.Clear(key); }

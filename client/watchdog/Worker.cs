@@ -42,6 +42,9 @@ public sealed class Worker : BackgroundService
     private readonly long _awakeMsAtStart = AwakeClock.NowMs;
     private int _failedAttempts;
     private long? _lastSuccessMs;  // null: never reached the server since the service started
+    // The last heartbeat was refused for this computer's key (removed or re-paired in the panel): the offline
+    // lock says so instead of "no connection", so the parent knows to pair it again (#120).
+    private volatile bool _keyRejected;
 
     // Tick interval: 5 s normally; 1 s while locked, so an unlock shows at once and a vanished vigil_ui
     // is back within a second instead of leaving the desktop open for 5 s.
@@ -219,6 +222,7 @@ public sealed class Worker : BackgroundService
             serverOk = true;
             _lastSuccessMs = ServerClock.MonotonicMs;
             _failedAttempts = 0;
+            _keyRejected = false;
             _offline.OnServerReachable(req.OfflineGrants);
             if (!string.IsNullOrEmpty(response.TotpSecret))
             {
@@ -231,6 +235,7 @@ public sealed class Worker : BackgroundService
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _failedAttempts++;
+            _keyRejected = ex is KeyRejectedException;
             _logger.LogWarning(ex,
                 "Heartbeat failed (last success {Ago})",
                 _lastSuccessMs is { } at ? $"{SecondsSince(at):F0} s ago" : "never since the service started");
@@ -273,7 +278,8 @@ public sealed class Worker : BackgroundService
             var canUnlock = _offline.HasSecret;
             _offlineLocked = true;
             await _ui.EnsureLockedAsync(new LockState(
-                Reason: "server_unreachable",
+                // Both are this watchdog's own locks (codes, worded by vigil_ui); the server knows neither.
+                Reason: _keyRejected ? "device_unpaired" : "server_unreachable",
                 ShowTotpField: canUnlock,  // vigil_ui words the message by it: code from the phone or wait
                 ShowResumeButton: false,
                 ShowRetryButton: true,
@@ -292,26 +298,20 @@ public sealed class Worker : BackgroundService
         if (response.LockRequired)
         {
             var ui = response.UiState;
-            var isPause = response.LockReason == "pause";
             await _ui.EnsureLockedAsync(new LockState(
                 Reason: response.LockReason ?? "unknown",
                 ShowTotpField: ui?.ShowTotpField ?? false,
                 ShowResumeButton: ui?.ShowResumeButton ?? false,
                 ShowRetryButton: false,  // retrying is for our own offline lock only
                 MinutesRemaining: response.MinutesRemaining,
-                CurrentTimeDisplay: ui?.CurrentTimeDisplay),
+                CurrentTimeDisplay: ui?.CurrentTimeDisplay,
+                NightEndLocal: ui?.NightEndLocal),
                 ct).ConfigureAwait(false);
-
-            // Tray: paused during a pause, no pause button under any other lock
-            await _ui.SendTrayStateAsync(paused: isPause, canPause: false, response.MinutesRemaining, ct)
-                .ConfigureAwait(false);
             return;
         }
 
         await _ui.DismissAsync(ct).ConfigureAwait(false);
-        await _ui.SendTrayStateAsync(paused: false, canPause: true, response.MinutesRemaining, ct)
-            .ConfigureAwait(false);
-
+        await _ui.SendTrayStateAsync(response.MinutesRemaining, ct).ConfigureAwait(false);
     }
 
     /// <summary>

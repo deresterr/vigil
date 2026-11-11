@@ -58,10 +58,8 @@ public sealed class TotpSecretStore
         lock (_gate)
         {
             var encrypted = ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), Entropy, DataProtectionScope.LocalMachine);
-            var tmp = _path + ".tmp";
-            File.WriteAllBytes(tmp, encrypted);
-            File.Move(tmp, _path, overwrite: true);
-            DpapiKeyStore.RestrictFileAcl(_path, _logger);
+            // Not atomic: a write cut short reads as "no secret", and the next heartbeat sends it again.
+            FileAcls.WriteSecret(_path, encrypted);
             _secret = secret;
             _loaded = true;
         }

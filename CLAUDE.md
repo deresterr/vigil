@@ -128,6 +128,15 @@ everywhere the same problem occurs, not only where it was reported.
 - vigil_ui runs with a process DACL that denies the user `PROCESS_TERMINATE`/`WRITE_DAC`: never open the
   own process by PID inside it (e.g. `Process.GetCurrentProcess().MainModule`) — use pseudo-handles or
   `GetModuleHandle(null)`.
+- WPF `Left/Top/Width/Height` are device-independent units, WinForms `Screen.Bounds` are pixels: sized from Bounds,
+  the overlay was 1.5× the screen at 150 % scaling, off-center, with "Shut down" off the edge (#120). Place lock
+  windows with `WindowFrame.Restore` (SetWindowPos, pixels). A `WindowStyle=None` window still has `WS_SYSMENU`:
+  Alt+Space offered Move and Close on the overlay — the bit is removed and system commands are refused.
+- `client/ui` has both `System.Drawing` (tray icon) and `System.Windows.Media` (WPF): `Color` and `Brush` exist in
+  both, so qualify them in a file that sees both. vigil_ui's colors live in `Palette.cs`, mirroring the panel's
+  `theme.css` — change them there and in `theme.css` together.
+- DPAPI secrets are written with `FileAcls.WriteSecret` (restricted ACL from creation): a LocalMachine blob with
+  our public entropy decrypts in any local process, so a moment with the folder's inherited ACL leaks it.
 
 ## Conventions
 - Code, comments, logs, commit messages: English.

@@ -53,7 +53,8 @@ signature like "server unreachable".
 Request bodies are Pydantic models in `app/models.py` (strict types, unknown fields ignored) — a contract with
 `HeartbeatModels.cs`.
 
-`ui_state` (only when locked): `show_totp_field`, `show_resume_button`, `current_time_display`. The retry
+`ui_state` (only when locked): `show_totp_field`, `show_resume_button`, `current_time_display`, and on a night
+lock `night_end_local` ("HH:mm", when the night in progress ends: "the computer unlocks at 06:30"). The retry
 and shutdown buttons are the watchdog's own (retry only on its offline lock, shutdown always).
 
 **Language (i18n, #52):** the server sends codes and numbers, never sentences: `lock_reason`, TOTP `mode` with
@@ -151,7 +152,9 @@ next tick at once.
    screen with nobody signed in.
 3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, tray state.
 4. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message), unless an
-   offline grant is active (see Offline unlock). Also on request timeouts and unexpected exceptions.
+   offline grant is active (see Offline unlock). Also on request timeouts and unexpected exceptions. When the
+   last failure was the server refusing this computer's key (401 `invalid_signature`: removed or re-paired in the
+   panel) the reason is `device_unpaired`, so the lock screen says the PC needs pairing again; it behaves the same.
    Durations (grace, uptime, the kill window of vigil_ui) are measured on `Environment.TickCount64`, never on the
    wall clock: an administrator who set the clock back after the last heartbeat would otherwise get a negative
    "time since last success" and no lock.
@@ -164,19 +167,27 @@ dies) and accepts only the PID it spawned. After a respawn it re-sends the lock 
 a new UI starts unlocked. Lock = `set_state`, unlock = `unlock`; the UI hides the taskbar while locked
 and restores it on unlock and on start (an instance killed while locked leaves it hidden). Orphans in
 the session (a previous watchdog instance's vigil_ui) are killed before a spawn. The UI quits when the pipe
-connect fails and 30 s after losing the pipe. Diagnostics: `%LOCALAPPDATA%\Vigil\ui.log`.
+connect fails, and 30 s after losing the pipe while unlocked; locked, it keeps the overlay until a restarted
+watchdog replaces it (fail-closed: a crashed service is restarted after 60 s). Diagnostics:
+`%LOCALAPPDATA%\Vigil\ui.log`.
 
 Its environment (D24) is built by the watchdog from a fixed list (system values, the profile folders from the
 token, `DOTNET_EnableDiagnostics=0`), nothing from the child's own: `HKCU\Environment` is writable without
 elevation, and the .NET runtime would take startup hooks or a profiler from it. Its native WPF libraries sit
 next to it in ProgramData; nothing is extracted at run time. `vigil_ui.exe --standalone-test [--mode=night|
-limit|manual|pause|server_unreachable] [--lang=en|pl] [--no-keyboard-blocker] [--exit-after=SECONDS]` shows the
-overlay without a watchdog, for UI work; only from the command line.
+limit|manual|pause|server_unreachable|device_unpaired] [--lang=en|pl] [--no-keyboard-blocker] [--exit-after=SECONDS]`
+shows the overlay without a watchdog, for UI work (its "Shut down" only asks; nothing powers off); only from the
+command line.
 
 The TOTP field accepts only digits (typed or pasted, max 6) and regains focus after each check.
 
-Lock overlay hardening: fullscreen on every monitor, `TopmostEnforcer` (500 ms), `KeyboardBlocker`
-(WH_KEYBOARD_LL: Win, Alt+Tab, Alt+Esc, Alt+F4, Ctrl+Esc, Ctrl+Shift+Esc, F1, F11, F12), `TaskbarHider`.
+Lock overlay hardening: one window per monitor placed in the monitor's pixels (`Native/WindowFrame.cs`: WPF
+units are not pixels at a display scale above 100 %), no system menu and no system commands (move, close,
+minimize), closing refused unless vigil_ui unlocks; `TopmostEnforcer` (500 ms) puts each window back on top, over
+its monitor, shown and restored (another process of the user can move or hide it); `KeyboardBlocker`
+(WH_KEYBOARD_LL: Win, Alt+Tab, Alt+Esc, Alt+F4, Alt+Space, Ctrl+Esc, Ctrl+Shift+Esc, F1, F11, F12), `TaskbarHider`.
+Shutting down is confirmed on the overlay. Colors: `client/ui/Palette.cs`, the panel's state colors and accent
+(`theme.css`) on a black screen.
 Ctrl+Alt+Del cannot be blocked; the installer's per-user policies close what it offers: `DisableTaskMgr`
 (Task Manager over the overlay) and `DisableChangePassword` (the shared account's password), plus
 accessibility hotkeys and touchpad gestures off. Nothing else (D12: they hit the parent too). The overlay is
@@ -187,7 +198,7 @@ desktop of its own does not have): friction, like the rest of the overlay.
 
 | Pipe | Server | Client | Messages |
 |---|---|---|---|
-| `VigilUI` | watchdog | vigil_ui | → `set_state`, `unlock`, `tray_state` (`paused`, `can_pause`, `minutes_remaining`), `totp_response`, `exit`; ← `totp_attempt`, `retry_now`, `resume_from_pause`, `pause_toggle` |
+| `VigilUI` | watchdog | vigil_ui | → `set_state` (with `night_end_local`), `unlock`, `tray_state` (`minutes_remaining`, 0 = no limit), `totp_response`, `exit`; ← `totp_attempt`, `retry_now`, `resume_from_pause`, `pause_toggle` |
 
 Messages are defined once in `client/shared/IpcMessages.cs`, linked into both projects.
 Pipe DACL: SYSTEM + Administrators full, Authenticated Users read/write; the client PID check keeps
@@ -201,7 +212,7 @@ grant ≤ 120 min, ended as soon as the server answers. Codes are checked at the
 the lockout and the grant run on the monotonic clock, which a clock change does not move. The secret comes from the server in the signed
 heartbeat response whenever the watchdog's `totp_fp` (sha256[:16]) differs — after pairing or a TOTP
 regeneration; a PC that has never reached the server since its install has no secret and no offline unlock — and is stored in `totp.dat` (DPAPI LocalMachine, entropy `Vigil-Totp-v1`, SYSTEM full /
-Administrators read). Grants are queued and sent as `offline_grants` with the next successful heartbeat;
+Administrators read, set when the file is created: `FileAcls.WriteSecret`, like `signing.dat`). Grants are queued and sent as `offline_grants` with the next successful heartbeat;
 the server logs `offline_unlock` per device (journal) and burns the step — at most up to the current one + 1,
 since a forged step far ahead would make every later code a replay. Friction + detection: an admin child can
 read `totp.dat`.

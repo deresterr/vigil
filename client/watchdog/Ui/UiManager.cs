@@ -201,6 +201,7 @@ public sealed class UiManager : IUiManager, IDisposable
             ShowRetryButton = state.ShowRetryButton,
             MinutesRemaining = state.MinutesRemaining,
             CurrentTimeDisplay = state.CurrentTimeDisplay,
+            NightEndLocal = state.NightEndLocal,
         };
         if (!_locked) _logger.LogInformation("Lock: {Reason}", state.Reason);
         _locked = true;
@@ -218,9 +219,9 @@ public sealed class UiManager : IUiManager, IDisposable
         await TrySendAsync(new IpcUnlock(), ct).ConfigureAwait(false);
     }
 
-    public async Task SendTrayStateAsync(bool paused, bool canPause, int minutesRemaining, CancellationToken ct)
+    public async Task SendTrayStateAsync(int minutesRemaining, CancellationToken ct)
     {
-        _trayState = new IpcTrayState { Paused = paused, CanPause = canPause, MinutesRemaining = minutesRemaining };
+        _trayState = new IpcTrayState { MinutesRemaining = minutesRemaining };
         await TrySendAsync(_trayState, ct).ConfigureAwait(false);
     }
 

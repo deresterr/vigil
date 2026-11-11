@@ -142,8 +142,8 @@ static InstallRequest Request(Cli cli, string url, string? key, IReport report)
 {
     var child = ChildAccountChoice.Resolve(cli.ChildUserName);
     if (child.Account is null && cli.ChildUserName is not null) throw new SetupException(child.Problem!);
-    if (child.Account is null) report.Check(CheckLevel.Warn, Strings.NoChildAccountForVerify(child.Problem));
-    else report.Info(Strings.ChildAccount(child.Account.Name));
+    // Without an account the policies step warns that only the default profile gets them.
+    report.Info(child.Account is null ? child.Problem! : Strings.ChildAccount(child.Account.Name));
     return new InstallRequest
     {
         ServerUrl = url,

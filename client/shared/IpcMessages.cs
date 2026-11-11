@@ -21,6 +21,8 @@ public sealed record IpcSetState
     [JsonPropertyName("show_retry_button")] public bool ShowRetryButton { get; init; }
     [JsonPropertyName("minutes_remaining")] public int MinutesRemaining { get; init; }
     [JsonPropertyName("current_time_display")] public string? CurrentTimeDisplay { get; init; }
+    /// <summary>Night lock: when the night ends, local "HH:mm" (the server's ui_state.night_end_local).</summary>
+    [JsonPropertyName("night_end_local")] public string? NightEndLocal { get; init; }
 }
 
 /// <summary>Hide the lock overlay; the process keeps running with its tray icon.</summary>
@@ -29,12 +31,11 @@ public sealed record IpcUnlock
     [JsonPropertyName("type")] public string Type => "unlock";
 }
 
-/// <summary>Tray tooltip state, sent after every heartbeat.</summary>
+/// <summary>Tray tooltip state, sent after every heartbeat. The tray is reachable only while unlocked (the
+/// overlay hides the taskbar), so the time left is all it shows; 0 = no limit today.</summary>
 public sealed record IpcTrayState
 {
     [JsonPropertyName("type")] public string Type => "tray_state";
-    [JsonPropertyName("paused")] public bool Paused { get; init; }
-    [JsonPropertyName("can_pause")] public bool CanPause { get; init; }
     [JsonPropertyName("minutes_remaining")] public int MinutesRemaining { get; init; }
 }
 

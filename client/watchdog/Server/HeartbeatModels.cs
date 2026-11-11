@@ -110,7 +110,7 @@ public sealed class HeartbeatResponse
     public required bool LockRequired { get; init; }
 
     [JsonPropertyName("lock_reason")]
-    public string? LockReason { get; init; }  // limit | night | manual | null
+    public string? LockReason { get; init; }  // limit | night | manual | pause | null
 
     [JsonPropertyName("minutes_used")]
     public int MinutesUsed { get; init; }
@@ -142,6 +142,10 @@ public sealed class UiState
 
     [JsonPropertyName("current_time_display")]
     public string? CurrentTimeDisplay { get; init; }
+
+    /// <summary>Night lock only: when the night ends, local "HH:mm".</summary>
+    [JsonPropertyName("night_end_local")]
+    public string? NightEndLocal { get; init; }
 }
 
 /// <summary>POST /v1/pause_toggle request: the target state, or none (null is not serialized) to toggle.</summary>

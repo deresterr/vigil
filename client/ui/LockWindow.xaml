@@ -5,36 +5,84 @@
         xmlns:ui="clr-namespace:Vigil.Ui"
         WindowStyle="None"
         WindowState="Normal"
+        WindowStartupLocation="Manual"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         Topmost="True"
-        Background="{StaticResource BackgroundDarkBrush}"
-        Foreground="{StaticResource ForegroundLightBrush}"
+        Background="{x:Static ui:Palette.Background}"
+        Foreground="{x:Static ui:Palette.Detail}"
         FontFamily="Segoe UI"
         Cursor="Arrow">
 
+    <!-- Variant B of #120: black for the night, the state's color (the parent panel's) only on the badge, the
+         controls outlined in the panel's accent. Placement and the system menu: LockWindow.xaml.cs. -->
     <Window.Resources>
-        <!-- BooleanToVisibilityConverter is not in the app resources: declared here -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <!-- Phase visibility (DataTrigger) -->
-        <Style x:Key="PhasePanel" TargetType="StackPanel">
-            <Setter Property="Visibility" Value="Collapsed"/>
+        <Style x:Key="TitleText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="44"/>
+            <Setter Property="FontWeight" Value="Light"/>
+            <Setter Property="Foreground" Value="{x:Static ui:Palette.Title}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsNight}" Value="True">
+                    <Setter Property="Foreground" Value="{x:Static ui:Palette.TitleNight}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="DetailText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="Foreground" Value="{x:Static ui:Palette.Detail}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,10,0,0"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsNight}" Value="True">
+                    <Setter Property="Foreground" Value="{x:Static ui:Palette.DetailNight}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Text, RelativeSource={RelativeSource Self}}" Value="">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- The round badge with the state's icon -->
+        <Style x:Key="Badge" TargetType="Border">
+            <Setter Property="Width" Value="88"/>
+            <Setter Property="Height" Value="88"/>
+            <Setter Property="CornerRadius" Value="44"/>
+            <Setter Property="BorderThickness" Value="2.5"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,0,24"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsNight}" Value="True">
+                    <Setter Property="Opacity" Value="0.7"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="BadgeIcon" TargetType="Path">
+            <Setter Property="StrokeThickness" Value="1.6"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
         </Style>
     </Window.Resources>
 
     <Grid>
-        <!-- Clock, top right, 72 pt: readable across the room -->
+        <!-- Clock, top right: the server's time -->
         <TextBlock Text="{Binding CurrentTime}"
-                   FontSize="72"
+                   FontSize="64"
                    FontWeight="Light"
                    HorizontalAlignment="Right"
                    VerticalAlignment="Top"
-                   Margin="0,40,60,0"
-                   Foreground="{StaticResource MutedBrush}"/>
+                   Margin="0,36,56,0"
+                   Foreground="{x:Static ui:Palette.Muted}"/>
 
-        <!-- Centre panel: content by Phase -->
-        <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="900">
+        <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="1000">
 
             <!-- === PHASE: Locked === -->
             <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
@@ -49,23 +97,22 @@
                     </Style>
                 </StackPanel.Style>
 
-                <!-- Main message (48 pt): a little brighter than the default foreground for contrast, still
-                     muted so it does not glow at night -->
-                <TextBlock Text="{Binding MainMessage}"
-                           FontSize="48"
-                           FontWeight="Light"
-                           Foreground="#a8a8a8"
-                           TextWrapping="Wrap"
-                           TextAlignment="Center"
-                           Margin="40,20,40,40"/>
+                <Border Style="{StaticResource Badge}" BorderBrush="{Binding StateBrush}">
+                    <Viewbox Width="44" Height="44">
+                        <Path Style="{StaticResource BadgeIcon}" Data="{Binding StateIcon}" Stroke="{Binding StateBrush}"/>
+                    </Viewbox>
+                </Border>
+                <TextBlock Style="{StaticResource TitleText}" Text="{Binding Title}" Margin="40,0"/>
+                <TextBlock Style="{StaticResource DetailText}" Text="{Binding Detail}" Margin="40,10,40,0"/>
 
-                <!-- TOTP field (warunkowo) -->
+                <!-- Code from the parent -->
                 <StackPanel Orientation="Vertical"
                             HorizontalAlignment="Center"
+                            Margin="0,40,0,0"
                             Visibility="{Binding ShowTotpField, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="{x:Static ui:Strings.EnterCode}"
-                               FontSize="22"
-                               Foreground="{StaticResource MutedBrush}"
+                               FontSize="20"
+                               Foreground="{x:Static ui:Palette.Muted}"
                                HorizontalAlignment="Center"
                                Margin="0,0,0,12"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -81,62 +128,40 @@
                                  PreviewTextInput="TotpInput_PreviewTextInput"
                                  IsVisibleChanged="TotpInput_IsVisibleChanged"/>
                         <Button Content="{x:Static ui:Strings.Check}"
+                                Style="{StaticResource AccentButton}"
                                 Margin="16,0,0,0"
                                 Padding="30,10"
                                 Click="CheckTotp_Click"/>
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Retry button (warunkowo) -->
+                <!-- Retry: the watchdog's own offline lock -->
                 <Button Content="{x:Static ui:Strings.RetryConnection}"
-                        Margin="0,30,0,0"
-                        Padding="40,16"
-                        FontSize="22"
+                        Margin="0,24,0,0"
+                        Padding="32,12"
                         HorizontalAlignment="Center"
                         Visibility="{Binding ShowRetryButton, Converter={StaticResource BoolToVis}}"
                         Click="Retry_Click"/>
 
-                <!-- Time left: during a pause only, when > 0 -->
-                <TextBlock Text="{Binding MinutesRemainingText}"
-                           FontSize="32"
-                           FontWeight="Light"
-                           Foreground="#22c55e"
-                           HorizontalAlignment="Center"
-                           Margin="0,30,0,0">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding ShowResumeButton}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-
-                <!-- Odblokuj (pauza) -->
+                <!-- Back to the computer: pause only -->
                 <Button Content="{x:Static ui:Strings.Resume}"
-                        Margin="0,20,0,0"
-                        Padding="50,18"
-                        FontSize="26"
-                        FontWeight="Medium"
+                        Style="{StaticResource AccentButton}"
+                        Margin="0,40,0,0"
+                        Padding="44,16"
+                        FontSize="24"
                         HorizontalAlignment="Center"
-                        Background="#16a34a"
-                        Foreground="White"
-                        BorderThickness="0"
                         Visibility="{Binding ShowResumeButton, Converter={StaticResource BoolToVis}}"
                         Click="ResumeFromPause_Click"/>
 
-                <!-- Status (wrong code, lockout): a muted red that marks the error without glowing at night -->
+                <!-- Status (wrong code, lockout) -->
                 <TextBlock Text="{Binding StatusMessage}"
-                           Foreground="#a05858"
+                           Foreground="{x:Static ui:Palette.Problem}"
                            FontSize="20"
                            Margin="0,20,0,0"
                            HorizontalAlignment="Center"
                            TextAlignment="Center"
                            TextWrapping="Wrap"
-                           MaxWidth="600"/>
+                           MaxWidth="640"/>
             </StackPanel>
 
             <!-- === PHASE: GrantPending === -->
@@ -151,11 +176,7 @@
                         </Style.Triggers>
                     </Style>
                 </StackPanel.Style>
-                <TextBlock Text="{x:Static ui:Strings.Sending}"
-                           FontSize="36"
-                           FontWeight="Light"
-                           Foreground="#a8a8a8"
-                           HorizontalAlignment="Center"/>
+                <TextBlock Style="{StaticResource TitleText}" Text="{x:Static ui:Strings.Sending}" FontSize="36"/>
             </StackPanel>
 
             <!-- === PHASE: GrantApplied === -->
@@ -170,33 +191,57 @@
                         </Style.Triggers>
                     </Style>
                 </StackPanel.Style>
-                <TextBlock Text="{Binding StatusMessage}"
-                           FontSize="36"
-                           FontWeight="Light"
-                           Foreground="#a8a8a8"
-                           TextWrapping="Wrap"
-                           TextAlignment="Center"
-                           HorizontalAlignment="Center"
-                           Margin="40"/>
-                <TextBlock Text="{x:Static ui:Strings.UnlockingSoon}"
-                           FontSize="22"
-                           Foreground="{StaticResource MutedBrush}"
-                           HorizontalAlignment="Center"
-                           Margin="0,20,0,0"/>
+                <TextBlock Style="{StaticResource TitleText}" Text="{Binding StatusMessage}" FontSize="36" Margin="40,0"/>
+                <TextBlock Style="{StaticResource DetailText}" Text="{x:Static ui:Strings.UnlockingSoon}" FontSize="22"
+                           Margin="0,16,0,0"/>
+            </StackPanel>
+
+            <!-- === PHASE: ConfirmShutdown === -->
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Phase}" Value="{x:Static vm:LockUiPhase.ConfirmShutdown}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <Border Style="{StaticResource Badge}" BorderBrush="{x:Static ui:Palette.Lock}">
+                    <Viewbox Width="44" Height="44">
+                        <Path Style="{StaticResource BadgeIcon}" Data="{x:Static ui:Icons.Power}" Stroke="{x:Static ui:Palette.Lock}"/>
+                    </Viewbox>
+                </Border>
+                <TextBlock Style="{StaticResource TitleText}" Text="{x:Static ui:Strings.ShutDownConfirm}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,40,0,0">
+                    <Button x:Name="ConfirmShutdownButton"
+                            Content="{x:Static ui:Strings.ShutDownYes}"
+                            Style="{StaticResource PowerButton}"
+                            Padding="36,12"
+                            Click="ConfirmShutdown_Click"/>
+                    <Button Content="{x:Static ui:Strings.Cancel}"
+                            Margin="16,0,0,0"
+                            Padding="36,12"
+                            Click="CancelShutdown_Click"/>
+                </StackPanel>
             </StackPanel>
 
         </Grid>
 
         <!-- Shut down: bottom right, unobtrusive -->
-        <Button Content="{x:Static ui:Strings.ShutDown}"
-                HorizontalAlignment="Right"
+        <Button HorizontalAlignment="Right"
                 VerticalAlignment="Bottom"
                 Margin="0,0,40,40"
-                Padding="20,10"
+                Padding="16,8"
                 FontSize="16"
-                Background="Transparent"
-                BorderThickness="1"
-                Foreground="{StaticResource MutedBrush}"
-                Click="Shutdown_Click"/>
+                Foreground="{x:Static ui:Palette.Muted}"
+                Click="Shutdown_Click">
+            <StackPanel Orientation="Horizontal">
+                <Path Style="{StaticResource BadgeIcon}" Data="{x:Static ui:Icons.Power}" Stroke="{x:Static ui:Palette.Muted}"
+                      Width="16" Height="16" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock Text="{x:Static ui:Strings.ShutDown}" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Button>
     </Grid>
 </Window>

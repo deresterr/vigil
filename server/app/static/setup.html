@@ -4,13 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title data-i18n>Konfiguracja — Vigil</title>
+  <!-- theme -->
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: system-ui, -apple-system, sans-serif;
-      background: #1a1a1a;
-      color: #e8e8e8;
+      background: var(--bg);
+      color: var(--text);
       display: flex;
       align-items: flex-start;
       justify-content: center;
@@ -18,82 +19,82 @@
       padding: 32px 16px;
     }
     .card {
-      background: #2a2a2a;
-      border: 1px solid #444;
+      background: var(--hover);
+      border: 1px solid var(--border-strong);
       border-radius: 8px;
       padding: 32px;
       width: 460px;
       max-width: 100%;
     }
     h1 { margin: 0 0 4px; font-size: 1.3rem; font-weight: 500; }
-    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 28px; }
+    .subtitle { color: var(--text-3); font-size: 0.85rem; margin-bottom: 28px; }
     .steps { display: flex; gap: 6px; margin-bottom: 28px; }
     .step-dot {
       flex: 1; height: 3px; border-radius: 2px;
-      background: #444; transition: background .2s;
+      background: var(--border-strong); transition: background .2s;
     }
-    .step-dot.done { background: #4a8fd4; }
-    .step-dot.active { background: #6db4f5; }
+    .step-dot.done { background: var(--accent); }
+    .step-dot.active { background: var(--accent-line); }
     label {
       display: block; margin-bottom: 6px;
-      font-size: 0.85rem; color: #aaa;
+      font-size: 0.85rem; color: var(--text-2);
     }
     input[type=text], input[type=password], input[type=number], input[type=time],
     select {
       width: 100%; padding: 10px 12px;
-      background: #1a1a1a; border: 1px solid #555;
-      color: #e8e8e8; border-radius: 4px; font-size: 0.95rem;
+      background: var(--bg); border: 1px solid var(--border-strong);
+      color: var(--text); border-radius: 4px; font-size: 0.95rem;
       margin-bottom: 16px;
     }
-    input:focus, select:focus { outline: none; border-color: #6db4f5; }
+    input:focus, select:focus { outline: none; border-color: var(--accent-line); }
     .row { display: flex; gap: 12px; }
     .row > div { flex: 1; }
     .btn {
       padding: 10px 20px; border: none; border-radius: 4px;
       font-size: 0.95rem; cursor: pointer; transition: background .15s;
     }
-    .btn-primary { background: #4a8fd4; color: #fff; }
-    .btn-primary:hover { background: #5ba0e5; }
+    .btn-primary { background: var(--accent); color: var(--white); }
+    .btn-primary:hover { background: var(--accent-hover); }
     .btn-secondary {
-      background: transparent; color: #aaa;
-      border: 1px solid #555;
+      background: transparent; color: var(--text-2);
+      border: 1px solid var(--border-strong);
     }
-    .btn-secondary:hover { border-color: #888; color: #e8e8e8; }
+    .btn-secondary:hover { border-color: var(--text-3); color: var(--text); }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
     .error {
       margin-bottom: 12px; padding: 10px 12px;
-      background: #4a1f1f; border: 1px solid #8a3a3a;
-      border-radius: 4px; color: #ffb0b0; font-size: 0.85rem;
+      background: var(--danger-bg); border: 1px solid var(--danger-border);
+      border-radius: 4px; color: var(--danger-text); font-size: 0.85rem;
     }
     .error[hidden] { display: none; }
     .info {
       margin-bottom: 16px; padding: 10px 12px;
-      background: #1f2e3f; border: 1px solid #2c5282;
-      border-radius: 4px; color: #90cdf4; font-size: 0.85rem;
+      background: var(--accent-bg); border: 1px solid var(--accent-border);
+      border-radius: 4px; color: var(--accent-text); font-size: 0.85rem;
     }
     .qr-wrap { text-align: center; margin: 12px 0 16px; }
     .qr-wrap img { max-width: 200px; border-radius: 4px; }
-    .qr-wrap .loading { color: #888; font-size: 0.85rem; padding: 20px 0; }
+    .qr-wrap .loading { color: var(--text-3); font-size: 0.85rem; padding: 20px 0; }
     .summary-row {
       display: flex; justify-content: space-between;
-      padding: 6px 0; border-bottom: 1px solid #333; font-size: 0.9rem;
+      padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem;
     }
-    .summary-row .key { color: #aaa; }
-    .summary-row .val { color: #e8e8e8; text-align: right; max-width: 60%; word-break: break-all; }
-    .totp-skip { font-size: 0.8rem; color: #888; margin-top: -8px; margin-bottom: 16px; }
-    .hint { color: #888; font-size: 0.8rem; margin: -2px 0 12px; }
+    .summary-row .key { color: var(--text-2); }
+    .summary-row .val { color: var(--text); text-align: right; max-width: 60%; word-break: break-all; }
+    .totp-skip { font-size: 0.8rem; color: var(--text-3); margin-top: -8px; margin-bottom: 16px; }
+    .hint { color: var(--text-3); font-size: 0.8rem; margin: -2px 0 12px; }
     /* The weekly grid (schedule.js), the same as the panel's Settings → Weekly schedule. */
     .sched-templates { display: flex; gap: 8px; margin-bottom: 14px; }
     .sched-templates .btn { flex: 1; padding: 8px 10px; font-size: 0.85rem; }
     .sched { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
              gap: 6px 8px; align-items: center; margin-bottom: 16px; }
-    .sched .hd { font-size: 0.75rem; color: #888; }
-    .sched .day { color: #ccc; font-weight: 600; }
-    .sched .day.weekend { color: #60a5fa; }
-    .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
+    .sched .hd { font-size: 0.75rem; color: var(--text-3); }
+    .sched .day { color: var(--text-2); font-weight: 600; }
+    .sched .day.weekend { color: var(--accent-line); }
+    .sched .sep { grid-column: 1 / -1; border-top: 1px solid var(--border-strong); margin: 4px 0; }
     .sched input[type=text] { padding: 10px 8px; margin-bottom: 0; min-width: 0; }
-    .sched input.invalid { border-color: #e05252; }
+    .sched input.invalid { border-color: var(--danger); }
     .step { display: none; }
     .step.active { display: block; }
   </style>

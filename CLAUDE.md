@@ -6,7 +6,8 @@ everywhere the same problem occurs, not only where it was reported.
 ## Layout
 - `server/` — FastAPI + SQLite, one server for many children and their PCs (D7). Entry `app/main.py`,
   time/lock rules `app/lock_logic.py` + `app/endpoints/heartbeat.py`. Admin UI = static HTML in `app/static/`;
-  `pages.py` inlines the shared scripts (`i18n.js`, `schedule.js`: the weekly grid of the panel and the wizard).
+  `pages.py` inlines the shared files (`theme.css`: every color of the three pages, #116 — `tests/test_theme.py`
+  fails on a color written elsewhere; `i18n.js`; `schedule.js`: the weekly grid of the panel and the wizard).
 - `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
   child's session, started and kept alive by the watchdog), `setup` (`vigil_setup.exe`, the C# installer of D22:
   console, trimmed, `requireAdministrator`; core in `Core/` never touches the console, `IReport` gets the output;

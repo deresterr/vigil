@@ -6,6 +6,10 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 ## [Unreleased]
 
 ### Server
+- Panel, setup wizard and login share one color scheme: one accent (cyan) for the main actions, focus and the
+  selected item, and one color per state everywhere — time amber (also the extra-time buttons), night violet,
+  manual lock and deleting red, unlocked green, pause slate. The status card shows a tick or a padlock in the
+  lock's color instead of an emoji. "Generate new TOTP code" is no longer a bright orange button.
 - One term for moving the night time in the panel: the Status tag ("Moved to 22:30"), the journal and "Clear
   extra time and night time moves". One minute format in Status and the journal. "Show TOTP code" shows the key
   too, like a new code. The wizard explains a wrong TOTP code or an unknown time zone instead of showing the

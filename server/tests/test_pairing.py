@@ -112,3 +112,11 @@ def test_code_must_be_a_string(client):
     code = _new_code(client).replace(" ", "")
     assert client.post("/v1/pair", json={"code": int(code)}).status_code == 422
     assert client.post("/v1/pair", json={"code": code}).status_code == 200
+
+
+def test_a_new_device_needs_a_name(client):
+    """The server has no words of its own (D21): the panel names a new PC; re-pairing keeps the name."""
+    _login(client)
+    r = client.post("/admin/api/pairing_code", json={"child_id": 1})
+    assert r.status_code == 422
+    assert client.post("/admin/api/pairing_code", json={"device_id": 1}).status_code == 200

@@ -6,6 +6,12 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 ## [Unreleased]
 
 ### Server
+- One term for moving the night time in the panel: the Status tag ("Moved to 22:30"), the journal and "Clear
+  extra time and night time moves". One minute format in Status and the journal. "Show TOTP code" shows the key
+  too, like a new code. The wizard explains a wrong TOTP code or an unknown time zone instead of showing the
+  server's code.
+- A damaged password hash refuses the login instead of failing with a server error. A new computer's name comes
+  from the panel; the server no longer has a Polish default name.
 - Settings tab: the child's name, computers and "Delete child" are one card titled with the name ("Rename" opens
   a dialog). The "Children" card is gone: children are picked and added from the menu at the name in the header,
   which now opens with one child too. Shorter TOTP description.

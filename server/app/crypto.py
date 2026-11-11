@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pyotp
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError
 
 # The library's argon2id defaults (RFC 9106, second recommended option): one parent, few logins.
 _hasher = PasswordHasher()
@@ -21,11 +21,12 @@ def hash_password(plain: str) -> str:
 
 
 def verify_password(plain: str, encoded_hash: str) -> bool:
-    """True if the password matches (constant time inside the library)."""
+    """True if the password matches (constant time inside the library). A damaged hash refuses the password
+    instead of failing the request."""
     try:
         _hasher.verify(encoded_hash, plain)
         return True
-    except VerifyMismatchError:
+    except (VerificationError, InvalidHashError):
         return False
 
 

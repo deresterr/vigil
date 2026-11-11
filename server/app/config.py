@@ -15,7 +15,7 @@ DATABASE_PATH: Path = Path(os.environ.get("DATABASE_PATH", "/data/vigil.db"))
 CONFIG_DEFAULTS: dict[str, str] = {
     # Set by the wizard
     "setup_complete":        "0",
-    "timezone":              "Europe/Warsaw",
+    "timezone":              "UTC",  # the wizard's default too (setup.py)
     # Technical parameters — not in the wizard
     # heartbeat_grace_seconds: admin UI only ("online"); the watchdog has its own hard-coded grace (30 s)
     "heartbeat_grace_seconds":    "30",
@@ -60,6 +60,7 @@ def default_schedule() -> list[dict]:
     template of both (pages.py hands it to schedule.js)."""
     return week_schedule(int(CHILD_DEFAULTS["daily_limit_weekday"]), int(CHILD_DEFAULTS["daily_limit_weekend"]),
                          str(CHILD_DEFAULTS["night_lock_start"]), str(CHILD_DEFAULTS["night_lock_end"]))
+
 
 # === Constants not stored in the database ===
 

@@ -187,7 +187,7 @@
 <!-- schedule -->
 <script>
 applyI18n();
-// The browser's time zone as the default (the panel can change it later).
+// The browser's time zone as the default.
 try {
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   if (browserTz) document.getElementById('tz').value = browserTz;
@@ -234,6 +234,9 @@ function goTo(step) {
   if (step === 5) {
     const {error} = readSchedule();
     if (error) { showError(error); return; }
+    if (!validTimeZone(document.getElementById('tz').value.trim())) {
+      showError(t('Nieznana strefa czasowa — wybierz z listy, np. Europe/Warsaw.')); return;
+    }
     buildSummary();
   }
   document.getElementById('s' + currentStep).classList.remove('active');
@@ -241,6 +244,22 @@ function goTo(step) {
   document.getElementById('s' + currentStep).classList.add('active');
   updateDots(currentStep);
   if (step === 3) loadQr();
+}
+
+// The browser knows the IANA names the server's zoneinfo knows (Europe/Warsaw, UTC, …).
+function validTimeZone(tz) {
+  try { new Intl.DateTimeFormat('en', {timeZone: tz}); return !!tz; } catch { return false; }
+}
+
+// What the server can answer (setup.py: {field: code}) in the wizard's words; anything else as its code.
+const SERVER_ERRORS = {
+  'totp_code:invalid': t('Kod TOTP jest nieprawidłowy — wróć do kroku 3 i wpisz aktualny kod albo pomiń TOTP.'),
+  'timezone:invalid': t('Nieznana strefa czasowa — wybierz z listy, np. Europe/Warsaw.'),
+  'already_configured': t('Konfiguracja jest już zakończona — przejdź do panelu.'),
+};
+function serverError(detail) {
+  if (typeof detail !== 'object' || detail === null) return SERVER_ERRORS[detail] || t('Błąd: {e}', {e: String(detail)});
+  return Object.entries(detail).map(([k, v]) => SERVER_ERRORS[k + ':' + v] || t('Błąd: {e}', {e: k + ': ' + v})).join(' ');
 }
 
 function loadQr() {
@@ -314,11 +333,7 @@ function finish() {
     if (ok) {
       window.location.href = '/admin';
     } else {
-      const detail = data.detail;
-      const msg = typeof detail === 'object'
-        ? Object.entries(detail).map(([k, v]) => k + ': ' + v).join(', ')
-        : String(detail);
-      showError(t('Błąd: {e}', {e: msg}));
+      showError(serverError(data.detail));
       btn.disabled = false;
       btn.textContent = t('Zakończ konfigurację');
     }

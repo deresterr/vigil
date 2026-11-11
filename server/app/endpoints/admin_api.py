@@ -105,9 +105,8 @@ def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, grace: int, 
     }
 
 
-def _child_detail(db: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime, tz: ZoneInfo,
-                  devices: list[dict]) -> dict:
-    t = child_today(db, child, now_utc, tz)
+def _child_detail(child: sqlite3.Row, t: dict, now_utc: datetime, tz: ZoneInfo, devices: list[dict]) -> dict:
+    """t: lock_logic.child_today of this child."""
     state, cfg = t["state"], t["cfg"]
     night_ext_local = None
     if state["night_extension_until_utc"]:
@@ -129,7 +128,6 @@ def _child_detail(db: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime,
         "minutes_remaining": t["minutes_remaining"],
         "daily_limit": t["daily_limit"],
         "limit_override_minutes": state["limit_override_minutes"],
-        "effective_limit": t["effective_limit"],
         "unlimited": t["unlimited"],
         "manual_lock": bool(state["manual_lock"]),
         "pause_active": bool(state["pause_active"]),
@@ -161,16 +159,17 @@ async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None 
         online = sum(d["online"] for d in devices)
         devices_online += online
         devices_total += len(devices)
+        t = child_today(db, child, now_utc, tz)
         summaries.append({
             "id": child["id"],
             "name": child["name"],
-            "lock_reason": child_today(db, child, now_utc, tz)["lock_reason"],
+            "lock_reason": t["lock_reason"],
             "alerts_unacked": unacked.get(child["id"], 0),
             "devices_online": online,
             "devices_total": len(devices),
         })
         if detail is None and child_id in (None, child["id"]):
-            detail = _child_detail(db, child, now_utc, tz, devices)
+            detail = _child_detail(child, t, now_utc, tz, devices)
     if child_id is not None and detail is None:
         raise HTTPException(status_code=404, detail="child_not_found")
 
@@ -370,7 +369,8 @@ async def unpair_device(device_id: int, db: sqlite3.Connection = Depends(get_db)
 
 
 class PairingCodeBody(_Body):
-    """Either a new device (child_id + device_name) or re-pairing an existing one (device_id)."""
+    """Either a new device (child_id + device_name) or re-pairing an existing one (device_id). The panel names
+    the new device: the server has no words of its own (D21)."""
 
     child_id: int | None = None
     device_name: Name | None = None
@@ -380,6 +380,8 @@ class PairingCodeBody(_Body):
     def _one_target(self) -> PairingCodeBody:
         if (self.device_id is None) == (self.child_id is None):
             raise ValueError("give child_id or device_id")
+        if self.child_id is not None and self.device_name is None:
+            raise ValueError("a new device needs device_name")
         return self
 
 
@@ -393,7 +395,7 @@ async def new_pairing_code(body: PairingCodeBody, db: sqlite3.Connection = Depen
         child_id = device["child_id"]
     else:
         child_id = _child_or_404(db, body.child_id)["id"]
-        code, expires = create_pairing_code(db, now, child_id=child_id, device_name=body.device_name or "Komputer")
+        code, expires = create_pairing_code(db, now, child_id=child_id, device_name=body.device_name)
     log_event(db, "pairing_code_created", {"via": "admin_ui", "repair": body.device_id is not None},
               child_id=child_id, device_id=body.device_id)
     tz = ZoneInfo(get_config_value(db, "timezone"))

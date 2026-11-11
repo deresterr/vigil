@@ -6,6 +6,9 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 ## [Unreleased]
 
 ### Server
+- Status tab, Actions: the buttons are grouped under "Time today" and "Move night time by", which now offers
+  30, 60 or 120 min instead of one "Night time +60 min" button. The manual lock is a switch that turns red while
+  it is on.
 - Status tab: today's limit and night time are two tags under the minutes used and left, instead of one line
   joined with "•". The limit includes extra time ("Limit 2 h + 30 min"); the night tag shows the hours, the end
   while it runs, or how long it is extended. The "summed over all computers" note is gone.

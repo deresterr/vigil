@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1a1a1a">
   <title>Vigil</title>
+  <!-- theme -->
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     [hidden] { display: none !important; }  /* .btn etc. set display and would override it */
@@ -12,16 +13,16 @@
       margin: 0;
       padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      background: #1a1a1a;
-      color: #e8e8e8;
+      background: var(--bg);
+      color: var(--text);
       line-height: 1.5;
       -webkit-text-size-adjust: 100%;
       min-height: 100vh;
       min-height: 100dvh;
     }
     header {
-      background: #232323;
-      border-bottom: 1px solid #333;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
       padding: 14px 16px;
       padding-top: max(14px, env(safe-area-inset-top));
       display: flex;
@@ -31,13 +32,13 @@
       top: 0;
       z-index: 10;
     }
-    .watchdog-status { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #e8e8e8; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
-    .dot.online { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
-    .dot.offline { background: #f87171; }
+    .watchdog-status { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+    .dot.online { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+    .dot.offline { background: var(--danger); }
     nav.tabs {
-      background: #1f1f1f;
-      border-bottom: 1px solid #333;
+      background: var(--bar);
+      border-bottom: 1px solid var(--border);
       display: flex;
       position: sticky;
       top: 50px;
@@ -47,7 +48,7 @@
       flex: 1;
       background: transparent;
       border: none;
-      color: #aaa;
+      color: var(--text-2);
       font-size: 0.95rem;
       padding: 14px 12px;
       cursor: pointer;
@@ -55,8 +56,8 @@
       border-bottom: 2px solid transparent;
       transition: color 0.15s, border-color 0.15s;
     }
-    nav.tabs button.active { color: #fff; border-bottom-color: #4ade80; }
-    nav.tabs button:active { background: #2a2a2a; }
+    nav.tabs button.active { color: var(--white); border-bottom-color: var(--accent-line); }
+    nav.tabs button:active { background: var(--hover); }
     main {
       padding: 16px;
       padding-bottom: max(16px, env(safe-area-inset-bottom));
@@ -64,8 +65,8 @@
       margin: 0 auto;
     }
     .card {
-      background: #232323;
-      border: 1px solid #333;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 16px;
       margin-bottom: 12px;
@@ -74,35 +75,44 @@
       margin: 0 0 12px;
       font-size: 0.95rem;
       font-weight: 600;
-      color: #ccc;
+      color: var(--text-2);
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
     .card .muted-block { margin-top: 0; margin-bottom: 14px; }
     .card h2.card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .card h2.card-head .btn-sm { min-height: 32px; text-transform: none; letter-spacing: 0; font-weight: 400; }
-    .btn.btn-ghost-danger { color: #fca5a5; border-color: #7f1d1d; }
+    .btn.btn-ghost-danger { color: var(--danger-text); border-color: var(--danger-border); }
     .status-card { text-align: center; padding: 28px 16px; }
     .status-card .lock-state { font-size: 1.4rem; font-weight: 600; margin: 0 0 6px; }
-    .status-card .lock-state.unlocked { color: #4ade80; }
-    .status-card .lock-state.locked-limit { color: #fb923c; }
-    .status-card .lock-state.locked-night { color: #818cf8; }
-    .status-card .lock-state.locked-manual { color: #f87171; }
-    .status-card .lock-state.locked-pause { color: #94a3b8; }
-    .status-card .substate { color: #aaa; font-size: 0.95rem; margin: 0; }
+    /* The state as a badge above its word (#116): a tick when unlocked, a padlock in the lock's color otherwise. */
+    .status-card .state-badge { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px;
+                                margin: 0 auto 10px; border-radius: 50%; }
+    .status-card .state-badge svg { width: 30px; height: 30px; }
+    .status-card .unlocked .state-badge { background: var(--ok-bg); }
+    .status-card .locked-limit .state-badge { background: var(--time-bg); }
+    .status-card .locked-night .state-badge { background: var(--night-bg); }
+    .status-card .locked-manual .state-badge { background: var(--danger-bg); }
+    .status-card .locked-pause .state-badge { background: var(--pause-bg); }
+    .status-card .lock-state.unlocked { color: var(--ok); }
+    .status-card .lock-state.locked-limit { color: var(--time); }
+    .status-card .lock-state.locked-night { color: var(--night); }
+    .status-card .lock-state.locked-manual { color: var(--danger); }
+    .status-card .lock-state.locked-pause { color: var(--pause); }
+    .status-card .substate { color: var(--text-2); font-size: 0.95rem; margin: 0; }
     .time-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 4px; }
-    .time-grid .stat { background: #1a1a1a; border-radius: 8px; padding: 14px 12px; text-align: center; }
-    .time-grid .stat .label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 4px; }
-    .time-grid .stat .value { font-size: 1.6rem; font-weight: 600; color: #e8e8e8; margin: 0; font-variant-numeric: tabular-nums; }
-    .time-grid .stat .value.warn { color: #fb923c; }
-    .time-grid .stat .value.danger { color: #f87171; }
+    .time-grid .stat { background: var(--bg); border-radius: 8px; padding: 14px 12px; text-align: center; }
+    .time-grid .stat .label { font-size: 0.75rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 4px; }
+    .time-grid .stat .value { font-size: 1.6rem; font-weight: 600; color: var(--text); margin: 0; font-variant-numeric: tabular-nums; }
+    .time-grid .stat .value.warn { color: var(--time); }
+    .time-grid .stat .value.danger { color: var(--danger); }
     /* Today's limit and night time as tags under the two numbers (#108). */
     .today-tags { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
     .today-tags .tag { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 4px 10px;
                        font-size: 0.8rem; font-variant-numeric: tabular-nums; }
     .today-tags .tag svg { width: 15px; height: 15px; flex: none; }
-    .today-tags .tag.limit { background: #1e2a3a; color: #93c5fd; }
-    .today-tags .tag.night { background: #2a2440; color: #c4b5fd; }
+    .today-tags .tag.limit { background: var(--time-bg); color: var(--time-text); }
+    .today-tags .tag.night { background: var(--night-bg); color: var(--night-text); }
     .btn {
       display: block;
       width: 100%;
@@ -118,103 +128,99 @@
     }
     .btn:active { transform: scale(0.98); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: #2563eb; color: white; }
-    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
-    .btn-success { background: #16a34a; color: white; }
-    .btn-success:hover:not(:disabled) { background: #15803d; }
-    .btn-warn { background: #ea580c; color: white; }
+    .btn-primary { background: var(--accent); color: var(--white); }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
     /* Journal tab (#8) */
     nav.tabs .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px;
-      background: #dc2626; color: #fff; font-size: .72rem; line-height: 18px; font-weight: 600; vertical-align: 1px; }
+      background: var(--danger); color: var(--white); font-size: .72rem; line-height: 18px; font-weight: 600; vertical-align: 1px; }
     .chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; }
-    .chip { flex: 0 0 auto; border: 1px solid #3a3a3a; background: #232323; color: #bbb; border-radius: 16px;
+    .chip { flex: 0 0 auto; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); border-radius: 16px;
       padding: 6px 12px; font-size: .85rem; cursor: pointer; }
-    .chip.on { background: #e5e7eb; color: #111; border-color: #e5e7eb; }
-    .chip .n { color: #f87171; font-weight: 600; margin-left: 4px; }
+    .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+    .chip .n { color: var(--danger); font-weight: 600; margin-left: 4px; }
     .jday { margin: 18px 0 6px; }
     .jday:first-child { margin-top: 4px; }
-    .jday h3 { margin: 0; font-size: .95rem; color: #e5e7eb; }
-    .jday .sum { margin: 2px 0 0; color: #9ca3af; font-size: .85rem; }
-    ul.log { list-style: none; margin: 0; padding: 0; background: #232323; border: 1px solid #333; border-radius: 10px; }
+    .jday h3 { margin: 0; font-size: .95rem; color: var(--text); }
+    .jday .sum { margin: 2px 0 0; color: var(--text-3); font-size: .85rem; }
+    ul.log { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
     .ev { display: grid; grid-template-columns: 44px 28px 1fr; align-items: start; padding: 10px 12px 10px 10px;
-      border-top: 1px solid #2e2e2e; }
+      border-top: 1px solid var(--divider); }
     .ev:first-child { border-top: none; }
-    .ev .t { color: #9ca3af; font-variant-numeric: tabular-nums; font-size: .9rem; padding-top: 1px; }
+    .ev .t { color: var(--text-3); font-variant-numeric: tabular-nums; font-size: .9rem; padding-top: 1px; }
     .ev .ic { padding-top: 1px; }
-    .ev .ti { margin: 0; color: #e5e7eb; font-size: .95rem; line-height: 1.3; }
-    .ev .sub { margin: 2px 0 0; color: #9ca3af; font-size: .84rem; line-height: 1.3; }
-    .ev.pc .ic { color: #93c5fd; } .ev.lock .ic { color: #fb923c; } .ev.pause .ic { color: #c4b5fd; }
-    .ev.parent .ic { color: #4ade80; } .ev.alert .ic { color: #f87171; }
-    .ev.unacked { background: #2a1515; box-shadow: inset 3px 0 0 #dc2626; }
-    .ev.unacked .ti { color: #fecaca; font-weight: 600; }
-    .ev .ack { margin-top: 8px; background: transparent; border: 1px solid #7f1d1d; color: #fca5a5; border-radius: 6px;
+    .ev .ti { margin: 0; color: var(--text); font-size: .95rem; line-height: 1.3; }
+    .ev .sub { margin: 2px 0 0; color: var(--text-3); font-size: .84rem; line-height: 1.3; }
+    .ev.pc .ic { color: var(--text-2); } .ev.lock .ic { color: var(--time); } .ev.night .ic { color: var(--night); }
+    .ev.pause .ic { color: var(--pause); } .ev.parent .ic { color: var(--accent-line); } .ev.alert .ic { color: var(--danger); }
+    .ev.unacked { background: var(--danger-bg); box-shadow: inset 3px 0 0 var(--danger); }
+    .ev.unacked .ti { color: var(--danger-text); font-weight: 600; }
+    .ev .ack { margin-top: 8px; background: transparent; border: 1px solid var(--danger-border); color: var(--danger-text); border-radius: 6px;
       padding: 5px 10px; font-size: .82rem; cursor: pointer; }
-    .jempty { color: #888; font-size: .9rem; margin: 4px 0 0; }
-    .jmore { display: block; width: 100%; margin: 14px 0 4px; background: transparent; border: 1px solid #333;
-      color: #aaa; border-radius: 8px; padding: 10px; font-size: .9rem; cursor: pointer; }
-    .btn-warn:hover:not(:disabled) { background: #c2410c; }
-    .btn-danger { background: #dc2626; color: white; }
-    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
-    .btn-secondary { background: #374151; color: #e8e8e8; }
-    .btn-secondary:hover:not(:disabled) { background: #4b5563; }
-    .btn-ghost { background: transparent; color: #aaa; border: 1px solid #444; }
-    .btn-ghost:hover:not(:disabled) { background: #2a2a2a; }
+    .jempty { color: var(--text-3); font-size: .9rem; margin: 4px 0 0; }
+    .jmore { display: block; width: 100%; margin: 14px 0 4px; background: transparent; border: 1px solid var(--border);
+      color: var(--text-2); border-radius: 8px; padding: 10px; font-size: .9rem; cursor: pointer; }
+    .btn-secondary { background: var(--neutral); color: var(--text); }
+    .btn-secondary:hover:not(:disabled) { background: var(--neutral-hover); }
+    .btn-ghost { background: transparent; color: var(--text-2); border: 1px solid var(--border-strong); }
+    .btn-ghost:hover:not(:disabled) { background: var(--hover); }
     .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     /* Actions card (#110): group labels, night time in violet (the night tag's), the manual lock as a switch. */
-    .act-label { margin: 16px 0 8px; font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .act-label { margin: 16px 0 8px; font-size: 0.75rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
     .act-label.first { margin-top: 0; }
     .action-grid.night-grid { grid-template-columns: repeat(3, 1fr); }
-    .btn-night { background: #2a2440; color: #c4b5fd; }
-    .btn-night:hover:not(:disabled) { background: #352d52; }
+    .btn-time { background: var(--time-bg); color: var(--time-text); }
+    .btn-time:hover:not(:disabled) { background: var(--time-bg-hover); }
+    .btn-night { background: var(--night-bg); color: var(--night-text); }
+    .btn-night:hover:not(:disabled) { background: var(--night-bg-hover); }
     .lock-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px;
-                   background: #1a1a1a; border: 1px solid #1a1a1a; text-align: left; padding: 12px 14px; color: #e8e8e8; }
-    .lock-switch:hover:not(:disabled) { border-color: #444; }
+                   background: var(--bg); border: 1px solid var(--bg); text-align: left; padding: 12px 14px; color: var(--text); }
+    .lock-switch:hover:not(:disabled) { border-color: var(--border-strong); }
     .lock-switch .txt { display: flex; flex-direction: column; gap: 2px; }
     .lock-switch .ttl { font-size: 0.95rem; }
-    .lock-switch .sub { font-size: 0.8rem; color: #888; }
-    .lock-switch .knob { flex: none; position: relative; width: 42px; height: 24px; border-radius: 12px; background: #444;
+    .lock-switch .sub { font-size: 0.8rem; color: var(--text-3); }
+    .lock-switch .knob { flex: none; position: relative; width: 42px; height: 24px; border-radius: 12px; background: var(--border-strong);
                          transition: background .15s; }
     .lock-switch .knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
-                                border-radius: 50%; background: #bbb; transition: left .15s, background .15s; }
-    .lock-switch.on { background: #2a1a1a; border-color: #7f1d1d; }
-    .lock-switch.on .ttl { color: #fca5a5; }
-    .lock-switch.on .sub { color: #c08080; }
-    .lock-switch.on .knob { background: #dc2626; }
-    .lock-switch.on .knob::after { left: 21px; background: #fff; }
+                                border-radius: 50%; background: var(--text-2); transition: left .15s, background .15s; }
+    .lock-switch.on { background: var(--danger-bg); border-color: var(--danger-border); }
+    .lock-switch.on .ttl { color: var(--danger-text); }
+    .lock-switch.on .sub { color: var(--danger-sub); }
+    .lock-switch.on .knob { background: var(--danger); }
+    .lock-switch.on .knob::after { left: 21px; background: var(--white); }
     .action-grid .btn { padding: 12px; }
     .action-row { display: flex; gap: 8px; margin-top: 8px; }
     .action-row .btn { flex: 1; }
     .action-stack > .btn + .btn { margin-top: 8px; }
-    label { display: block; font-size: 0.85rem; color: #aaa; margin: 0 0 6px; }
+    label { display: block; font-size: 0.85rem; color: var(--text-2); margin: 0 0 6px; }
     input[type="text"], input[type="password"], input[type="number"], input[type="time"], select {
       width: 100%; padding: 12px 14px;
-      background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
-      color: #e8e8e8; font-size: 1rem; font-family: inherit;
+      background: var(--bg); border: 1px solid var(--border-strong); border-radius: 8px;
+      color: var(--text); font-size: 1rem; font-family: inherit;
       -webkit-appearance: none;
     }
-    input:focus, select:focus { outline: none; border-color: #2563eb; }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
     .form-row + .form-row { margin-top: 12px; }
     .sched { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
              gap: 6px 8px; align-items: center; }
-    .sched .hd { font-size: 0.75rem; color: #888; }
-    .sched .day { color: #ccc; font-weight: 600; }
-    .sched .day.weekend { color: #60a5fa; }
+    .sched .hd { font-size: 0.75rem; color: var(--text-3); }
+    .sched .day { color: var(--text-2); font-weight: 600; }
+    .sched .day.weekend { color: var(--accent-line); }
     /* Today's dot sits in the card padding, left of the label: no column moves. */
     .sched .day { position: relative; }
     .sched .day.today::before { content: ''; position: absolute; left: -11px; top: 50%; width: 6px; height: 6px;
-                                margin-top: -3px; border-radius: 50%; background: #4ade80; }
+                                margin-top: -3px; border-radius: 50%; background: var(--ok); }
     .sched-templates { margin: 0 0 14px; }
-    .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
+    .sched .sep { grid-column: 1 / -1; border-top: 1px solid var(--border-strong); margin: 4px 0; }
     .sched input { padding: 10px 8px; font-size: 0.95rem; min-width: 0; }
-    .sched input.invalid { border-color: #e05252; }
+    .sched input.invalid { border-color: var(--danger); }
     #notice {
       position: fixed; left: 50%; bottom: 24px;
       transform: translateX(-50%) translateY(120%);
-      background: #2a2a2a; border: 1px solid #444; color: #e8e8e8;
+      background: var(--hover); border: 1px solid var(--border-strong); color: var(--text);
       padding: 12px 18px; border-radius: 8px; font-size: 0.9rem;
       z-index: 100;
       max-width: calc(100vw - 32px);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      box-shadow: var(--shadow);
       /* visibility + opacity: translateY(120%) alone left a strip of the empty box above the bottom edge. */
       opacity: 0;
       visibility: hidden;
@@ -226,28 +232,28 @@
       visibility: visible;
       transition: transform 0.25s ease, opacity 0.25s ease, visibility 0s linear 0s;
     }
-    #notice.error { border-color: #dc2626; }
-    #notice.success { border-color: #16a34a; }
+    #notice.error { border-color: var(--danger); }
+    #notice.success { border-color: var(--ok-fill); }
     .modal-backdrop {
       display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7); z-index: 50;
+      background: var(--backdrop); z-index: 50;
       align-items: flex-start; justify-content: center; padding: 20px;
       overflow-y: auto;
     }
     .modal-backdrop.show { display: flex; }
     .modal {
-      background: #232323; border: 1px solid #444; border-radius: 12px;
+      background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
       padding: 20px; max-width: 460px; width: 100%;
       margin: auto;
     }
     .modal h3 { margin: 0 0 12px; font-size: 1.1rem; }
     .modal pre {
-      background: #1a1a1a; padding: 12px; border-radius: 6px;
-      overflow-x: auto; font-size: 0.8rem; color: #e8e8e8;
+      background: var(--bg); padding: 12px; border-radius: 6px;
+      overflow-x: auto; font-size: 0.8rem; color: var(--text);
       word-break: break-all; white-space: pre-wrap;
       margin: 0;
     }
-    .qr-box { background: white; padding: 16px; border-radius: 8px; display: flex; justify-content: center; margin: 16px 0; }
+    .qr-box { background: var(--white); padding: 16px; border-radius: 8px; display: flex; justify-content: center; margin: 16px 0; }
     .qr-box img { max-width: 100%; height: auto; }
     .secret-row {
       display: flex; gap: 6px; align-items: stretch;
@@ -257,59 +263,59 @@
     .secret-row .copy-btn {
       flex: 0 0 auto;
       padding: 8px 14px;
-      background: #2563eb; color: white;
+      background: var(--accent); color: var(--white);
       border: none; border-radius: 6px;
       cursor: pointer; font-size: 0.85rem;
       font-family: inherit;
     }
     .secret-row .copy-btn:active { transform: scale(0.95); }
-    .secret-row .copy-btn.copied { background: #16a34a; }
-    .secret-label { font-size: 0.85rem; color: #aaa; margin: 12px 0 0; font-weight: 600; }
+    .secret-row .copy-btn.copied { background: var(--ok-fill); }
+    .secret-label { font-size: 0.85rem; color: var(--text-2); margin: 12px 0 0; font-weight: 600; }
     .secret-label:first-child { margin-top: 0; }
     /* Child switcher (D7, variant D): name in the header + bottom sheet */
     .child-btn { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -6px 0 -6px -10px; padding: 0 10px;
-      background: transparent; border: none; border-radius: 8px; color: #e8e8e8; font: inherit; font-size: 1.05rem; font-weight: 600; }
+      background: transparent; border: none; border-radius: 8px; color: var(--text); font: inherit; font-size: 1.05rem; font-weight: 600; }
     .child-btn:disabled { cursor: default; opacity: 1; }
-    .child-btn:not(:disabled):active { background: #2e2e2e; }
-    .child-btn .ping { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; }
-    .sheet-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 60; }
+    .child-btn:not(:disabled):active { background: var(--divider); }
+    .child-btn .ping { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+    .sheet-backdrop { display: none; position: fixed; inset: 0; background: var(--backdrop); z-index: 60; }
     .sheet-backdrop.show { display: block; }
-    .sheet { position: absolute; left: 0; right: 0; bottom: 0; max-width: 720px; margin: 0 auto; background: #232323;
-      border-top: 1px solid #444; border-radius: 16px 16px 0 0; padding: 10px 16px max(24px, env(safe-area-inset-bottom));
+    .sheet { position: absolute; left: 0; right: 0; bottom: 0; max-width: 720px; margin: 0 auto; background: var(--surface);
+      border-top: 1px solid var(--border-strong); border-radius: 16px 16px 0 0; padding: 10px 16px max(24px, env(safe-area-inset-bottom));
       display: flex; flex-direction: column; gap: 8px; max-height: 80vh; overflow-y: auto; }
-    .sheet .grab { align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #555; margin-bottom: 6px; }
-    .sheet h3 { margin: 0 0 4px; font-size: .95rem; font-weight: 600; color: #ccc; text-transform: uppercase; letter-spacing: .04em; }
-    .sheet-item { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 14px; background: #1a1a1a;
-      border: 1px solid #333; border-radius: 10px; color: #e8e8e8; text-align: left; font: inherit; cursor: pointer; width: 100%; }
-    .sheet-item.on { border-color: #2563eb; }
+    .sheet .grab { align-self: center; width: 40px; height: 4px; border-radius: 2px; background: var(--border-strong); margin-bottom: 6px; }
+    .sheet h3 { margin: 0 0 4px; font-size: .95rem; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
+    .sheet-item { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 14px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px; color: var(--text); text-align: left; font: inherit; cursor: pointer; width: 100%; }
+    .sheet-item.on { border-color: var(--accent); }
     .sheet-item .nm { display: block; font-size: 1rem; }
     .sheet-item.on .nm { font-weight: 600; }
-    .sheet-item .st { display: block; font-size: .85rem; color: #9ca3af; }
+    .sheet-item .st { display: block; font-size: .85rem; color: var(--text-3); }
     .sheet-item .grow { flex: 1; min-width: 0; }
-    .sdot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; background: #4ade80; }
-    .sdot.limit { background: #fb923c; } .sdot.night { background: #818cf8; } .sdot.manual { background: #f87171; }
-    .sdot.pause { background: #94a3b8; }
-    .cnt { background: #dc2626; color: #fff; border-radius: 9px; font-size: .72rem; line-height: 18px; min-width: 18px;
+    .sdot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; background: var(--ok); }
+    .sdot.limit { background: var(--time); } .sdot.night { background: var(--night); } .sdot.manual { background: var(--danger); }
+    .sdot.pause { background: var(--pause); }
+    .cnt { background: var(--danger); color: var(--white); border-radius: 9px; font-size: .72rem; line-height: 18px; min-width: 18px;
       padding: 0 5px; font-weight: 600; text-align: center; }
     /* Device rows (Status + Settings) */
     ul.devs { list-style: none; margin: 0; padding: 0; }
-    ul.devs li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #2e2e2e; flex-wrap: wrap; }
+    ul.devs li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--divider); flex-wrap: wrap; }
     ul.devs li:first-child { border-top: none; }
-    ul.devs .dd { width: 10px; height: 10px; border-radius: 50%; background: #f87171; flex: 0 0 auto; }
-    ul.devs .dd.on { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+    ul.devs .dd { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: 0 0 auto; }
+    ul.devs .dd.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
     ul.devs .grow { flex: 1; min-width: 0; }
     ul.devs .nm { margin: 0; font-size: .95rem; }
-    ul.devs .st { margin: 2px 0 0; font-size: .84rem; color: #9ca3af; }
-    ul.devs .mins { font-size: .9rem; color: #ccc; font-variant-numeric: tabular-nums; }
+    ul.devs .st { margin: 2px 0 0; font-size: .84rem; color: var(--text-3); }
+    ul.devs .mins { font-size: .9rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
     ul.devs .acts { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding-left: 20px; }
-    .btn-sm { min-height: 40px; padding: 0 12px; background: transparent; border: 1px solid #444; border-radius: 8px;
-      color: #ccc; font: inherit; font-size: .85rem; cursor: pointer; }
-    .btn-sm.danger { border-color: #7f1d1d; color: #fca5a5; }
-    .section-label { margin: 18px 0 8px; font-size: .8rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+    .btn-sm { min-height: 40px; padding: 0 12px; background: transparent; border: 1px solid var(--border-strong); border-radius: 8px;
+      color: var(--text-2); font: inherit; font-size: .85rem; cursor: pointer; }
+    .btn-sm.danger { border-color: var(--danger-border); color: var(--danger-text); }
+    .section-label { margin: 18px 0 8px; font-size: .8rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
     .section-label:first-child { margin-top: 4px; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
-    .muted { color: #888; font-size: 0.85rem; }
+    .muted { color: var(--text-3); font-size: 0.85rem; }
     @media (min-width: 720px) {
       .status-card .lock-state { font-size: 1.6rem; }
       .time-grid .stat .value { font-size: 1.8rem; }
@@ -369,10 +375,10 @@
     <p class="muted muted-block" id="actionsNote" hidden data-i18n>Dotyczą wszystkich komputerów dziecka.</p>
     <p class="act-label first" data-i18n>Czas dziś</p>
     <div class="action-grid">
-      <button class="btn btn-primary grant-btn" onclick="grantTime(15)">+15 min</button>
-      <button class="btn btn-primary grant-btn" onclick="grantTime(30)">+30 min</button>
-      <button class="btn btn-primary grant-btn" onclick="grantTime(60)">+60 min</button>
-      <button class="btn btn-primary grant-btn" onclick="grantTime(120)">+120 min</button>
+      <button class="btn btn-time grant-btn" onclick="grantTime(15)">+15 min</button>
+      <button class="btn btn-time grant-btn" onclick="grantTime(30)">+30 min</button>
+      <button class="btn btn-time grant-btn" onclick="grantTime(60)">+60 min</button>
+      <button class="btn btn-time grant-btn" onclick="grantTime(120)">+120 min</button>
     </div>
     <p class="muted" id="noLimitNote" hidden style="margin: 8px 0 0;" data-i18n>Dziś bez limitu czasu — nie ma czego dodawać.</p>
     <p class="act-label" data-i18n>Przesuń ciszę nocną o</p>
@@ -402,7 +408,7 @@
     <span class="chip" data-f="lock" data-i18n>Blokady</span>
     <span class="chip" data-f="parent" data-i18n>Rodzic</span>
   </div>
-  <button class="btn btn-warn" id="ackAllBtn" onclick="ackAlerts()" hidden style="margin-bottom: 12px;" data-i18n>Potwierdź wszystkie ostrzeżenia</button>
+  <button class="btn btn-primary" id="ackAllBtn" onclick="ackAlerts()" hidden style="margin-bottom: 12px;" data-i18n>Potwierdź wszystkie ostrzeżenia</button>
   <div id="journalDays"><p class="jempty" data-i18n>Ładowanie…</p></div>
   <button class="jmore" id="journalMore" onclick="loadJournal(true)" hidden data-i18n>Pokaż starsze</button>
 </div>
@@ -443,8 +449,8 @@
     <h2 data-i18n>Kod TOTP</h2>
     <p class="muted muted-block" data-i18n>Kod z aplikacji w telefonie (np. Aegis) odblokowuje ekran blokady każdego dziecka, także bez połączenia z serwerem.</p>
     <div class="action-stack">
-      <button class="btn btn-primary" onclick="showTotp()" data-i18n>Pokaż obecny kod TOTP</button>
-      <button class="btn btn-warn" onclick="regenTotp()" data-i18n>Wygeneruj nowy kod TOTP</button>
+      <button class="btn btn-ghost" onclick="showTotp()" data-i18n>Pokaż obecny kod TOTP</button>
+      <button class="btn btn-ghost" onclick="regenTotp()" data-i18n>Wygeneruj nowy kod TOTP</button>
     </div>
   </div>
 
@@ -475,7 +481,7 @@
     <div class="grab" aria-hidden="true"></div>
     <h3 id="sheetTitle" data-i18n>Dziecko</h3>
     <div id="sheetItems" style="display: flex; flex-direction: column; gap: 8px;"></div>
-    <button class="btn btn-ghost" onclick="closeSheet(); addChild()" style="color: #93c5fd;" data-i18n>Dodaj dziecko</button>
+    <button class="btn btn-ghost" onclick="closeSheet(); addChild()" style="color: var(--accent-line);" data-i18n>Dodaj dziecko</button>
   </div>
 </div>
 
@@ -670,6 +676,7 @@ const JICON = {
   alert:  '<path d="M10 3l8 14H2z"/><path d="M10 8.5v4M10 14.8v.2"/>',
   plus:   '<path d="M10 4v12M4 10h12"/>',
   clock:  '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
+  check:  '<path d="M4.5 10.5l3.5 3.5 7.5-8"/>',
 };
 const jIcon = n => '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + JICON[n] + '</svg>';
 const fmtSec = s => s >= 60 ? Math.round(s / 60) + ' min' : s + ' s';
@@ -697,7 +704,7 @@ const JOURNAL = {
                                                         : t('Zegar komputera spóźnia się o {time}', {time: mins(-d.drift_seconds)}),
                              sub: t('Vigil używa czasu serwera')}),
   lock_started:       d => d.reason === 'night'
-                             ? {cat: 'lock', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
+                             ? {cat: 'lock', cls: 'night', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
                              : {cat: 'lock', icon: 'lock', title: t('Limit czasu wykorzystany — ekran zablokowany')},
   pause:              d => ({cat: 'lock', cls: 'pause', icon: 'pause',
                              title: d.to ? t('Pauza · {time}', {time: fmtMinutes(d.minutes)}) : t('Pauza — trwa'),
@@ -840,7 +847,7 @@ function renderStatus(s) {
   dot.style.background = '';
   if (s.pairing_active) {
     dot.className = 'dot';
-    dot.style.background = '#f59e0b';  // a pairing code is waiting for its PC
+    dot.style.background = 'var(--time)';  // a pairing code is waiting for its PC
     text.textContent = t('Czeka na sparowanie');
   } else if (!s.devices_total) {
     dot.className = 'dot offline';
@@ -867,13 +874,15 @@ function renderStatus(s) {
     sub.textContent = t('Dodaj dziecko z menu przy nazwie u góry, potem sparuj jego komputer.');
     return;
   }
+  // A badge above the word: a tick when unlocked, a padlock in the lock's color otherwise (#116).
+  const badge = icon => `<span class="state-badge">${jIcon(icon)}</span>`;
   if (c.lock_required) {
-    lockStateEl.textContent = '🔒 ' + t('Zablokowany');
+    lockStateEl.innerHTML = badge('lock') + esc(t('Zablokowany'));
     const cls = {limit: 'locked-limit', night: 'locked-night', manual: 'locked-manual', pause: 'locked-pause'};
     lockStateEl.className = 'lock-state ' + (cls[c.lock_reason] || 'locked-manual');
     sub.textContent = LOCK_LABEL[c.lock_reason] || c.lock_reason;
   } else {
-    lockStateEl.textContent = '✓ ' + t('Odblokowany');
+    lockStateEl.innerHTML = badge('check') + esc(t('Odblokowany'));
     lockStateEl.className = 'lock-state unlocked';
     sub.textContent = c.devices.length > 1 ? t('Komputery dostępne') : t('Komputer dostępny');
   }

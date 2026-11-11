@@ -76,6 +76,7 @@ def test_pages_get_the_script_inlined():
         html = page(name)
         assert "<!-- i18n -->" not in html and "function applyI18n" in html, name
         assert "<!-- schedule -->" not in html, name
+        assert "<!-- theme -->" not in html and "--accent:" in html, name
         # the weekly grid after i18n.js (it calls t() at load), with the server's default week
         if name != "login.html":
             assert html.index("function applyI18n") < html.index("const DEFAULT_WEEK = [") \

@@ -1,0 +1,21 @@
+/* The colors of the panel, the setup wizard and the login page (#116), inlined by pages.py.
+   One accent (cyan) for the main actions, focus and selection; each state has one color everywhere — the status
+   card, dots, tags, the journal and the buttons that change it: time = amber, night = violet, manual lock and
+   deleting = red, unlocked/online = green, pause = slate. */
+:root {
+  --bg: #1a1a1a;  --bar: #1f1f1f;  --surface: #232323;  --hover: #2a2a2a;
+  --border: #333;  --divider: #2e2e2e;  --border-strong: #444;
+  --text: #e8e8e8;  --text-2: #aaa;  --text-3: #888;  --white: #fff;
+  --neutral: #2f2f2f;  --neutral-hover: #3a3a3a;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);  --backdrop: rgba(0, 0, 0, 0.65);
+
+  --accent: #0891b2;  --accent-hover: #0e7490;  --accent-line: #22d3ee;  --accent-text: #67e8f9;
+  --accent-bg: #0e2a33;  --accent-border: #155e75;
+
+  --ok: #4ade80;  --ok-bg: #14301f;  --ok-fill: #16a34a;  --ok-fill-hover: #15803d;
+  --time: #f59e0b;  --time-text: #fbbf24;  --time-bg: #3a2a0e;  --time-bg-hover: #4a360f;
+  --night: #a78bfa;  --night-text: #c4b5fd;  --night-bg: #2a2440;  --night-bg-hover: #352d52;
+  --pause: #94a3b8;  --pause-bg: #262c36;
+  --danger: #ef4444;  --danger-hover: #dc2626;  --danger-text: #fca5a5;  --danger-sub: #c08080;
+  --danger-border: #7f1d1d;  --danger-bg: #2a1a1a;
+}

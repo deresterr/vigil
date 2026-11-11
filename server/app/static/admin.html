@@ -924,10 +924,8 @@ function renderStatus(s) {
   const lockBtn = document.getElementById('manualLockBtn');
   lockBtn.classList.toggle('on', !!c.manual_lock);
   lockBtn.setAttribute('aria-checked', c.manual_lock ? 'true' : 'false');
-  const many = c.devices.length > 1;
-  document.getElementById('manualLockSub').textContent = c.manual_lock
-    ? (many ? t('Włączona — komputery zablokowane') : t('Włączona — komputer zablokowany'))
-    : (many ? t('Blokuje wszystkie komputery dziecka') : t('Blokuje komputer dziecka'));
+  document.getElementById('manualLockSub').textContent =
+    c.manual_lock ? t('Włączona — komputery zablokowane') : t('Blokuje komputery dziecka');
   if (activeTab() === 'settings') fillChildSettings(false);
 }
 

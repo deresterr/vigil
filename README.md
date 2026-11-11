@@ -113,8 +113,8 @@ docker compose up -d
 ```
 
 Open `http://<server-ip>:8088/setup` right away — the wizard is open without a login until it is completed:
-the child's name, the parent password, TOTP, the time zone and limits.
-Set each day of the week later in the panel: Settings → Weekly schedule.
+the child's name, the parent password, TOTP, the time zone and the week (a limit and night time for each day,
+also changed later in the panel: Settings → Weekly schedule).
 
 **2. Child's PC.** Download [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe)
 from the latest release and run it on the child's PC. It asks for administrator rights; a downloaded copy may

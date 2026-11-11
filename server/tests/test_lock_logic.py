@@ -77,7 +77,7 @@ def test_night_window_crosses_midnight():
 
 
 def test_wizard_week_counts_friday_as_weekend():
-    """week_schedule (the setup wizard's two limits): Mon–Thu one limit, Fri–Sun the other."""
+    """week_schedule (the default week's shape): Mon–Thu one limit, Fri–Sun the other."""
     assert [daily_limit(CFG, d) for d in (MON, TUE, WED, THU, FRI, SAT, SUN)] == [120] * 4 + [240] * 3
 
 

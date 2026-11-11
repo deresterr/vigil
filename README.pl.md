@@ -113,8 +113,8 @@ docker compose up -d
 ```
 
 Od razu otwórz `http://<ip-serwera>:8088/setup` — kreator jest dostępny bez logowania, dopóki nie zostanie
-ukończony: imię dziecka, hasło rodzica, TOTP, strefa czasowa i limity.
-Każdy dzień tygodnia ustawisz potem w panelu: Ustawienia → Harmonogram tygodnia.
+ukończony: imię dziecka, hasło rodzica, TOTP, strefa czasowa i tydzień (limit i cisza nocna na każdy dzień,
+zmienisz je też potem w panelu: Ustawienia → Harmonogram tygodnia).
 
 **2. PC dziecka.** Pobierz [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe)
 z najnowszego wydania i uruchom go na PC dziecka. Prosi o uprawnienia administratora; pobrana kopia może najpierw

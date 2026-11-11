@@ -50,12 +50,14 @@ CHILD_DEFAULTS: dict[str, object] = {
 def week_schedule(limit_mon_thu: int, limit_fri_sun: int, night_start: str, night_end: str) -> list[dict]:
     """Seven days (Monday first) for `child_schedule`: one limit Mon–Thu, another Fri–Sun, one night window.
 
-    A new child's week (defaults, the setup wizard's two limits); the panel then edits each day."""
+    The shape of a new child's week (default_schedule); the wizard and the panel then set each day."""
     return [{"daily_limit": limit_mon_thu if weekday < 4 else limit_fri_sun,
              "night_start": night_start, "night_end": night_end} for weekday in range(7)]
 
 
 def default_schedule() -> list[dict]:
+    """A new child's week: a child added in the panel, the wizard's starting grid and the "Default week"
+    template of both (pages.py hands it to schedule.js)."""
     return week_schedule(int(CHILD_DEFAULTS["daily_limit_weekday"]), int(CHILD_DEFAULTS["daily_limit_weekend"]),
                          str(CHILD_DEFAULTS["night_lock_start"]), str(CHILD_DEFAULTS["night_lock_end"]))
 

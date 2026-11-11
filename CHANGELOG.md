@@ -8,8 +8,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 ### Server
 - Panel, setup wizard and login share one color scheme: one accent (cyan) for the main actions, focus and the
   selected item, and one muted color per state everywhere — time steel blue (also the extra-time buttons, outlined
-  so they stand out from the card), night violet, manual lock and deleting red, unlocked green, pause grey. The
-  status card shows a tick, a padlock or pause bars in the state's color instead of an emoji. Journal icons take
+  so they stand out from the card), night violet, manual lock red, unlocked green, pause grey; alerts and
+  deleting keep a strong red. The status card shows a tick, a padlock or pause bars in the state's color instead of an emoji. Journal icons take
   the color of what the entry is about (night, limit, pause, lock, unlock) instead of all being cyan. "Generate
   new TOTP code" is no longer a bright orange button.
 - One term for moving the night time in the panel: the Status tag ("Moved to 22:30"), the journal and "Clear

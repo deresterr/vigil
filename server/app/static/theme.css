@@ -1,7 +1,8 @@
 /* The colors of the panel, the setup wizard and the login page (#116), inlined by pages.py.
    One accent (cyan) for the main actions, focus and selection; each state has one color everywhere — the status
-   card, dots, tags, the journal and the buttons that change it: time/limit = steel blue (#118), night = violet,
-   manual lock and deleting = red, unlocked/online = green, pause = grey (with its own icon). */
+   card, dots, tags, the journal and the buttons that change it: time/limit = steel blue, night = violet, manual
+   lock = dusty red, unlocked/online = green, pause = grey (with its own icon) — all muted to the steel's
+   saturation (#118). Alerts, errors and deleting keep the strong red (--danger), so they still warn. */
 :root {
   --bg: #1a1a1a;  --bar: #1f1f1f;  --surface: #232323;  --hover: #2a2a2a;
   --border: #333;  --divider: #2e2e2e;  --border-strong: #444;
@@ -12,11 +13,12 @@
   --accent: #0891b2;  --accent-hover: #0e7490;  --accent-line: #22d3ee;  --accent-text: #67e8f9;
   --accent-bg: #0e2a33;  --accent-border: #155e75;
 
-  --ok: #4ade80;  --ok-bg: #14301f;  --ok-fill: #16a34a;  --ok-fill-hover: #15803d;
+  --ok: #8cc4a0;  --ok-bg: #1f2b24;  --ok-fill: #16a34a;  --ok-fill-hover: #15803d;
   --time: #8fa5c2;  --time-text: #b4c5db;  --time-bg: #1f2631;  --time-bg-hover: #283244;
   --time-line: rgba(255, 255, 255, 0.35);  /* the +min buttons' outline: their fill is close to the card (#118) */
-  --night: #a78bfa;  --night-text: #c4b5fd;  --night-bg: #2a2440;  --night-bg-hover: #352d52;
+  --night: #a99cd6;  --night-text: #c4bce6;  --night-bg: #27243a;  --night-bg-hover: #322e4a;
   --pause: #a3a3a3;  --pause-bg: #2a2a2a;
-  --danger: #ef4444;  --danger-hover: #dc2626;  --danger-text: #fca5a5;  --danger-sub: #c08080;
+  --lock: #d68f8f;  --lock-text: #e6b4b4;  --lock-sub: #b08a8a;  --lock-bg: #2d2020;  --lock-border: #5e3434;
+  --danger: #ef4444;  --danger-hover: #dc2626;  --danger-text: #fca5a5;
   --danger-border: #7f1d1d;  --danger-bg: #2a1a1a;
 }

@@ -119,7 +119,7 @@ zmienisz je też potem w panelu: Ustawienia → Harmonogram tygodnia).
 **2. PC dziecka.** Pobierz [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe)
 z najnowszego wydania i uruchom go na PC dziecka. Prosi o uprawnienia administratora; pobrana kopia może najpierw
 dostać od SmartScreen „System Windows ochronił ten komputer” (Więcej informacji → Uruchom mimo to). Kreator pyta
-o adres serwera i kod parowania (panel: Ustawienia → Komputery dziecka → Dodaj komputer), a konto dziecka znajduje
+o adres serwera i kod parowania (panel: Ustawienia → Dodaj komputer), a konto dziecka znajduje
 sam. Nic na PC się nie zmienia, zanim nie potwierdzisz podsumowania.
 
 Uruchom `vigil_setup.exe` później jeszcze raz, żeby zobaczyć stan i menu: sprawdzenie, aktualizacja, zmiana adresu

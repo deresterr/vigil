@@ -6,6 +6,9 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 ## [Unreleased]
 
 ### Server
+- Settings tab: the child's name, computers and "Delete child" are one card titled with the name ("Rename" opens
+  a dialog). The "Children" card is gone: children are picked and added from the menu at the name in the header,
+  which now opens with one child too. Shorter TOTP description.
 - Status tab, Actions: the buttons are grouped under "Time today" and "Move night time by", which now offers
   30, 60 or 120 min instead of one "Night time +60 min" button. The manual lock is a switch that turns red while
   it is on.
@@ -27,6 +30,9 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
   their traceback and the request they broke. HTTP requests are no longer logged; what happens on the children's
   PCs stays in the panel's journal. A failing database health check is logged once, then its recovery.
 - Log lines have one format with a colored level; `NO_COLOR=1` in `.env` turns the colors off.
+
+### Client
+- The installer's pairing-code hint points to the panel's new place: Settings → Add computer (or Re-pair).
 
 ## [0.8.2] - 2026-11-10
 

@@ -80,6 +80,9 @@
       letter-spacing: 0.04em;
     }
     .card .muted-block { margin-top: 0; margin-bottom: 14px; }
+    .card h2.card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .card h2.card-head .btn-sm { min-height: 32px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .btn.btn-ghost-danger { color: #fca5a5; border-color: #7f1d1d; }
     .status-card { text-align: center; padding: 28px 16px; }
     .status-card .lock-state { font-size: 1.4rem; font-weight: 600; margin: 0 0 6px; }
     .status-card .lock-state.unlocked { color: #4ade80; }
@@ -268,9 +271,7 @@
     .child-btn { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -6px 0 -6px -10px; padding: 0 10px;
       background: transparent; border: none; border-radius: 8px; color: #e8e8e8; font: inherit; font-size: 1.05rem; font-weight: 600; }
     .child-btn:disabled { cursor: default; opacity: 1; }
-    .child-btn .chev { display: none; }
-    .child-btn.multi .chev { display: inline; }
-    .child-btn.multi:active { background: #2e2e2e; }
+    .child-btn:not(:disabled):active { background: #2e2e2e; }
     .child-btn .ping { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; }
     .sheet-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 60; }
     .sheet-backdrop.show { display: block; }
@@ -412,7 +413,7 @@
 <div id="tab-settings" class="tab-content">
 
   <div id="childSettings">
-  <p class="section-label" id="childSectionLabel" data-i18n>Dziecko</p>
+  <p class="section-label" data-i18n>Dziecko</p>
 
   <div class="card">
     <h2 data-i18n>Harmonogram tygodnia</h2>
@@ -427,38 +428,23 @@
     </div>
   </div>
 
+  <!-- The child: name, computers, delete (#112; the notes on unpair / re-pair are in their confirmations). -->
   <div class="card">
-    <h2 data-i18n>Komputery dziecka</h2>
-    <ul class="devs" id="settingsDevices" style="margin-bottom: 14px;"></ul>
-    <button class="btn btn-warn" onclick="addDevice()" data-i18n>Dodaj komputer</button>
-    <p class="muted" style="margin: 10px 0 0;" data-i18n>„Odłącz” unieważnia klucz komputera — od razu się zablokuje. „Sparuj ponownie” po reinstalacji Vigila na tym samym komputerze.</p>
-  </div>
-
-  <div class="card">
-    <h2 data-i18n>Profil dziecka</h2>
-    <div class="form-row">
-      <label for="childName" data-i18n>Imię</label>
-      <input type="text" id="childName" maxlength="40">
-    </div>
+    <h2 class="card-head"><span id="childCardName"></span>
+      <button class="btn-sm" onclick="renameChild()" data-i18n>Zmień imię</button></h2>
+    <ul class="devs" id="settingsDevices"></ul>
     <div class="action-row" style="margin-top: 14px;">
-      <button class="btn btn-secondary" onclick="saveChildName()" data-i18n>Zapisz imię</button>
-      <button class="btn btn-danger" onclick="deleteChild()" data-i18n>Usuń dziecko</button>
+      <button class="btn btn-ghost" onclick="addDevice()" data-i18n>Dodaj komputer</button>
+      <button class="btn btn-ghost btn-ghost-danger" onclick="deleteChild()" data-i18n>Usuń dziecko</button>
     </div>
-    <p class="muted" style="margin: 10px 0 0;" data-i18n>Usunięcie wymaga najpierw odłączenia komputerów dziecka. Dziennik zostaje.</p>
   </div>
   </div>
 
   <p class="section-label" data-i18n>Wspólne dla wszystkich dzieci</p>
 
   <div class="card">
-    <h2 data-i18n>Dzieci</h2>
-    <ul class="devs" id="childrenList" style="margin-bottom: 14px;"></ul>
-    <button class="btn btn-primary" onclick="addChild()" data-i18n>Dodaj dziecko</button>
-  </div>
-
-  <div class="card">
-    <h2 data-i18n>Kod TOTP (aplikacja w telefonie)</h2>
-    <p class="muted muted-block" data-i18n>Kod z aplikacji <b>Aegis</b> (lub Google Authenticator) na Twoim telefonie — wpisz go na ekranie blokady, żeby odblokować komputer. Jeden kod działa dla wszystkich dzieci, także bez połączenia z serwerem. „Wygeneruj nowy”, jeśli zgubiłeś dostęp do telefonu.</p>
+    <h2 data-i18n>Kod TOTP</h2>
+    <p class="muted muted-block" data-i18n>Kod z aplikacji w telefonie (np. Aegis) odblokowuje ekran blokady każdego dziecka, także bez połączenia z serwerem.</p>
     <div class="action-stack">
       <button class="btn btn-primary" onclick="showTotp()" data-i18n>Pokaż obecny kod TOTP</button>
       <button class="btn btn-warn" onclick="regenTotp()" data-i18n>Wygeneruj nowy kod TOTP</button>
@@ -631,8 +617,8 @@ function renderHeader() {
     : status.child?.name;
   document.getElementById('pageTitle').textContent = name || 'Vigil';
   document.title = status.child ? 'Vigil · ' + status.child.name : 'Vigil';
-  btn.classList.toggle('multi', multiChild());
-  btn.disabled = !multiChild();
+  // The menu opens with one child too: it is also where a child is added (#112).
+  btn.disabled = false;
   // Red dot: an unconfirmed alert of a child that is not on screen.
   const shown = onJournal ? journalChild : selectedChild;
   document.getElementById('childPing').hidden =
@@ -640,7 +626,6 @@ function renderHeader() {
 }
 
 function openSheet() {
-  if (!multiChild()) return;
   const onJournal = activeTab() === 'journal';
   const current = onJournal ? journalChild : selectedChild;
   const item = (id, name, st, dotCls, cnt) =>
@@ -648,7 +633,7 @@ function openSheet() {
     (dotCls === null ? '' : `<span class="sdot ${dotCls}"></span>`) +
     `<span class="grow"><span class="nm">${esc(name)}</span><span class="st">${esc(st)}</span></span>` +
     (cnt ? `<span class="cnt">${cnt}</span>` : '') + '</button>';
-  let html = onJournal ? item('all', t('Wszystkie dzieci'), t('Dziennik całej rodziny'), null, status.alerts_unacked) : '';
+  let html = onJournal && multiChild() ? item('all', t('Wszystkie dzieci'), t('Dziennik całej rodziny'), null, status.alerts_unacked) : '';
   for (const c of status.children) {
     html += item(c.id, c.name, (LOCK_LABEL[c.lock_reason] || t('Odblokowany')) + ' · ' + pcsText(c.devices_total), c.lock_reason || '',
                  c.alerts_unacked);
@@ -880,11 +865,10 @@ function renderStatus(s) {
   for (const id of ['todayCard', 'devicesCard', 'actionsCard', 'childSettings']) document.getElementById(id).hidden = !c;
   const lockStateEl = document.getElementById('lockStateText');
   const sub = document.getElementById('lockSubstate');
-  renderChildrenList(s);
   if (!c) {
     lockStateEl.textContent = t('Brak dzieci');
     lockStateEl.className = 'lock-state';
-    sub.textContent = t('Dodaj dziecko w Ustawieniach, potem sparuj jego komputer.');
+    sub.textContent = t('Dodaj dziecko z menu przy nazwie u góry, potem sparuj jego komputer.');
     return;
   }
   if (c.lock_required) {
@@ -947,15 +931,6 @@ function lastSeen(local) {
     : local.slice(8, 10) + '.' + local.slice(5, 7) + ' ' + local.slice(11);
 }
 
-// The dot: green when any of the child's PCs is online, red otherwise (as in the PC list on the Status tab).
-// Not the lock state: the picker's dot shows that, next to its text.
-function renderChildrenList(s) {
-  document.getElementById('childrenList').innerHTML = s.children.map(c =>
-    `<li><span class="dd${c.devices_online ? ' on' : ''}"></span><div class="grow"><p class="nm">${esc(c.name)}</p></div>` +
-    `<span class="mins">${pcsText(c.devices_total)}</span></li>`).join('')
-    || `<li><p class="st">${t('Brak dzieci.')}</p></li>`;
-}
-
 const childUrl = path => '/admin/api/children/' + status.child.id + path;
 
 async function grantTime(minutes) {
@@ -1007,11 +982,9 @@ let filledFor = null;
 function fillChildSettings(force) {
   const c = status?.child;
   if (!c) return;
-  document.getElementById('childSectionLabel').textContent = c.name;
+  document.getElementById('childCardName').textContent = c.name;
   const refill = force || filledFor !== c.id;
-  const set = (id, v) => { if (refill) document.getElementById(id).value = v; };
   if (refill) renderSchedule(c.schedule, c.today_weekday);
-  set('childName', c.name);
   filledFor = c.id;
   document.getElementById('settingsDevices').innerHTML = c.devices.length ? c.devices.map(d =>
     `<li><span class="dd${d.online ? ' on' : ''}"></span><div class="grow"><p class="nm">${esc(d.name)}</p>` +
@@ -1043,10 +1016,11 @@ async function saveSchedule() {
   await patchChild({schedule: week}, t('Harmonogram zapisany'));
 }
 
-async function saveChildName() {
-  const name = document.getElementById('childName').value.trim();
-  if (!name) { notice(t('Podaj imię'), 'error'); return; }
-  await patchChild({name}, t('Imię zapisane'));
+function renameChild() {
+  inputModal(t('Zmień imię'), t('Imię'), status.child.name, t('Zapisz'), async name => {
+    closeModal();
+    await patchChild({name}, t('Imię zapisane'));
+  });
 }
 
 async function deleteChild() {

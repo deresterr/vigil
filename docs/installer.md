@@ -31,7 +31,7 @@ run writes a log to `%TEMP%\vigil_setup_<time>.log` (its path is on screen) — 
 ### Wizard
 
 Server address (checked against `/health`, asked again until it answers) → pairing code (8 digits; the
-panel: Settings → Child's computers → Add computer) → the child's account (only when there are several) →
+panel: Settings → Add computer) → the child's account (only when there are several) →
 summary → install → a short verify table → the menu. **Nothing changes on the PC before "Install" on the
 summary**: the code goes to the server only then, and a wrong or expired one asks again with the system untouched.
 

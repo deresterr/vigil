@@ -117,11 +117,11 @@ public static class Strings
     // Pairing code
     public static string UiCodeTitle => T("Kod parowania", "Pairing code");
     public static string UiCodeHelp => T(
-        "Kod łączy ten komputer z dzieckiem w panelu. Wygeneruj go w panelu rodzica: Ustawienia → Komputery dziecka → Dodaj komputer.",
-        "The code links this computer to the child in the panel. Create it in the parent panel: Settings → Child's computers → Add computer.");
+        "Kod łączy ten komputer z dzieckiem w panelu. Wygeneruj go w panelu rodzica: Ustawienia → Dodaj komputer.",
+        "The code links this computer to the child in the panel. Create it in the parent panel: Settings → Add computer.");
     public static string UiCodeHelpRepair => T(
-        "Nowy klucz dla tego komputera. Wygeneruj kod w panelu rodzica: Ustawienia → Komputery dziecka → Sparuj ponownie (przy tym komputerze).",
-        "A new key for this computer. Create the code in the parent panel: Settings → Child's computers → Re-pair (next to this computer).");
+        "Nowy klucz dla tego komputera. Wygeneruj kod w panelu rodzica: Ustawienia → Sparuj ponownie (przy tym komputerze).",
+        "A new key for this computer. Create the code in the parent panel: Settings → Re-pair (next to this computer).");
     public static string UiCodeValidity => T("Kod ma 8 cyfr i działa 10 minut.", "The code has 8 digits and works for 10 minutes.");
     public static string UiCodePrompt => T("Kod parowania:", "Pairing code:");
     public static string UiCodeNeeded => T(

@@ -92,12 +92,12 @@
     .status-card .unlocked .state-badge { background: var(--ok-bg); }
     .status-card .locked-limit .state-badge { background: var(--time-bg); }
     .status-card .locked-night .state-badge { background: var(--night-bg); }
-    .status-card .locked-manual .state-badge { background: var(--danger-bg); }
+    .status-card .locked-manual .state-badge { background: var(--lock-bg); }
     .status-card .locked-pause .state-badge { background: var(--pause-bg); }
     .status-card .lock-state.unlocked { color: var(--ok); }
     .status-card .lock-state.locked-limit { color: var(--time); }
     .status-card .lock-state.locked-night { color: var(--night); }
-    .status-card .lock-state.locked-manual { color: var(--danger); }
+    .status-card .lock-state.locked-manual { color: var(--lock); }
     .status-card .lock-state.locked-pause { color: var(--pause); }
     .status-card .substate { color: var(--text-2); font-size: 0.95rem; margin: 0; }
     .time-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 4px; }
@@ -150,8 +150,10 @@
     .ev .ic { padding-top: 1px; }
     .ev .ti { margin: 0; color: var(--text); font-size: .95rem; line-height: 1.3; }
     .ev .sub { margin: 2px 0 0; color: var(--text-3); font-size: .84rem; line-height: 1.3; }
-    .ev.pc .ic { color: var(--text-2); } .ev.lock .ic { color: var(--time); } .ev.night .ic { color: var(--night); }
-    .ev.pause .ic { color: var(--pause); } .ev.parent .ic { color: var(--accent-line); } .ev.alert .ic { color: var(--danger); }
+    /* The icon's color says what the entry is about, as on the status card and the buttons (#118). */
+    .ev.tone-muted .ic { color: var(--text-3); } .ev.tone-ok .ic { color: var(--ok); } .ev.tone-time .ic { color: var(--time); }
+    .ev.tone-night .ic { color: var(--night); } .ev.tone-pause .ic { color: var(--pause); }
+    .ev.tone-lock .ic { color: var(--lock); } .ev.tone-alert .ic { color: var(--danger); } .ev.tone-accent .ic { color: var(--accent-line); }
     .ev.unacked { background: var(--danger-bg); box-shadow: inset 3px 0 0 var(--danger); }
     .ev.unacked .ti { color: var(--danger-text); font-weight: 600; }
     .ev .ack { margin-top: 8px; background: transparent; border: 1px solid var(--danger-border); color: var(--danger-text); border-radius: 6px;
@@ -168,7 +170,7 @@
     .act-label { margin: 16px 0 8px; font-size: 0.75rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
     .act-label.first { margin-top: 0; }
     .action-grid.night-grid { grid-template-columns: repeat(3, 1fr); }
-    .btn-time { background: var(--time-bg); color: var(--time-text); }
+    .btn-time { background: var(--time-bg); color: var(--time-text); box-shadow: inset 0 0 0 1px var(--time-line); }
     .btn-time:hover:not(:disabled) { background: var(--time-bg-hover); }
     .btn-night { background: var(--night-bg); color: var(--night-text); }
     .btn-night:hover:not(:disabled) { background: var(--night-bg-hover); }
@@ -182,10 +184,10 @@
                          transition: background .15s; }
     .lock-switch .knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
                                 border-radius: 50%; background: var(--text-2); transition: left .15s, background .15s; }
-    .lock-switch.on { background: var(--danger-bg); border-color: var(--danger-border); }
-    .lock-switch.on .ttl { color: var(--danger-text); }
-    .lock-switch.on .sub { color: var(--danger-sub); }
-    .lock-switch.on .knob { background: var(--danger); }
+    .lock-switch.on { background: var(--lock-bg); border-color: var(--lock-border); }
+    .lock-switch.on .ttl { color: var(--lock-text); }
+    .lock-switch.on .sub { color: var(--lock-sub); }
+    .lock-switch.on .knob { background: var(--lock); }
     .lock-switch.on .knob::after { left: 21px; background: var(--white); }
     .action-grid .btn { padding: 12px; }
     .action-row { display: flex; gap: 8px; margin-top: 8px; }
@@ -293,7 +295,7 @@
     .sheet-item .st { display: block; font-size: .85rem; color: var(--text-3); }
     .sheet-item .grow { flex: 1; min-width: 0; }
     .sdot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; background: var(--ok); }
-    .sdot.limit { background: var(--time); } .sdot.night { background: var(--night); } .sdot.manual { background: var(--danger); }
+    .sdot.limit { background: var(--time); } .sdot.night { background: var(--night); } .sdot.manual { background: var(--lock); }
     .sdot.pause { background: var(--pause); }
     .cnt { background: var(--danger); color: var(--white); border-radius: 9px; font-size: .72rem; line-height: 18px; min-width: 18px;
       padding: 0 5px; font-weight: 600; text-align: center; }
@@ -675,6 +677,7 @@ const JICON = {
   pause:  '<path d="M7.5 5v10M12.5 5v10"/>',
   alert:  '<path d="M10 3l8 14H2z"/><path d="M10 8.5v4M10 14.8v.2"/>',
   plus:   '<path d="M10 4v12M4 10h12"/>',
+  minus:  '<path d="M4 10h12"/>',
   clock:  '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
   check:  '<path d="M4.5 10.5l3.5 3.5 7.5-8"/>',
 };
@@ -682,7 +685,8 @@ const jIcon = n => '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" 
 const fmtSec = s => s >= 60 ? Math.round(s / 60) + ' min' : s + ' s';
 const VIA = d => d.via === 'admin_ui' ? t('Z panelu') : t('Kod z telefonu wpisany na ekranie blokady');
 
-// type -> {cat, icon, title, sub}. Wording lives only here (Polish source, English in i18n.js).
+// type -> {cat (the journal filter), tone (the icon's color, #118), icon, title, sub}. Wording lives only here
+// (Polish source, English in i18n.js).
 // The guardian's checks (#36), keys as in server models.GuardianCheck.
 const GUARDIAN_CHECKS = {
   service_not_running: t('Usługa Vigil była zatrzymana'),
@@ -694,30 +698,31 @@ const GUARDIAN_CHECKS = {
 };
 const mins = sec => fmtMinutes(Math.max(1, Math.round(sec / 60)));
 const JOURNAL = {
-  watchdog_started:   d => ({cat: 'pc', icon: 'power', title: d.same_boot ? t('Vigil uruchomiony ponownie') : t('Komputer włączony')}),
-  watchdog_shutdown:  d => ({cat: 'pc', icon: 'power', title: t('Komputer wyłączony'),
+  watchdog_started:   d => ({cat: 'pc', tone: d.same_boot ? 'muted' : 'ok', icon: 'power', title: d.same_boot ? t('Vigil uruchomiony ponownie') : t('Komputer włączony')}),
+  watchdog_shutdown:  d => ({cat: 'pc', tone: 'muted', icon: 'power', title: t('Komputer wyłączony'),
                              sub: d.on_since ? t('Włączony od {since} ({time})', {since: d.on_since, time: fmtMinutes(d.minutes)}) : ''}),
-  watchdog_offline:   d => ({cat: 'pc', icon: 'power', title: t('Brak połączenia z serwerem'),
+  watchdog_offline:   d => ({cat: 'pc', tone: 'muted', icon: 'power', title: t('Brak połączenia z serwerem'),
                              sub: t('Przez ok. {time}', {time: mins(d.awake_gap_seconds)})}),
-  clock_drift:        d => ({cat: 'pc', icon: 'power',
+  clock_drift:        d => ({cat: 'pc', tone: 'muted', icon: 'clock',
                              title: d.drift_seconds > 0 ? t('Zegar komputera spieszy się o {time}', {time: mins(d.drift_seconds)})
                                                         : t('Zegar komputera spóźnia się o {time}', {time: mins(-d.drift_seconds)}),
                              sub: t('Vigil używa czasu serwera')}),
   lock_started:       d => d.reason === 'night'
-                             ? {cat: 'lock', cls: 'night', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
-                             : {cat: 'lock', icon: 'lock', title: t('Limit czasu wykorzystany — ekran zablokowany')},
-  pause:              d => ({cat: 'lock', cls: 'pause', icon: 'pause',
+                             ? {cat: 'lock', tone: 'night', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
+                             : {cat: 'lock', tone: 'time', icon: 'lock', title: t('Limit czasu wykorzystany — ekran zablokowany')},
+  pause:              d => ({cat: 'lock', tone: 'pause', icon: 'pause',
                              title: d.to ? t('Pauza · {time}', {time: fmtMinutes(d.minutes)}) : t('Pauza — trwa'),
                              sub: d.to ? t('{from} – {to}, czas nie był liczony', {from: d.from, to: d.to}) : t('Czas nie jest liczony')}),
-  manual_lock_set:    () => ({cat: 'parent', icon: 'lock', title: t('Rodzic włączył blokadę ręczną'), sub: t('Z panelu')}),
-  manual_lock_cleared:() => ({cat: 'parent', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: t('Z panelu')}),
-  manual_unlock:      () => ({cat: 'parent', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: VIA({})}),
-  grant_applied:      d => ({cat: 'parent', icon: 'plus', sub: VIA(d),
+  manual_lock_set:    () => ({cat: 'parent', tone: 'lock', icon: 'lock', title: t('Rodzic włączył blokadę ręczną'), sub: t('Z panelu')}),
+  manual_lock_cleared:() => ({cat: 'parent', tone: 'ok', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: t('Z panelu')}),
+  manual_unlock:      () => ({cat: 'parent', tone: 'ok', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: VIA({})}),
+  grant_applied:      d => ({cat: 'parent', tone: d.mode === 'extend_night' ? 'night' : 'time',
+                             icon: d.mode === 'extend_night' ? 'moon' : 'plus', sub: VIA(d),
                              title: d.mode === 'extend_night'
                                ? t('Rodzic przesunął ciszę nocną na {time}', {time: String(d.until_local || '').slice(11)})
                                : t('Rodzic dodał {n} min', {n: d.minutes})}),
-  extensions_cleared: () => ({cat: 'parent', icon: 'lock', title: t('Rodzic cofnął dodatkowy czas i przesunięcie ciszy nocnej'), sub: t('Z panelu')}),
-  offline_unlock:     d => ({cat: 'parent', icon: 'unlock', title: t('Odblokowano bez połączenia z serwerem na {n} min', {n: d.minutes}),
+  extensions_cleared: () => ({cat: 'parent', tone: 'muted', icon: 'clock', title: t('Rodzic cofnął dodatkowy czas i przesunięcie ciszy nocnej'), sub: t('Z panelu')}),
+  offline_unlock:     d => ({cat: 'parent', tone: 'ok', icon: 'unlock', title: t('Odblokowano bez połączenia z serwerem na {n} min', {n: d.minutes}),
                              sub: t('Kod z telefonu sprawdzony na komputerze dziecka')}),
   tamper_watchdog_restarted: d => ({title: t('Vigil został zatrzymany i uruchomiony ponownie'),
                              sub: t('Komputer nie był wyłączany · przerwa ok. {time}', {time: mins(d.down_awake_seconds)})}),
@@ -734,10 +739,10 @@ const JOURNAL = {
   admin_login_locked:        d => ({title: t('Wiele nieudanych logowań do panelu'),
                              sub: t('Z adresu {ip} · logowanie wstrzymane na {time}', {ip: d.ip, time: fmtSec(d.seconds || 0)})}),
   pairing_code_invalidated:  () => ({title: t('Kod parowania unieważniony'), sub: t('Po 5 błędnych próbach')}),
-  device_paired:      () => ({cat: 'pc', icon: 'plus', title: t('Sparowano komputer')}),
-  device_unpaired:    () => ({cat: 'parent', icon: 'lock', title: t('Rodzic odłączył komputer')}),
-  child_added:        () => ({cat: 'parent', icon: 'plus', title: t('Dodano dziecko')}),
-  child_removed:      () => ({cat: 'parent', icon: 'lock', title: t('Usunięto dziecko')}),
+  device_paired:      () => ({cat: 'pc', tone: 'accent', icon: 'plus', title: t('Sparowano komputer')}),
+  device_unpaired:    () => ({cat: 'parent', tone: 'muted', icon: 'minus', title: t('Rodzic odłączył komputer')}),
+  child_added:        () => ({cat: 'parent', tone: 'accent', icon: 'plus', title: t('Dodano dziecko')}),
+  child_removed:      () => ({cat: 'parent', tone: 'muted', icon: 'minus', title: t('Usunięto dziecko')}),
 };
 let journalDays = [], journalHasMore = false, journalFilter = 'all', alertsUnacked = 0;
 
@@ -758,13 +763,13 @@ function dayLabel(iso) {
 
 function renderEntry(e) {
   const view = (JOURNAL[e.type] || (() => ({title: e.type})))(e.details || {});
-  const cat = e.alert ? 'alert' : (view.cls || view.cat || 'pc');
+  const tone = e.alert ? 'alert' : (view.tone || 'muted');
   const unacked = e.alert && !e.acked;
   // Who and where, only when it is not obvious: several children / several PCs.
   const who = [journalChild === 'all' && multiChild() ? e.child_name : null,
                (status?.devices_total || 0) > 1 ? e.device_name : null].filter(Boolean);
   if (who.length) view.sub = who.join(' · ') + (view.sub ? ' · ' + view.sub : '');
-  return `<li class="ev ${cat}${unacked ? ' unacked' : ''}"><span class="t">${esc(e.time)}</span>` +
+  return `<li class="ev tone-${tone}${unacked ? ' unacked' : ''}"><span class="t">${esc(e.time)}</span>` +
     `<span class="ic">${jIcon(e.alert ? 'alert' : view.icon)}</span><div class="tx">` +
     `<p class="ti">${esc(view.title)}</p>${view.sub ? `<p class="sub">${esc(view.sub)}</p>` : ''}` +
     (unacked ? `<button class="ack" onclick="ackAlerts([${e.id}])">${t('Potwierdź')}</button>` : '') + '</div></li>';
@@ -847,7 +852,7 @@ function renderStatus(s) {
   dot.style.background = '';
   if (s.pairing_active) {
     dot.className = 'dot';
-    dot.style.background = 'var(--time)';  // a pairing code is waiting for its PC
+    dot.style.background = 'var(--accent-line)';  // a pairing code is waiting for its PC
     text.textContent = t('Czeka na sparowanie');
   } else if (!s.devices_total) {
     dot.className = 'dot offline';
@@ -874,10 +879,10 @@ function renderStatus(s) {
     sub.textContent = t('Dodaj dziecko z menu przy nazwie u góry, potem sparuj jego komputer.');
     return;
   }
-  // A badge above the word: a tick when unlocked, a padlock in the lock's color otherwise (#116).
+  // A badge above the word: a tick when unlocked, a padlock in the lock's color otherwise, the pause its own (#116).
   const badge = icon => `<span class="state-badge">${jIcon(icon)}</span>`;
   if (c.lock_required) {
-    lockStateEl.innerHTML = badge('lock') + esc(t('Zablokowany'));
+    lockStateEl.innerHTML = badge(c.lock_reason === 'pause' ? 'pause' : 'lock') + esc(t('Zablokowany'));
     const cls = {limit: 'locked-limit', night: 'locked-night', manual: 'locked-manual', pause: 'locked-pause'};
     lockStateEl.className = 'lock-state ' + (cls[c.lock_reason] || 'locked-manual');
     sub.textContent = LOCK_LABEL[c.lock_reason] || c.lock_reason;

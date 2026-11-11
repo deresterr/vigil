@@ -105,6 +105,7 @@ async def log_unhandled_errors(request: Request, call_next):
         logger.exception("Unhandled error in %s %s", request.method, request.url.path)
         return PlainTextResponse("Internal Server Error", status_code=500)
 
+
 # First-run wizard: /setup, /setup/totp_qr, /setup/complete
 app.include_router(setup_router)
 

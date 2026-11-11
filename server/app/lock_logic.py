@@ -108,7 +108,6 @@ def child_today(conn: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime,
     state = dict(ensure_child_day(conn, child["id"], today))
     cfg = load_lock_config(conn, child["id"])
     limit = daily_limit(cfg, today)
-    effective = limit + state["limit_override_minutes"]
     used = state["seconds_used"] // 60
     return {
         "today": today,
@@ -118,7 +117,6 @@ def child_today(conn: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime,
         "minutes_used": used,
         "daily_limit": limit,
         "unlimited": limit == NO_LIMIT,
-        "effective_limit": effective,
         "minutes_remaining": minutes_remaining(limit, state["limit_override_minutes"], used),
     }
 

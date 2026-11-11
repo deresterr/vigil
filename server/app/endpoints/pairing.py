@@ -1,4 +1,4 @@
-"""Pairing a child PC with the server using a one-time code (replaces the open claim_credentials).
+"""Pairing a child PC with the server using a one-time code.
 
 Flow: the parent generates a code in the panel (POST /admin/api/pairing_code), the installer on the
 child PC sends it to POST /v1/pair and receives a freshly generated signing key. The server address is
@@ -12,8 +12,8 @@ install stops authenticating, and resets its tamper baseline.
 - One code at a time: generating a new one invalidates the previous one.
 - Only a hash of the code is stored.
 
-Protection against other LAN devices grabbing the key. The response travels over plain HTTP on the LAN
-like every other request; use a reverse proxy with TLS if that matters in your network.
+The code keeps other devices on the network from claiming a key. The response travels over plain HTTP like
+every other request; put a reverse proxy with TLS in front if that matters in your network.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def _normalize(code: str) -> str:
 
 
 def create_pairing_code(db: sqlite3.Connection, now: datetime, *, child_id: int | None = None,
-                        device_name: str = "", device_id: int | None = None) -> tuple[str, datetime]:
+                        device_name: str | None = None, device_id: int | None = None) -> tuple[str, datetime]:
     """A code for a new device of `child_id` named `device_name`, or for re-pairing `device_id`."""
     code = f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
     expires = now + CODE_TTL
@@ -56,7 +56,7 @@ def create_pairing_code(db: sqlite3.Connection, now: datetime, *, child_id: int 
     set_config_value(db, "pairing_attempts", 0)
     set_config_value(db, "pairing_child_id", child_id or "")
     set_config_value(db, "pairing_device_id", device_id or "")
-    set_config_value(db, "pairing_device_name", device_name)
+    set_config_value(db, "pairing_device_name", device_name or "")
     return code, expires
 
 
@@ -105,7 +105,7 @@ async def pair(body: PairRequest, request: Request, db: sqlite3.Connection = Dep
         child_id = int(get_config_value(db, "pairing_child_id"))
         device_id = db.execute(
             "INSERT INTO devices(child_id, name, signing_key, paired_utc) VALUES (?, ?, ?, ?)",
-            (child_id, get_config_value(db, "pairing_device_name") or "Komputer", signing_key, now.isoformat()),
+            (child_id, get_config_value(db, "pairing_device_name"), signing_key, now.isoformat()),
         ).lastrowid
     clear_pairing_code(db)
     log_event(db, "device_paired", {"remote": remote}, child_id=child_id, device_id=device_id)

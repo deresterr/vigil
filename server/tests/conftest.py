@@ -33,6 +33,7 @@ def client(tmp_path, monkeypatch):
     with TestClient(fastapi_app) as c:
         with app.db.get_connection() as conn:
             app.db.set_config_value(conn, "setup_complete", "1")
+            app.db.set_config_value(conn, "timezone", "Europe/Warsaw")  # what the tests' local times assume
         add_child("Ola")
         add_device(1, "PC")
         yield c

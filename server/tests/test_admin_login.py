@@ -102,3 +102,11 @@ def test_password_change_ends_other_sessions_and_keeps_this_one(client):
     assert client.get("/admin/api/status").status_code == 200  # the fresh cookie from the response
     client.cookies.clear()
     assert _status_with(client, other) == 401
+
+
+def test_a_damaged_password_hash_refuses_the_login(client):
+    """argon2's InvalidHashError is a refused password, not a 500."""
+    with get_connection() as conn:
+        set_config_value(conn, "parent_password_hash", "not-an-argon2-hash")
+    r = client.post("/admin/login", data={"password": "anything-at-all"}, follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (303, "/admin/login?error=1")

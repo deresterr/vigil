@@ -69,7 +69,7 @@ function readSchedule() {
 
 // A short form of the week: runs of equal days, e.g. [['Pn–Cz', '120 min · 21:30–06:30'], ['Pt–Nd', …]].
 function scheduleSummary(week) {
-  const text = d => (d.daily_limit ? d.daily_limit + ' min' : t('bez limitu')) + ' · ' + d.night_start + '–' + d.night_end;
+  const text = d => (d.daily_limit ? d.daily_limit + ' min' : t('Bez limitu')) + ' · ' + d.night_start + '–' + d.night_end;
   const rows = [];
   week.forEach((d, i) => {
     const last = rows[rows.length - 1];

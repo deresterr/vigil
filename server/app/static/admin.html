@@ -31,7 +31,6 @@
       top: 0;
       z-index: 10;
     }
-    header h1 { margin: 0; font-size: 1.05rem; font-weight: 600; }
     .watchdog-status { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #e8e8e8; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
     .dot.online { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
@@ -311,9 +310,7 @@
     .tab-content { display: none; }
     .tab-content.active { display: block; }
     .muted { color: #888; font-size: 0.85rem; }
-    .danger-zone { border-color: #7f1d1d; background: #2a1a1a; }
     @media (min-width: 720px) {
-      header h1 { font-size: 1.2rem; }
       .status-card .lock-state { font-size: 1.6rem; }
       .time-grid .stat .value { font-size: 1.8rem; }
     }
@@ -389,8 +386,8 @@
       <span class="knob" aria-hidden="true"></span>
     </button>
     <div class="action-row" style="margin-top: 8px;">
-      <button class="btn btn-ghost" onclick="clearExtension()" title="Resetuje bonusy czasu i przedłużenia ciszy nocnej" data-i18n-attr="title" data-i18n>
-        Wyczyść bonusy i przedłużenia
+      <button class="btn btn-ghost" onclick="clearExtension()" title="Cofa dodatkowy czas i przesunięcie ciszy nocnej" data-i18n-attr="title" data-i18n>
+        Wyczyść bonusy i przesunięcia
       </button>
     </div>
   </div>
@@ -527,9 +524,8 @@ async function api(path, opts = {}) {
   return data;
 }
 
-/* Anti-double-click wrapper. Disables all action buttons + tee'uje cursor=wait podczas
-   trwania akcji. Bez tego szybkie klikanie powoduje race condition (kilka równoległych
-   transakcji DB → 'database is locked' albo nadpisywanie state'u). */
+// One action at a time: every button is disabled (and the cursor waits) until it ends, so a quick double
+// click does not send it twice. Buttons disabled before keep that state afterwards.
 let _actionInProgress = false;
 async function guarded(fn) {
   if (_actionInProgress) return;
@@ -555,6 +551,7 @@ const ERRORS = {
   device_not_found: t('Tego komputera już nie ma — odśwież panel.'),
   no_active_pairing_code: t('Nie ma aktywnego kodu parowania.'),
   validation: t('Nieprawidłowe dane — sprawdź pola.'),
+  no_limit: t('Dziś bez limitu czasu — nie ma czego dodawać.'),
 };
 const errText = e => ERRORS[e.message] || t('Błąd: {e}', {e: e.message});
 const fail = e => notice(errText(e), 'error');
@@ -675,7 +672,6 @@ const JICON = {
   clock:  '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
 };
 const jIcon = n => '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + JICON[n] + '</svg>';
-const fmtMin = m => m >= 60 ? Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min' : m + ' min';
 const fmtSec = s => s >= 60 ? Math.round(s / 60) + ' min' : s + ' s';
 const VIA = d => d.via === 'admin_ui' ? t('Z panelu') : t('Kod z telefonu wpisany na ekranie blokady');
 
@@ -689,11 +685,11 @@ const GUARDIAN_CHECKS = {
   safeboot_missing:    t('Usunięto start Vigila w trybie awaryjnym'),
   recovery_missing:    t('Usunięto automatyczny restart usługi'),
 };
-const mins = sec => fmtMin(Math.max(1, Math.round(sec / 60)));
+const mins = sec => fmtMinutes(Math.max(1, Math.round(sec / 60)));
 const JOURNAL = {
   watchdog_started:   d => ({cat: 'pc', icon: 'power', title: d.same_boot ? t('Vigil uruchomiony ponownie') : t('Komputer włączony')}),
   watchdog_shutdown:  d => ({cat: 'pc', icon: 'power', title: t('Komputer wyłączony'),
-                             sub: d.on_since ? t('Włączony od {since} ({time})', {since: d.on_since, time: fmtMin(d.minutes)}) : ''}),
+                             sub: d.on_since ? t('Włączony od {since} ({time})', {since: d.on_since, time: fmtMinutes(d.minutes)}) : ''}),
   watchdog_offline:   d => ({cat: 'pc', icon: 'power', title: t('Brak połączenia z serwerem'),
                              sub: t('Przez ok. {time}', {time: mins(d.awake_gap_seconds)})}),
   clock_drift:        d => ({cat: 'pc', icon: 'power',
@@ -704,16 +700,16 @@ const JOURNAL = {
                              ? {cat: 'lock', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
                              : {cat: 'lock', icon: 'lock', title: t('Limit czasu wykorzystany — ekran zablokowany')},
   pause:              d => ({cat: 'lock', cls: 'pause', icon: 'pause',
-                             title: d.to ? t('Pauza · {time}', {time: fmtMin(d.minutes)}) : t('Pauza — trwa'),
+                             title: d.to ? t('Pauza · {time}', {time: fmtMinutes(d.minutes)}) : t('Pauza — trwa'),
                              sub: d.to ? t('{from} – {to}, czas nie był liczony', {from: d.from, to: d.to}) : t('Czas nie jest liczony')}),
-  manual_lock_set:    () => ({cat: 'parent', icon: 'lock', title: t('Rodzic zablokował komputer'), sub: t('Z panelu')}),
+  manual_lock_set:    () => ({cat: 'parent', icon: 'lock', title: t('Rodzic włączył blokadę ręczną'), sub: t('Z panelu')}),
   manual_lock_cleared:() => ({cat: 'parent', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: t('Z panelu')}),
   manual_unlock:      () => ({cat: 'parent', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: VIA({})}),
   grant_applied:      d => ({cat: 'parent', icon: 'plus', sub: VIA(d),
                              title: d.mode === 'extend_night'
-                               ? t('Rodzic przedłużył ciszę nocną do {time}', {time: String(d.until_local || '').slice(11)})
+                               ? t('Rodzic przesunął ciszę nocną na {time}', {time: String(d.until_local || '').slice(11)})
                                : t('Rodzic dodał {n} min', {n: d.minutes})}),
-  extensions_cleared: () => ({cat: 'parent', icon: 'lock', title: t('Rodzic cofnął dodatkowy czas'), sub: t('Z panelu')}),
+  extensions_cleared: () => ({cat: 'parent', icon: 'lock', title: t('Rodzic cofnął dodatkowy czas i przesunięcie ciszy nocnej'), sub: t('Z panelu')}),
   offline_unlock:     d => ({cat: 'parent', icon: 'unlock', title: t('Odblokowano bez połączenia z serwerem na {n} min', {n: d.minutes}),
                              sub: t('Kod z telefonu sprawdzony na komputerze dziecka')}),
   tamper_watchdog_restarted: d => ({title: t('Vigil został zatrzymany i uruchomiony ponownie'),
@@ -781,9 +777,9 @@ function renderJournal() {
     const used = day.children.some(c => c.minutes_used);
     const sum = !used && !entries.length ? '' : day.children.length === 1
       ? `<p class="sum">${day.children[0].limit_minutes === null
-          ? t('Czas przy komputerze: {used} (bez limitu)', {used: fmtMin(day.children[0].minutes_used)})
-          : t('Czas przy komputerze: {used} z {limit}', {used: fmtMin(day.children[0].minutes_used), limit: fmtMin(day.children[0].limit_minutes)})}</p>`
-      : `<p class="sum">${day.children.map(c => esc(c.name) + ' ' + fmtMin(c.minutes_used)).join(' · ')}</p>`;
+          ? t('Czas przy komputerze: {used} (bez limitu)', {used: fmtMinutes(day.children[0].minutes_used)})
+          : t('Czas przy komputerze: {used} z {limit}', {used: fmtMinutes(day.children[0].minutes_used), limit: fmtMinutes(day.children[0].limit_minutes)})}</p>`
+      : `<p class="sum">${day.children.map(c => esc(c.name) + ' ' + fmtMinutes(c.minutes_used)).join(' · ')}</p>`;
     const list = entries.length ? `<ul class="log">${entries.map(renderEntry).join('')}</ul>`
       : `<p class="jempty">${t('Komputer nie był używany.')}</p>`;
     return `<section class="jday"><h3>${esc(dayLabel(day.date))}</h3>${sum}</section>${list}`;
@@ -875,8 +871,7 @@ function renderStatus(s) {
     lockStateEl.textContent = '🔒 ' + t('Zablokowany');
     const cls = {limit: 'locked-limit', night: 'locked-night', manual: 'locked-manual', pause: 'locked-pause'};
     lockStateEl.className = 'lock-state ' + (cls[c.lock_reason] || 'locked-manual');
-    sub.textContent = {limit: t('Skończył się dzienny czas'), night: t('Cisza nocna'), manual: t('Zablokowany ręcznie'),
-                       pause: t('Pauza')}[c.lock_reason] || c.lock_reason;
+    sub.textContent = LOCK_LABEL[c.lock_reason] || c.lock_reason;
   } else {
     lockStateEl.textContent = '✓ ' + t('Odblokowany');
     lockStateEl.className = 'lock-state unlocked';
@@ -919,7 +914,7 @@ function todayTags(c) {
     : c.limit_override_minutes ? t('Limit {limit} + {bonus}', {limit: fmtMinutes(c.daily_limit), bonus: fmtMinutes(c.limit_override_minutes)})
     : t('Limit {limit}', {limit: fmtMinutes(c.daily_limit)});
   const [start, end] = c.night_local.map(x => x.slice(11));
-  const night = c.night_extension_until_local ? t('Przedłużona do {time}', {time: c.night_extension_until_local.slice(11)})
+  const night = c.night_extension_until_local ? t('Przesunięta na {time}', {time: c.night_extension_until_local.slice(11)})
     : c.in_night_window ? t('Cisza nocna do {time}', {time: end})
     : start + '–' + end;
   return [['limit', 'clock', limit, t('Dzienny limit')], ['night', 'moon', night, t('Cisza nocna')]];
@@ -965,11 +960,11 @@ async function toggleManualLock() {
 }
 
 async function clearExtension() {
-  if (!confirm(t('Wyczyścić bonusy czasu i przedłużenia ciszy nocnej?'))) return;
+  if (!confirm(t('Cofnąć dzisiejszy dodatkowy czas i przesunięcie ciszy nocnej?'))) return;
   await guarded(async () => {
     try {
       await api(childUrl('/clear_extension'), {method: 'POST'});
-      notice(t('Wyczyszczono bonusy i przedłużenia'), 'success');
+      notice(t('Cofnięto dodatkowy czas i przesunięcie ciszy nocnej'), 'success');
       loadStatus();
     } catch (e) { fail(e); }
   });
@@ -1073,7 +1068,8 @@ function addChild() {
       await loadStatus();
       fillChildSettings(true);
     } catch (e) { fail(e); }
-  }, `<p class="muted" style="margin: 8px 0 0;">${t('Na start: 120 min (pon–czw), 240 min (pt–nd), cisza nocna 21:30–06:30. Zmienisz to w Ustawieniach.')}</p>`);
+  }, `<p class="muted" style="margin: 8px 0 0;">${esc(t('Na start: {week}. Zmienisz to w Ustawieniach.',
+       {week: scheduleSummary(DEFAULT_WEEK).map(([days, v]) => days + ' ' + v).join(', ')}))}</p>`);
 }
 
 function showPairingCode(r, forWhat) {
@@ -1133,7 +1129,7 @@ async function unpairDevice(id) {
   } catch (e) { fail(e); }
 }
 
-// === Helpers do modali z secret-display ===
+// === Copying a secret shown in a dialog ===
 
 function copyText(text, btn) {
   // Clipboard API, with execCommand as the fallback over plain HTTP (no secure context)
@@ -1185,26 +1181,24 @@ function copyFromPre(id, btn) {
 
 // === TOTP show / regen ===
 
+// The current and a new secret show the same way: QR + the key to type in by hand.
+function totpModal(title, r, warning = '') {
+  showModal(title,
+    '<p class="muted">' + t('Zeskanuj kod QR w aplikacji TOTP (np. Aegis) albo wpisz klucz ręcznie.') + warning + '</p>' +
+    '<div class="qr-box"><img src="data:image/png;base64,' + r.qr_png_base64 + '" alt="QR"></div>' +
+    secretRow(t('Klucz'), 'totpSecret'));
+  document.getElementById('totpSecret').textContent = r.secret;
+}
+
 async function showTotp() {
-  try {
-    const r = await api('/admin/api/totp');
-    showModal(t('Kod TOTP'),
-      '<p class="muted">' + t('Zeskanuj QR aplikacją Aegis (albo inną aplikacją TOTP).') + '</p>' +
-      '<div class="qr-box"><img src="data:image/png;base64,' + r.qr_png_base64 + '" alt="QR"></div>'
-    );
-  } catch (e) { fail(e); }
+  try { totpModal(t('Kod TOTP'), await api('/admin/api/totp')); } catch (e) { fail(e); }
 }
 
 async function regenTotp() {
   if (!confirm(t('Wygenerować NOWY kod TOTP? Stary natychmiast przestanie działać — trzeba będzie zeskanować QR ponownie.'))) return;
   try {
-    const r = await api('/admin/api/regen_totp', {method: 'POST'});
-    showModal(t('Nowy kod TOTP'),
-      '<p class="muted">' + t('Zeskanuj QR w aplikacji Aegis. <strong>Stary kod już nie działa.</strong>') + '</p>' +
-      '<div class="qr-box"><img src="data:image/png;base64,' + r.qr_png_base64 + '" alt="QR"></div>' +
-      secretRow('Secret', 'totpSecret')
-    );
-    document.getElementById('totpSecret').textContent = r.secret;
+    totpModal(t('Nowy kod TOTP'), await api('/admin/api/regen_totp', {method: 'POST'}),
+              ' <strong>' + t('Stary kod już nie działa.') + '</strong>');
   } catch (e) { fail(e); }
 }
 

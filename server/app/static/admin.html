@@ -173,6 +173,7 @@
     .sched .day { position: relative; }
     .sched .day.today::before { content: ''; position: absolute; left: -11px; top: 50%; width: 6px; height: 6px;
                                 margin-top: -3px; border-radius: 50%; background: #4ade80; }
+    .sched-templates { margin: 0 0 14px; }
     .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
     .sched input { padding: 10px 8px; font-size: 0.95rem; min-width: 0; }
     #notice {
@@ -381,9 +382,12 @@
   <div class="card">
     <h2 data-i18n>Harmonogram tygodnia</h2>
     <p class="muted muted-block" data-i18n>Limit łącznie na wszystkich komputerach dziecka. Cisza nocna od wieczoru danego dnia do rana.</p>
+    <div class="action-row sched-templates">
+      <button class="btn btn-ghost" onclick="applyTemplate('default')" data-i18n>Domyślny tydzień</button>
+      <button class="btn btn-ghost" onclick="applyTemplate('monday')" data-i18n>Każdy dzień jak poniedziałek</button>
+    </div>
     <div class="sched" id="schedule"></div>
     <div class="action-row" style="margin-top: 14px;">
-      <button class="btn btn-ghost" onclick="copyMonday()" data-i18n>Pn → Wt–Pt</button>
       <button class="btn btn-primary" onclick="saveSchedule()" data-i18n>Zapisz harmonogram</button>
     </div>
   </div>
@@ -468,6 +472,7 @@
 </div>
 
 <!-- i18n -->
+<!-- schedule -->
 <script>
 applyI18n();
 
@@ -974,45 +979,15 @@ async function patchChild(body, okMsg) {
   } catch (e) { fail(e); }
 }
 
-// Weekly schedule (#48): one row per day, Monday first like the API.
-const DAYS = t('Pn Wt Śr Cz Pt So Nd').split(' ');
-const DAYS_FULL = [...Array(7)].map((_, i) => {  // 2026-11-02 is a Monday
-  const name = new Date(2026, 10, 2 + i).toLocaleDateString(LOCALE, {weekday: 'long'});
-  return name.charAt(0).toUpperCase() + name.slice(1);
-});
-
-function renderSchedule(week, today) {
-  document.getElementById('schedule').innerHTML =
-    `<span></span><span class="hd">${t('Limit (min)')}</span><span class="hd">${t('Cisza nocna od')}</span><span class="hd">${t('do')}</span>` +
-    week.map((d, i) => (i === 5 ? '<div class="sep"></div>' : '') +  // weekend below the line
-      `<span class="day${i >= 5 ? ' weekend' : ''}${i === today ? ' today' : ''}" title="${i === today ? t('{day} (dziś)', {day: DAYS_FULL[i]}) : DAYS_FULL[i]}">${DAYS[i]}</span>` +
-      `<input type="number" id="sLim${i}" min="0" max="1440" step="1" value="${d.daily_limit}" aria-label="${t('{day}: limit w minutach', {day: DAYS_FULL[i]})}">` +
-      // Text, not type="time": with a 12-hour browser locale the narrow column cut "PM" off (21:30 read 09:30).
-      `<input type="text" inputmode="numeric" maxlength="5" placeholder="21:30" id="sFrom${i}" value="${d.night_start}" aria-label="${t('{day}: początek ciszy nocnej (GG:MM)', {day: DAYS_FULL[i]})}">` +
-      `<input type="text" inputmode="numeric" maxlength="5" placeholder="06:30" id="sTo${i}" value="${d.night_end}" aria-label="${t('{day}: koniec ciszy nocnej (GG:MM)', {day: DAYS_FULL[i]})}">`).join('');
-}
-
-function copyMonday() {
-  for (let i = 1; i <= 4; i++) {
-    for (const f of ['sLim', 'sFrom', 'sTo']) document.getElementById(f + i).value = document.getElementById(f + 0).value;
-  }
-  notice(t('Skopiowano poniedziałek na wtorek–piątek. Zapisz, żeby zastosować.'), 'success');
+// Weekly schedule (#48): the grid, templates and checks are in schedule.js (shared with the setup wizard).
+function applyTemplate(name) {
+  scheduleTemplate(name);
+  notice(t('Wypełniono tabelę. Zapisz, żeby zastosować.'), 'success');
 }
 
 async function saveSchedule() {
-  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;  // the same rules as the server
-  const week = [];
-  for (let i = 0; i < 7; i++) {
-    const raw = document.getElementById('sLim' + i).value;
-    const d = {daily_limit: Number(raw), night_start: document.getElementById('sFrom' + i).value.trim(),
-               night_end: document.getElementById('sTo' + i).value.trim()};
-    const err = raw === '' || !Number.isInteger(d.daily_limit) || d.daily_limit < 0 || d.daily_limit > 1440
-      ? t('limit to liczba całkowita 0–1440 minut (1440 = całą dobę)')
-      : !hhmm.test(d.night_start) || !hhmm.test(d.night_end) ? t('godziny w formacie GG:MM, np. 21:30')
-      : d.night_start === d.night_end ? t('początek i koniec ciszy nocnej nie mogą być takie same') : null;
-    if (err) { notice(DAYS_FULL[i] + ': ' + err, 'error'); return; }
-    week.push(d);
-  }
+  const {week, error} = readSchedule();
+  if (error) { notice(error, 'error'); return; }
   await patchChild({schedule: week}, t('Harmonogram zapisany'));
 }
 

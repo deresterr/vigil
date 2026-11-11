@@ -1,4 +1,5 @@
-"""i18n (#52): every text marked in the panel pages has an English entry with the same placeholders.
+"""i18n (#52): every text marked in the panel pages and their shared scripts has an English entry with the same
+placeholders.
 
 Marked = t('…') / tn(n, '…') in scripts, data-i18n elements (normalized inner HTML) and data-i18n-attr
 attributes. Unmarked Polish in a script string is caught too, as far as diacritics show it.
@@ -12,6 +13,8 @@ import pytest
 from app.pages import STATIC_DIR, page
 
 PAGES = ("admin.html", "login.html", "setup.html")
+SCRIPTS = ("schedule.js",)  # inlined by pages.py (i18n.js is the dictionary itself)
+SOURCES = PAGES + SCRIPTS
 _PL = re.compile(r"[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]")
 
 
@@ -38,7 +41,7 @@ def _placeholders(s: str) -> set[str]:
     return set(re.findall(r"\{(\w+)\}", s))
 
 
-@pytest.mark.parametrize("name", PAGES)
+@pytest.mark.parametrize("name", SOURCES)
 def test_every_marked_text_is_translated(name):
     en = dictionary()
     missing = sorted(k for k in marked((STATIC_DIR / name).read_text(encoding="utf-8")) if k not in en)
@@ -53,14 +56,14 @@ def test_translations_keep_placeholders_and_plural_forms():
 
 
 def test_no_unused_entries():
-    used = set().union(*(marked((STATIC_DIR / n).read_text(encoding="utf-8")) for n in PAGES))
+    used = set().union(*(marked((STATIC_DIR / n).read_text(encoding="utf-8")) for n in SOURCES))
     assert sorted(set(dictionary()) - used) == []
 
 
-@pytest.mark.parametrize("name", PAGES)
+@pytest.mark.parametrize("name", SOURCES)
 def test_no_unmarked_polish_in_scripts(name):
-    html = (STATIC_DIR / name).read_text(encoding="utf-8")
-    scripts = "\n".join(re.findall(r"<script>(.*?)</script>", html, flags=re.S))
+    text = (STATIC_DIR / name).read_text(encoding="utf-8")
+    scripts = text if name.endswith(".js") else "\n".join(re.findall(r"<script>(.*?)</script>", text, flags=re.S))
     code = re.sub(r"//[^\n]*|/\*.*?\*/", "", scripts, flags=re.S)  # comments are not shown
     code = re.sub(r"\btn?\((?:[^,()']+,\s*)?'(?:[^'\\]|\\.)*'", "", code)  # marked texts
     leftovers = [s for s in re.findall(r"'((?:[^'\\]|\\.)*)'|`([^`]*)`|\"((?:[^\"\\]|\\.)*)\"", code)
@@ -72,3 +75,8 @@ def test_pages_get_the_script_inlined():
     for name in PAGES:
         html = page(name)
         assert "<!-- i18n -->" not in html and "function applyI18n" in html, name
+        assert "<!-- schedule -->" not in html, name
+        # the weekly grid after i18n.js (it calls t() at load), with the server's default week
+        if name != "login.html":
+            assert html.index("function applyI18n") < html.index("const DEFAULT_WEEK = [") \
+                < html.index("function renderSchedule"), name

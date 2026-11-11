@@ -82,6 +82,17 @@
     .summary-row .key { color: #aaa; }
     .summary-row .val { color: #e8e8e8; text-align: right; max-width: 60%; word-break: break-all; }
     .totp-skip { font-size: 0.8rem; color: #888; margin-top: -8px; margin-bottom: 16px; }
+    .hint { color: #888; font-size: 0.8rem; margin: -2px 0 12px; }
+    /* The weekly grid (schedule.js), the same as the panel's Settings → Weekly schedule. */
+    .sched-templates { display: flex; gap: 8px; margin-bottom: 14px; }
+    .sched-templates .btn { flex: 1; padding: 8px 10px; font-size: 0.85rem; }
+    .sched { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+             gap: 6px 8px; align-items: center; margin-bottom: 16px; }
+    .sched .hd { font-size: 0.75rem; color: #888; }
+    .sched .day { color: #ccc; font-weight: 600; }
+    .sched .day.weekend { color: #60a5fa; }
+    .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
+    .sched input[type=text], .sched input[type=number] { padding: 10px 8px; margin-bottom: 0; min-width: 0; }
     .step { display: none; }
     .step.active { display: block; }
   </style>
@@ -148,26 +159,13 @@
       <option value="America/Los_Angeles">
       <option value="UTC">
     </datalist>
-    <div class="row">
-      <div>
-        <label for="limWd" data-i18n>Limit (pon–czw) [min]</label>
-        <input type="number" id="limWd" value="120" min="1" max="1440">
-      </div>
-      <div>
-        <label for="limWe" data-i18n>Limit (pt–nd) [min]</label>
-        <input type="number" id="limWe" value="240" min="1" max="1440">
-      </div>
+    <label data-i18n>Harmonogram tygodnia</label>
+    <p class="hint" data-i18n>Limit łącznie na wszystkich komputerach dziecka. Cisza nocna od wieczoru danego dnia do rana.</p>
+    <div class="sched-templates">
+      <button class="btn btn-secondary" onclick="scheduleTemplate('default')" data-i18n>Domyślny tydzień</button>
+      <button class="btn btn-secondary" onclick="scheduleTemplate('monday')" data-i18n>Każdy dzień jak poniedziałek</button>
     </div>
-    <div class="row">
-      <div>
-        <label for="nightS" data-i18n>Cisza nocna od</label>
-        <input type="time" id="nightS" value="21:30">
-      </div>
-      <div>
-        <label for="nightE" data-i18n>Cisza nocna do</label>
-        <input type="time" id="nightE" value="06:30">
-      </div>
-    </div>
+    <div class="sched" id="schedule"></div>
     <div class="actions">
       <button class="btn btn-secondary" onclick="goTo(3)" data-i18n>← Wróć</button>
       <button class="btn btn-primary" onclick="goTo(5)" data-i18n>Dalej →</button>
@@ -185,6 +183,7 @@
 </div>
 
 <!-- i18n -->
+<!-- schedule -->
 <script>
 applyI18n();
 // The browser's time zone as the default (the panel can change it later).
@@ -192,6 +191,7 @@ try {
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   if (browserTz) document.getElementById('tz').value = browserTz;
 } catch (e) { /* keep UTC */ }
+renderSchedule(DEFAULT_WEEK);
 const TOTAL = 5;
 let currentStep = 1;
 let totpVerified = false;
@@ -230,7 +230,11 @@ function goTo(step) {
     if (p1.length < 8) { showError(t('Hasło musi mieć co najmniej 8 znaków.')); return; }
     if (p1 !== p2) { showError(t('Hasła nie są zgodne.')); return; }
   }
-  if (step === 5) buildSummary();
+  if (step === 5) {
+    const {error} = readSchedule();
+    if (error) { showError(error); return; }
+    buildSummary();
+  }
   document.getElementById('s' + currentStep).classList.remove('active');
   currentStep = step;
   document.getElementById('s' + currentStep).classList.add('active');
@@ -272,9 +276,7 @@ function buildSummary() {
     [t('Dziecko'), document.getElementById('childName').value.trim()],
     ['TOTP', totpVerified ? '✓ ' + t('skonfigurowany') : '— ' + t('pominięty (skonfiguruj później)')],
     [t('Strefa czasowa'), document.getElementById('tz').value],
-    [t('Limit pon–czw'), document.getElementById('limWd').value + ' min'],
-    [t('Limit pt–nd'), document.getElementById('limWe').value + ' min'],
-    [t('Cisza nocna'), document.getElementById('nightS').value + ' – ' + document.getElementById('nightE').value],
+    ...scheduleSummary(readSchedule().week),
   ];
   document.getElementById('summary').innerHTML = rows.map(([k, v]) =>
     '<div class="summary-row"><span class="key">' + esc(k) + '</span><span class="val">' + esc(v) + '</span></div>'
@@ -294,10 +296,7 @@ function finish() {
     password:             document.getElementById('pass1').value,
     totp_code:            totpCode,
     timezone:             document.getElementById('tz').value.trim(),
-    daily_limit_weekday:  parseInt(document.getElementById('limWd').value, 10),
-    daily_limit_weekend:  parseInt(document.getElementById('limWe').value, 10),
-    night_lock_start:     document.getElementById('nightS').value,
-    night_lock_end:       document.getElementById('nightE').value,
+    schedule:             readSchedule().week,
   };
 
   const btn = document.getElementById('btnFinish');

@@ -1,14 +1,23 @@
 """Setup wizard (/setup/complete): the first child and its week."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 import app.admin_auth
 import app.db
+from app.config import default_schedule
+from app.pages import page
 
-WIZARD = {"child_name": "Ola", "password": "haslo-rodzica", "timezone": "Europe/Warsaw",
-          "daily_limit_weekday": 90, "daily_limit_weekend": 200, "night_lock_start": "21:00",
-          "night_lock_end": "07:00"}
+# Each day different, as the wizard's grid can send it (#102)
+WEEK = [{"daily_limit": 60 + 10 * i, "night_start": f"2{i % 4}:00", "night_end": f"0{6 + i % 3}:30"}
+        for i in range(7)]
+WIZARD = {"child_name": "Ola", "password": "haslo-rodzica", "timezone": "Europe/Warsaw", "schedule": WEEK}
+
+
+def _week(**day3):
+    return [*WEEK[:3], {**WEEK[3], **day3}, *WEEK[4:]]
 
 
 @pytest.fixture
@@ -21,24 +30,36 @@ def fresh(tmp_path, monkeypatch):
         yield c
 
 
-def test_wizard_week_has_the_old_shape(fresh):
-    """The wizard still asks Mon–Thu / Fri–Sun and one night (#48); the panel edits each day."""
+def test_wizard_saves_the_week_day_by_day(fresh):
+    """The wizard's grid is the panel's: the first child gets exactly the seven days sent (#102)."""
     assert fresh.post("/setup/complete", json=WIZARD).json() == {"ok": True}
-    week = fresh.get("/admin/api/status").json()["child"]["schedule"]
-    assert week == ([{"daily_limit": 90, "night_start": "21:00", "night_end": "07:00"}] * 4
-                    + [{"daily_limit": 200, "night_start": "21:00", "night_end": "07:00"}] * 3)
+    assert fresh.get("/admin/api/status").json()["child"]["schedule"] == WEEK
 
 
-def test_wizard_rejects_an_empty_night(fresh):
-    r = fresh.post("/setup/complete", json={**WIZARD, "night_lock_end": "21:00"})
-    assert r.status_code == 422
-    assert r.json()["detail"] == {"night_lock_end": "equals_start"}
+def test_wizard_refuses_the_old_two_limit_fields(fresh):
+    """A page cached from before #102 sends the old fields without `schedule`: refused, nothing half-saved."""
+    old = {"child_name": "Ola", "password": "haslo-rodzica", "timezone": "UTC", "daily_limit_weekday": 90,
+           "daily_limit_weekend": 200, "night_lock_start": "21:00", "night_lock_end": "07:00"}
+    r = fresh.post("/setup/complete", json=old)
+    assert (r.status_code, r.json()["detail"]) == (422, {"schedule": "missing"})
+
+
+def test_wizard_grid_starts_from_the_default_week(fresh):
+    """The grid and the "Default week" template come from config.default_schedule, as a panel-added child's."""
+    html = page("setup.html")
+    assert "const DEFAULT_WEEK = [" in html
+    sent = html.split("const DEFAULT_WEEK = ", 1)[1].split(";\n", 1)[0]
+    assert json.loads(sent) == default_schedule()
 
 
 @pytest.mark.parametrize(("body", "detail"), [
     ({**WIZARD, "timezone": ""}, {"timezone": "invalid"}),
     ({**WIZARD, "timezone": "Mars/Base"}, {"timezone": "invalid"}),
-    ({**WIZARD, "daily_limit_weekday": None}, {"daily_limit_weekday": "int_type"}),
+    ({**WIZARD, "schedule": WEEK[:6]}, {"schedule": "too_short"}),
+    ({**WIZARD, "schedule": _week(daily_limit=1441)}, {"schedule.3.daily_limit": "less_than_equal"}),
+    ({**WIZARD, "schedule": _week(daily_limit="90")}, {"schedule.3.daily_limit": "int_type"}),
+    ({**WIZARD, "schedule": _week(night_start="9:30")}, {"schedule.3.night_start": "string_pattern_mismatch"}),
+    ({**WIZARD, "schedule": _week(night_end=WEEK[3]["night_start"])}, {"schedule.3": "night_start_equals_end"}),
     ({**WIZARD, "password": "short"}, {"password": "string_too_short"}),
 ])
 def test_wizard_reports_bad_fields(fresh, body, detail):

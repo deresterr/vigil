@@ -9,7 +9,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - The setup wizard sets the first child's week day by day, in the same table as Settings → Weekly schedule,
   instead of one limit for Monday–Thursday, one for Friday–Sunday and one night time for the whole week.
 - Templates fill the weekly table, in the wizard and in the panel: "Default week" (the week a new child starts
-  with) and "Every day like Monday". They replace the panel's "Mo → Tu–Fr" button.
+  with) and "Every day like Monday". They replace the panel's "Mo → Tu–Fr" button. A script that completes the
+  wizard without a week gets that default week.
 - The container log shows the server itself, not every request: one line when it starts (version, port,
   database) and stops, a warning while the setup wizard is not completed, database migrations, and errors with
   their traceback and the request they broke. HTTP requests are no longer logged; what happens on the children's

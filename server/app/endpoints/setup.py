@@ -18,11 +18,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator
 
 from ..admin_auth import issue_session_cookie, set_session_cookie
-from ..config import TOTP_ACCOUNT, TOTP_ISSUER
+from ..config import TOTP_ACCOUNT, TOTP_ISSUER, default_schedule
 from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
 from ..pages import page
-from .admin_api import ChildCreate, Name, Week, insert_child, png_qr_base64
+from .admin_api import ChildCreate, DayPlan, Name, Week, insert_child, png_qr_base64
 
 router = APIRouter()
 
@@ -37,7 +37,8 @@ class SetupBody(BaseModel):
     password: Annotated[str, Field(min_length=8)]  # as typed: no stripping
     totp_code: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     timezone: Annotated[str, StringConstraints(strip_whitespace=True)] = "UTC"
-    schedule: Week
+    # Missing = a new child's week, as in POST /admin/api/children (scripts complete the wizard without it, e2e).
+    schedule: Week = Field(default_factory=lambda: [DayPlan(**d) for d in default_schedule()])
 
     @field_validator("timezone")
     @classmethod

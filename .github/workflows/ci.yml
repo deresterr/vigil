@@ -36,6 +36,8 @@ jobs:
               - '.github/workflows/ci.yml'
             client:
               - 'client/**'
+              # the installer e2e runs the server of the same commit (#104)
+              - 'server/app/**'
               - 'build-package.ps1'
               - 'Build.cmd'
               - 'e2e/**'

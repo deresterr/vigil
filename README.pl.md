@@ -40,7 +40,7 @@ Szczegóły (po angielsku): [`docs/architecture.md`](docs/architecture.md).
 ## Co potrafi
 
 - Kilkoro dzieci na jednym serwerze, każde z dowolną liczbą komputerów; czas liczy się łącznie.
-- Harmonogram tygodnia: dzienny limit i cisza nocna osobno dla każdego dnia tygodnia i każdego dziecka.
+- Harmonogram tygodnia: dzienny limit (0 = bez limitu) i cisza nocna osobno dla każdego dnia tygodnia i każdego dziecka.
 - Blokada ręczna i dodatkowy czas z panelu; dodatkowy czas także kodem TOTP wpisanym na ekranie blokady.
 - Odblokowanie kodem z telefonu działa bez połączenia z serwerem.
 - Pauza uruchamiana przez dziecko z zasobnika: czas nie leci, ekran jest zablokowany.

@@ -176,6 +176,7 @@
     .sched-templates { margin: 0 0 14px; }
     .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
     .sched input { padding: 10px 8px; font-size: 0.95rem; min-width: 0; }
+    .sched input.invalid { border-color: #e05252; }
     #notice {
       position: fixed; left: 50%; bottom: 24px;
       transform: translateX(-50%) translateY(120%);
@@ -341,11 +342,12 @@
     <h2 data-i18n>Akcje</h2>
     <p class="muted muted-block" id="actionsNote" hidden data-i18n>Dotyczą wszystkich komputerów dziecka.</p>
     <div class="action-grid">
-      <button class="btn btn-primary" onclick="grantTime(15)">+15 min</button>
-      <button class="btn btn-primary" onclick="grantTime(30)">+30 min</button>
-      <button class="btn btn-primary" onclick="grantTime(60)">+60 min</button>
-      <button class="btn btn-primary" onclick="grantTime(120)">+120 min</button>
+      <button class="btn btn-primary grant-btn" onclick="grantTime(15)">+15 min</button>
+      <button class="btn btn-primary grant-btn" onclick="grantTime(30)">+30 min</button>
+      <button class="btn btn-primary grant-btn" onclick="grantTime(60)">+60 min</button>
+      <button class="btn btn-primary grant-btn" onclick="grantTime(120)">+120 min</button>
     </div>
+    <p class="muted" id="noLimitNote" hidden style="margin: 8px 0 0;" data-i18n>Dziś bez limitu czasu — nie ma czego dodawać.</p>
     <div class="action-row" style="margin-top: 14px;">
       <button class="btn btn-success" onclick="grantNight(60)" data-i18n>Cisza nocna +60 min</button>
     </div>
@@ -381,7 +383,7 @@
 
   <div class="card">
     <h2 data-i18n>Harmonogram tygodnia</h2>
-    <p class="muted muted-block" data-i18n>Limit łącznie na wszystkich komputerach dziecka. Cisza nocna od wieczoru danego dnia do rana.</p>
+    <p class="muted muted-block" data-i18n>Limit łącznie na wszystkich komputerach dziecka, 0 = bez limitu. Cisza nocna od wieczoru danego dnia do rana.</p>
     <div class="action-row sched-templates">
       <button class="btn btn-ghost" onclick="applyTemplate('default')" data-i18n>Domyślny tydzień</button>
       <button class="btn btn-ghost" onclick="applyTemplate('monday')" data-i18n>Każdy dzień jak poniedziałek</button>
@@ -513,14 +515,15 @@ let _actionInProgress = false;
 async function guarded(fn) {
   if (_actionInProgress) return;
   _actionInProgress = true;
-  const buttons = document.querySelectorAll('.btn');
+  const buttons = [...document.querySelectorAll('.btn')];
+  const wasDisabled = buttons.map(b => b.disabled);  // e.g. the extra-time buttons on a day without a limit
   buttons.forEach(b => b.disabled = true);
   document.body.style.cursor = 'wait';
   try {
     return await fn();
   } finally {
     _actionInProgress = false;
-    buttons.forEach(b => b.disabled = false);
+    buttons.forEach((b, i) => b.disabled = wasDisabled[i]);
     document.body.style.cursor = '';
   }
 }
@@ -758,7 +761,9 @@ function renderJournal() {
     if (filtered && !entries.length) return '';  // filtered view: skip empty days
     const used = day.children.some(c => c.minutes_used);
     const sum = !used && !entries.length ? '' : day.children.length === 1
-      ? `<p class="sum">${t('Czas przy komputerze: {used} z {limit}', {used: fmtMin(day.children[0].minutes_used), limit: fmtMin(day.children[0].limit_minutes)})}</p>`
+      ? `<p class="sum">${day.children[0].limit_minutes === null
+          ? t('Czas przy komputerze: {used} (bez limitu)', {used: fmtMin(day.children[0].minutes_used)})
+          : t('Czas przy komputerze: {used} z {limit}', {used: fmtMin(day.children[0].minutes_used), limit: fmtMin(day.children[0].limit_minutes)})}</p>`
       : `<p class="sum">${day.children.map(c => esc(c.name) + ' ' + fmtMin(c.minutes_used)).join(' · ')}</p>`;
     const list = entries.length ? `<ul class="log">${entries.map(renderEntry).join('')}</ul>`
       : `<p class="jempty">${t('Komputer nie był używany.')}</p>`;
@@ -862,13 +867,16 @@ function renderStatus(s) {
 
   document.getElementById('minutesUsed').textContent = fmtMinutes(c.minutes_used);
   const remEl = document.getElementById('minutesRemaining');
-  remEl.textContent = fmtMinutes(c.minutes_remaining);
+  remEl.textContent = c.unlimited ? t('Bez limitu') : fmtMinutes(c.minutes_remaining);
   remEl.className = 'value';
-  if (c.minutes_remaining <= 5) remEl.classList.add('danger');
-  else if (c.minutes_remaining <= 15) remEl.classList.add('warn');
+  if (!c.unlimited && c.minutes_remaining <= 5) remEl.classList.add('danger');
+  else if (!c.unlimited && c.minutes_remaining <= 15) remEl.classList.add('warn');
+  // A day without a limit (limit 0, #106): nothing to add, the server refuses it.
+  document.querySelectorAll('.grant-btn').forEach(b => b.disabled = c.unlimited);
+  document.getElementById('noLimitNote').hidden = !c.unlimited;
 
-  let limitInfo = t('Limit: {time}', {time: fmtMinutes(c.daily_limit)});
-  if (c.limit_override_minutes) limitInfo += ' + ' + t('{time} bonusu', {time: fmtMinutes(c.limit_override_minutes)});
+  let limitInfo = c.unlimited ? t('Dziś bez limitu') : t('Limit: {time}', {time: fmtMinutes(c.daily_limit)});
+  if (c.limit_override_minutes && !c.unlimited) limitInfo += ' + ' + t('{time} bonusu', {time: fmtMinutes(c.limit_override_minutes)});
   if (c.night_extension_until_local) limitInfo += ' • ' + t('Cisza nocna przedłużona do {time}', {time: c.night_extension_until_local});
   else limitInfo += ' • ' + t('Cisza nocna {time}', {time: c.night_local.map(x => x.slice(11)).join('–')});
   if (c.devices.length > 1) limitInfo += ' • ' + t('Suma ze wszystkich komputerów');

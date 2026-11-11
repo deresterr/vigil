@@ -8,7 +8,7 @@ import time_machine
 
 from app.crypto import hash_password
 from app.db import get_connection, set_config_value
-from tests.conftest import Watchdog, add_child, add_device, config, set_schedule, state_for
+from tests.conftest import Watchdog, add_child, add_device, config, set_schedule, set_used, state_for
 
 TZ = ZoneInfo("Europe/Warsaw")
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)  # Wednesday
@@ -84,10 +84,13 @@ def test_resume_with_a_target_is_idempotent(client):
 
 def test_totp_grant_goes_to_the_child_of_the_pc(client):
     pc, laptop, kuba = _family(client)
-    set_schedule(1, daily_limit=0)
-    set_schedule(2, daily_limit=0)
+    set_schedule(1, daily_limit=1)
+    set_schedule(2, daily_limit=1)
     with time_machine.travel(NOON, tick=False):
         laptop.heartbeat()
+        kuba.heartbeat()
+        set_used(DAY, 1, child_id=1)
+        set_used(DAY, 1, child_id=2)
         code = pyotp.TOTP(config("totp_secret")).now()
         r = laptop.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": 30}).json()
         assert r["mode"] == "extend_limit"

@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..admin_auth import require_admin_session
 from ..db import get_config_value, get_db
-from ..lock_logic import daily_limit, load_lock_config
+from ..lock_logic import NO_LIMIT, daily_limit, load_lock_config
 
 router = APIRouter(prefix="/admin/api", dependencies=[Depends(require_admin_session)])
 
@@ -129,12 +129,14 @@ async def journal(db: sqlite3.Connection = Depends(get_db), before: str | None =
         for c in children:
             state = db.execute("SELECT seconds_used, limit_override_minutes FROM child_daily "
                                "WHERE child_id = ? AND date_local = ?", (c["id"], day.isoformat())).fetchone()
+            limit = daily_limit(weeks[c["id"]], day)
             totals.append({
                 "child_id": c["id"],
                 "name": c["name"],
                 "minutes_used": (state["seconds_used"] // 60) if state else 0,
-                "limit_minutes": daily_limit(weeks[c["id"]], day)
-                + (state["limit_override_minutes"] if state else 0),
+                # None = no limit that day (#106)
+                "limit_minutes": None if limit == NO_LIMIT
+                else limit + (state["limit_override_minutes"] if state else 0),
             })
         out.append({"date": day.isoformat(), "children": totals, "entries": _entries(rows, tz, names)})
     oldest = db.execute("SELECT MIN(ts_utc) FROM events").fetchone()[0]

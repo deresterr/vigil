@@ -92,7 +92,8 @@
     .sched .day { color: #ccc; font-weight: 600; }
     .sched .day.weekend { color: #60a5fa; }
     .sched .sep { grid-column: 1 / -1; border-top: 1px solid #444; margin: 4px 0; }
-    .sched input[type=text], .sched input[type=number] { padding: 10px 8px; margin-bottom: 0; min-width: 0; }
+    .sched input[type=text] { padding: 10px 8px; margin-bottom: 0; min-width: 0; }
+    .sched input.invalid { border-color: #e05252; }
     .step { display: none; }
     .step.active { display: block; }
   </style>
@@ -160,7 +161,7 @@
       <option value="UTC">
     </datalist>
     <label data-i18n>Harmonogram tygodnia</label>
-    <p class="hint" data-i18n>Limit łącznie na wszystkich komputerach dziecka. Cisza nocna od wieczoru danego dnia do rana.</p>
+    <p class="hint" data-i18n>Limit łącznie na wszystkich komputerach dziecka, 0 = bez limitu. Cisza nocna od wieczoru danego dnia do rana.</p>
     <div class="sched-templates">
       <button class="btn btn-secondary" onclick="scheduleTemplate('default')" data-i18n>Domyślny tydzień</button>
       <button class="btn btn-secondary" onclick="scheduleTemplate('monday')" data-i18n>Każdy dzień jak poniedziałek</button>

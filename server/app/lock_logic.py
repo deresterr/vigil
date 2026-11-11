@@ -56,8 +56,18 @@ def load_lock_config(conn: sqlite3.Connection, child_id: int) -> dict:
     return {"days": days}
 
 
+# daily_limit 0 = no limit that day (#106): no limit lock, extra time refused (admin_api.grant), the PC gets
+# minutes_remaining 0 and shows no countdown. A day without the PC is the manual lock.
+NO_LIMIT = 0
+
+
 def daily_limit(cfg: dict, day: date) -> int:
     return cfg["days"][day.weekday()]["daily_limit"]
+
+
+def minutes_remaining(limit: int, override: int, used: int) -> int:
+    """Minutes left today; 0 also on a day without a limit."""
+    return 0 if limit == NO_LIMIT else max(0, limit + override - used)
 
 
 def night_window(cfg: dict, day: date) -> tuple[datetime, datetime]:
@@ -107,8 +117,9 @@ def child_today(conn: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime,
         "lock_reason": compute_lock_reason(now_utc, tz, today, state, cfg),
         "minutes_used": used,
         "daily_limit": limit,
+        "unlimited": limit == NO_LIMIT,
         "effective_limit": effective,
-        "minutes_remaining": max(0, effective - used),
+        "minutes_remaining": minutes_remaining(limit, state["limit_override_minutes"], used),
     }
 
 
@@ -142,7 +153,8 @@ def compute_lock_reason(
     if in_night and not night_extended:
         return "night"
 
-    if state["seconds_used"] // 60 >= daily_limit(cfg, today_local) + state["limit_override_minutes"]:
+    limit = daily_limit(cfg, today_local)
+    if limit != NO_LIMIT and state["seconds_used"] // 60 >= limit + state["limit_override_minutes"]:
         return "limit"
 
     # Pause: the lowest priority, only while the child still has time left.

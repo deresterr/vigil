@@ -50,6 +50,7 @@ everywhere the same problem occurs, not only where it was reported.
 - Lock priority: `manual > night > limit > pause`. `manual_lock` carries over midnight.
 - Weekly schedule (D19): limit and night per weekday (`child_schedule`). A night belongs to the evening of its day
   (`night_start` before 12:00 = after midnight); `lock_logic.night_window` is the only place that resolves it.
+  `daily_limit` 0 = no limit that day (`lock_logic.NO_LIMIT`, #106); a day without the PC is the manual lock.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
   names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs. They live in
   `client/shared/VigilLayout.cs`. No compatibility with installs from before v0.8 (D23).

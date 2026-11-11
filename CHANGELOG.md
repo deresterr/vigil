@@ -6,6 +6,11 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 ## [Unreleased]
 
 ### Server
+- **A daily limit of 0 now means no limit that day** (until now: the whole day locked). The panel shows
+  "No limit", and the extra-time buttons are off on such a day. To keep a child off the PC for a day, use the
+  manual lock.
+- The limit field of the weekly table takes digits only: it used to save `12e0` as 12 and `1e3` as 1000. Times
+  keep digits and `:` as they are typed, and the field in error is marked.
 - The setup wizard sets the first child's week day by day, in the same table as Settings → Weekly schedule,
   instead of one limit for Monday–Thursday, one for Friday–Sunday and one night time for the whole week.
 - Templates fill the weekly table, in the wizard and in the panel: "Default week" (the week a new child starts

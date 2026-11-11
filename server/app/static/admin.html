@@ -158,6 +158,27 @@
     .btn-ghost { background: transparent; color: #aaa; border: 1px solid #444; }
     .btn-ghost:hover:not(:disabled) { background: #2a2a2a; }
     .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    /* Actions card (#110): group labels, night time in violet (the night tag's), the manual lock as a switch. */
+    .act-label { margin: 16px 0 8px; font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .act-label.first { margin-top: 0; }
+    .action-grid.night-grid { grid-template-columns: repeat(3, 1fr); }
+    .btn-night { background: #2a2440; color: #c4b5fd; }
+    .btn-night:hover:not(:disabled) { background: #352d52; }
+    .lock-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px;
+                   background: #1a1a1a; border: 1px solid #1a1a1a; text-align: left; padding: 12px 14px; color: #e8e8e8; }
+    .lock-switch:hover:not(:disabled) { border-color: #444; }
+    .lock-switch .txt { display: flex; flex-direction: column; gap: 2px; }
+    .lock-switch .ttl { font-size: 0.95rem; }
+    .lock-switch .sub { font-size: 0.8rem; color: #888; }
+    .lock-switch .knob { flex: none; position: relative; width: 42px; height: 24px; border-radius: 12px; background: #444;
+                         transition: background .15s; }
+    .lock-switch .knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+                                border-radius: 50%; background: #bbb; transition: left .15s, background .15s; }
+    .lock-switch.on { background: #2a1a1a; border-color: #7f1d1d; }
+    .lock-switch.on .ttl { color: #fca5a5; }
+    .lock-switch.on .sub { color: #c08080; }
+    .lock-switch.on .knob { background: #dc2626; }
+    .lock-switch.on .knob::after { left: 21px; background: #fff; }
     .action-grid .btn { padding: 12px; }
     .action-row { display: flex; gap: 8px; margin-top: 8px; }
     .action-row .btn { flex: 1; }
@@ -348,6 +369,7 @@
   <div class="card" id="actionsCard">
     <h2 data-i18n>Akcje</h2>
     <p class="muted muted-block" id="actionsNote" hidden data-i18n>Dotyczą wszystkich komputerów dziecka.</p>
+    <p class="act-label first" data-i18n>Czas dziś</p>
     <div class="action-grid">
       <button class="btn btn-primary grant-btn" onclick="grantTime(15)">+15 min</button>
       <button class="btn btn-primary grant-btn" onclick="grantTime(30)">+30 min</button>
@@ -355,12 +377,16 @@
       <button class="btn btn-primary grant-btn" onclick="grantTime(120)">+120 min</button>
     </div>
     <p class="muted" id="noLimitNote" hidden style="margin: 8px 0 0;" data-i18n>Dziś bez limitu czasu — nie ma czego dodawać.</p>
-    <div class="action-row" style="margin-top: 14px;">
-      <button class="btn btn-success" onclick="grantNight(60)" data-i18n>Cisza nocna +60 min</button>
+    <p class="act-label" data-i18n>Przesuń ciszę nocną o</p>
+    <div class="action-grid night-grid">
+      <button class="btn btn-night" onclick="grantNight(30)">30 min</button>
+      <button class="btn btn-night" onclick="grantNight(60)">60 min</button>
+      <button class="btn btn-night" onclick="grantNight(120)">120 min</button>
     </div>
-    <div class="action-row" style="margin-top: 14px;">
-      <button class="btn btn-danger" id="manualLockBtn" onclick="toggleManualLock()">...</button>
-    </div>
+    <button class="btn lock-switch" id="manualLockBtn" role="switch" aria-checked="false" onclick="toggleManualLock()">
+      <span class="txt"><span class="ttl" data-i18n>Blokada ręczna</span><span class="sub" id="manualLockSub"></span></span>
+      <span class="knob" aria-hidden="true"></span>
+    </button>
     <div class="action-row" style="margin-top: 8px;">
       <button class="btn btn-ghost" onclick="clearExtension()" title="Resetuje bonusy czasu i przedłużenia ciszy nocnej" data-i18n-attr="title" data-i18n>
         Wyczyść bonusy i przedłużenia
@@ -896,8 +922,10 @@ function renderStatus(s) {
   document.getElementById('actionsNote').hidden = c.devices.length < 2;
 
   const lockBtn = document.getElementById('manualLockBtn');
-  lockBtn.textContent = c.manual_lock ? '🔓 ' + t('Wyłącz manualną blokadę') : '🔒 ' + t('Włącz manualną blokadę');
-  lockBtn.className = 'btn ' + (c.manual_lock ? 'btn-success' : 'btn-danger');
+  lockBtn.classList.toggle('on', !!c.manual_lock);
+  lockBtn.setAttribute('aria-checked', c.manual_lock ? 'true' : 'false');
+  document.getElementById('manualLockSub').textContent =
+    c.manual_lock ? t('Włączona — komputery zablokowane') : t('Blokuje komputery dziecka');
   if (activeTab() === 'settings') fillChildSettings(false);
 }
 
@@ -944,7 +972,7 @@ async function grantNight(minutes) {
   await guarded(async () => {
     try {
       await api(childUrl('/grant'), {method: 'POST', body: {minutes, mode: 'night'}});
-      notice(t('Cisza nocna +{n} min', {n: minutes}), 'success');
+      notice(t('Cisza nocna przesunięta o {n} min', {n: minutes}), 'success');
       loadStatus();
     } catch (e) { fail(e); }
   });

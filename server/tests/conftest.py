@@ -78,6 +78,13 @@ def state_for(date_iso: str, child_id: int = 1) -> dict:
         return dict(row) if row else {}
 
 
+def set_used(date_iso: str, minutes: int, child_id: int = 1) -> None:
+    """The child's time used on that day (its child_daily row must exist: one heartbeat first)."""
+    with app.db.get_connection() as conn:
+        conn.execute("UPDATE child_daily SET seconds_used = ? WHERE child_id = ? AND date_local = ?",
+                     (minutes * 60, child_id, date_iso))
+
+
 def set_schedule(child_id: int = 1, weekdays=range(7), **fields) -> None:
     """Sets daily_limit / night_start / night_end of the given weekdays (Monday = 0; default all)."""
     with app.db.get_connection() as conn:

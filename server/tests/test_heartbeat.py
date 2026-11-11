@@ -6,7 +6,7 @@ import time_machine
 
 from app.crypto import hash_password
 from app.db import get_connection, set_config_value
-from tests.conftest import Watchdog, config, set_schedule, state_for
+from tests.conftest import Watchdog, config, set_schedule, set_used, state_for
 
 TZ = ZoneInfo("Europe/Warsaw")
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)  # Wednesday, outside night window
@@ -177,7 +177,8 @@ def test_settings_change_applies_on_the_next_heartbeat(watchdog):
     """No config cache: a limit changed in the panel counts at once, not after a TTL."""
     with time_machine.travel(NOON, tick=False):
         assert watchdog.heartbeat()["lock_required"] is False
-        set_schedule(daily_limit=0)
+        set_used("2026-11-04", 30)
+        set_schedule(daily_limit=30)
         assert watchdog.heartbeat()["lock_reason"] == "limit"
 
 

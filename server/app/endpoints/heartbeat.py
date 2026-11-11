@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import Device, authenticate_request
 from ..db import get_child, get_config_values, get_db, log_event
-from ..lock_logic import child_today, compute_lock_reason, parse_iso_utc, utc_iso
+from ..lock_logic import child_today, compute_lock_reason, minutes_remaining, parse_iso_utc, utc_iso
 from ..models import GoodbyeRequest, GuardianRepaired, HeartbeatRequest, TamperEvent
 from ..offline import sync_offline_totp
 from ..tamper import process_goodbye, process_telemetry
@@ -114,7 +114,7 @@ async def heartbeat(
         db.execute("UPDATE children SET last_lock_reason = ? WHERE id = ?", (lock_reason or "", device.child_id))
 
     minutes_used = new_seconds_used // 60
-    minutes_remaining = max(0, today["effective_limit"] - minutes_used)
+    remaining = minutes_remaining(today["daily_limit"], state["limit_override_minutes"], minutes_used)
 
     # === 4. Clock drift (informational, Journal) ===
     # current_time_utc is the PC's own clock; the watchdog signs with the server's time (#92), so a PC whose
@@ -157,7 +157,7 @@ async def heartbeat(
         "lock_required": lock_reason is not None,
         "lock_reason": lock_reason,
         "minutes_used": minutes_used,
-        "minutes_remaining": minutes_remaining,
+        "minutes_remaining": remaining,
         "next_check_seconds": 5 if body.session_active else 30,
         "server_time_utc": utc_iso(now_utc),
         "ui_state": ui_state,

@@ -83,7 +83,8 @@ Tables: `children` (name, `last_lock_reason`), `child_schedule` (one row per chi
 activity, `seconds_today`, tamper baseline `wd_*`), `child_daily` (one row per child and local date:
 `seconds_used, limit_override_minutes, night_extension_until_utc, manual_lock, pause_active`). A new day's row
 inherits `manual_lock` and a still-active `night_extension_until_utc` from the child's previous row. The limit
-is the schedule row of the local date's weekday. A night **belongs to the evening of its day** (D19): it starts
+is the schedule row of the local date's weekday; `daily_limit` 0 = no limit that day (`lock_logic.NO_LIMIT`, #106:
+no limit lock, `minutes_remaining` 0, panel extra time refused with 409 `no_limit`). A night **belongs to the evening of its day** (D19): it starts
 at that day's `night_start` — on the next day when `night_start` is before 12:00 (after midnight) — and ends at
 the first `night_end` after that, so "Friday 23:00–09:00" covers Friday 23:00 to Saturday 09:00
 (`lock_logic.night_window`). A night grant counts from the start of the night in progress or the next one.

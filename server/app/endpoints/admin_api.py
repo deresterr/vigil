@@ -130,6 +130,7 @@ def _child_detail(db: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime,
         "daily_limit": t["daily_limit"],
         "limit_override_minutes": state["limit_override_minutes"],
         "effective_limit": t["effective_limit"],
+        "unlimited": t["unlimited"],
         "manual_lock": bool(state["manual_lock"]),
         "pause_active": bool(state["pause_active"]),
         "night_extension_until_local": night_ext_local,
@@ -278,10 +279,13 @@ async def grant(child_id: int, body: GrantBody, db: sqlite3.Connection = Depends
     """Extra time from the panel (the parent is logged in: no TOTP)."""
     child = _child_or_404(db, child_id)
     now_utc, tz = _now_tz(db)
-    today = now_utc.astimezone(tz).date()
-    state = ensure_child_day(db, child_id, today)
+    t = child_today(db, child, now_utc, tz)
+    today, state = t["today"], t["state"]
 
     if body.mode == "limit":
+        if t["unlimited"]:
+            # A bonus would turn "no limit" into a limit of that many minutes (#106).
+            raise HTTPException(status_code=409, detail="no_limit")
         # Atomic increment: several quick clicks must all count.
         db.execute("UPDATE child_daily SET limit_override_minutes = limit_override_minutes + ? "
                    "WHERE child_id = ? AND date_local = ?", (body.minutes, child_id, today.isoformat()))
@@ -297,7 +301,7 @@ async def grant(child_id: int, body: GrantBody, db: sqlite3.Connection = Depends
         if parsed > now_utc:
             current_ext = parsed
     ext_utc, ext_local = _compute_night_extension_until(
-        now_utc, tz, body.minutes, child_today(db, child, now_utc, tz)["cfg"], current_extension_utc=current_ext)
+        now_utc, tz, body.minutes, t["cfg"], current_extension_utc=current_ext)
     update_child_day(db, child_id, today, night_extension_until_utc=ext_utc.isoformat())
     until = ext_local.strftime("%Y-%m-%d %H:%M")
     log_event(db, "grant_applied", {"mode": "extend_night", "minutes": body.minutes, "via": "admin_ui",

@@ -40,7 +40,7 @@ Details: [`docs/architecture.md`](docs/architecture.md).
 ## Features
 
 - Several children on one server, each with any number of PCs; time counts across all of them.
-- Weekly schedule: a daily limit and night time for each day of the week and each child.
+- Weekly schedule: a daily limit (0 = no limit) and night time for each day of the week and each child.
 - Manual lock and extra time from the panel; extra time also with a TOTP code typed on the lock screen.
 - Unlocking with the phone code works without a connection to the server.
 - A pause the child starts from the tray: time is not counted, the screen is locked.

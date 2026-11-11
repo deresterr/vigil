@@ -130,3 +130,13 @@ def test_night_grant_counts_from_that_evenings_start():
     # Granted on Saturday at 02:00, inside Friday's night: from now.
     _, until = _compute_night_extension_until(at(2, 0, SAT), TZ, 60, cfg)
     assert until.replace(tzinfo=None) == datetime(2026, 11, 7, 3, 0)
+
+
+def test_limit_zero_means_no_limit():
+    """#106: a day with limit 0 has no limit lock, whatever the time used; the night and the manual lock stay."""
+    cfg = week(wed={"daily_limit": 0})
+    assert reason(at(12, 0), cfg, seconds_used=10**6) is None
+    assert reason(at(12, 0), cfg, seconds_used=10**6, pause_active=1) == "pause"
+    assert reason(at(23, 0), cfg) == "night"
+    assert reason(at(12, 0), cfg, manual_lock=1) == "manual"
+    assert reason(at(12, 0, THU), cfg, seconds_used=120 * 60) == "limit"  # the other days keep theirs

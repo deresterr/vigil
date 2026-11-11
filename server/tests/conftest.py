@@ -25,7 +25,10 @@ from app.config import week_schedule
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(app.db, "DATABASE_PATH", tmp_path / "vigil.db")
     app.admin_auth._login_failures.clear()
+    from app import main as app_main
     from app.main import app as fastapi_app
+
+    app_main._health_failing = False
 
     with TestClient(fastapi_app) as c:
         with app.db.get_connection() as conn:

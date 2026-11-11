@@ -5,16 +5,11 @@ The parent's password, TOTP and limits come from the /setup wizard; this only la
 
 from __future__ import annotations
 
-import logging
-import sys
-
 import pyotp
 
 from .config import CONFIG_DEFAULTS
 from .crypto import generate_token_b64
 from .db import get_connection
-
-logger = logging.getLogger(__name__)
 
 
 def _is_first_run(conn) -> bool:
@@ -32,14 +27,13 @@ def _insert_config_defaults(conn) -> None:
     )
 
 
-def run_bootstrap() -> None:
-    """Called at startup (lifespan). Idempotent."""
+def run_bootstrap() -> bool:
+    """Called at startup (lifespan). Idempotent. True on the first run (a new database)."""
     with get_connection() as conn:
         _insert_config_defaults(conn)
 
         if not _is_first_run(conn):
-            logger.info("Database OK.")
-            return
+            return False
 
         # First run: server-wide secrets. Device signing keys come from pairing (endpoints/pairing.py).
         secrets = [
@@ -50,5 +44,4 @@ def run_bootstrap() -> None:
             "INSERT OR REPLACE INTO config(key, value) VALUES (?, ?)",
             secrets,
         )
-
-    sys.stdout.flush()
+    return True

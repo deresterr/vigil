@@ -31,8 +31,9 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA busy_timeout = 30000")  # 30 s
 
 
-def init_database() -> None:
-    """WAL mode + schema migrations (migrations.py). Idempotent, runs at every start."""
+def init_database() -> int:
+    """WAL mode + schema migrations (migrations.py). Idempotent, runs at every start. Returns the schema
+    version."""
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     # isolation_level None: migrate() manages its own transactions.
@@ -42,9 +43,7 @@ def init_database() -> None:
         if mode.lower() != "wal":
             logger.warning("Could not enable WAL mode, current: %s", mode)
         conn.execute("PRAGMA synchronous = NORMAL")  # WAL + NORMAL: safe and fast
-        version = migrate(conn)
-
-    logger.info("Database ready (%s, schema %d)", DATABASE_PATH, version)
+        return migrate(conn)
 
 
 @contextmanager

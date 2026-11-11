@@ -5,6 +5,13 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 
 ## [Unreleased]
 
+### Server
+- The container log shows the server itself, not every request: one line when it starts (version, port,
+  database) and stops, a warning while the setup wizard is not completed, database migrations, and errors with
+  their traceback and the request they broke. HTTP requests are no longer logged; what happens on the children's
+  PCs stays in the panel's journal. A failing database health check is logged once, then its recovery.
+- Log lines have one format with a colored level; `NO_COLOR=1` in `.env` turns the colors off.
+
 ## [0.8.2] - 2026-11-10
 
 ### Client

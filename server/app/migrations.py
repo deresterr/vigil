@@ -116,6 +116,7 @@ def migrate(conn: sqlite3.Connection) -> int:
 
     Refuses a database newer than this code (a downgrade would silently misread it).
     The connection must be in autocommit mode (isolation_level None): transactions are explicit.
+    Each migration of an existing database is logged; a new one (version 0) is just "new" in the start line.
     """
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     if current > LATEST_VERSION:
@@ -132,5 +133,6 @@ def migrate(conn: sqlite3.Connection) -> int:
         except BaseException:
             conn.execute("ROLLBACK")
             raise
-        logger.info("Schema migrated to %d (%s)", version, name)
+        if current:
+            logger.info("Database migrated to schema %d (%s)", version, name)
     return LATEST_VERSION

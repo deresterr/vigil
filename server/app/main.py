@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from starlette.requests import ClientDisconnect
 
+from . import db as db_module
 from .bootstrap import run_bootstrap
 from .db import get_config_value, get_connection, get_db, init_database
 from .endpoints.admin_api import router as admin_api_router
@@ -21,57 +23,27 @@ from .endpoints.pairing import router as pairing_router
 from .endpoints.pause import router as pause_router
 from .endpoints.setup import router as setup_router
 from .endpoints.totp import router as totp_router
+from .logs import VERSION, setup_logging
 from .signing import HmacSigningMiddleware
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+setup_logging()
 logger = logging.getLogger("vigil")
-
-
-class _AccessLogFilter(logging.Filter):
-    """Drops successful access-log lines of the frequent endpoints.
-
-    Heartbeats and panel status polling every 5 s and the Docker healthcheck would flood stdout. Errors
-    (4xx/5xx) and every other endpoint are logged as usual.
-
-    Uvicorn logs access as `self.access_logger.info('%s - "%s %s HTTP/%s" %d', ...)`, so
-    record.args = (client_addr, method, full_path, http_version, status_code).
-    """
-
-    _SILENT_PATHS = ("/v1/heartbeat", "/admin/api/status", "/health")
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        args = record.args
-        if not isinstance(args, tuple) or len(args) < 5:
-            return True  # unknown format: keep it
-        try:
-            full_path = str(args[2])
-            status_code = int(args[4])
-        except (IndexError, ValueError, TypeError):
-            return True
-        if status_code >= 400:
-            return True
-        # full_path may carry a query string
-        return not any(
-            full_path == p or full_path.startswith(p + "?")
-            for p in self._SILENT_PATHS
-        )
-
-
-logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Startup: schema + bootstrap. Nothing to do at shutdown (connections are per request)."""
-    logger.info("Startup: database...")
-    init_database()
-    run_bootstrap()
-    logger.info("Startup complete")
+    """Startup: schema + bootstrap, then one log line for the whole start (logs.py). Nothing to do at shutdown
+    (connections are per request)."""
+    schema = init_database()
+    first_run = run_bootstrap()
+    port = os.environ.get("LISTEN_PORT")  # set by the Dockerfile; unknown when uvicorn is run by hand
+    logger.info("Vigil %s started%s · %s (%sschema %d)", VERSION, f" · port {port}" if port else "",
+                db_module.DATABASE_PATH, "new, " if first_run else "", schema)
+    with get_connection() as conn:
+        if get_config_value(conn, "setup_complete") != "1":
+            logger.warning("Setup not completed: open /setup to finish it")
     yield
-    logger.info("Shutdown.")
+    logger.info("Vigil stopped")
 
 
 app = FastAPI(
@@ -89,12 +61,10 @@ async def _handle_client_disconnect(request: Request, exc: ClientDisconnect) -> 
     (re-keying, short network blips, a service restart, its own request timeout). Without this handler
     Starlette logs a long traceback for every cut-off heartbeat.
 
-    499 is nginx's "Client Closed Request": the client never sees it, but the log shows a dropped connection,
-    not a server error. The watchdog sends the next heartbeat 5 s later.
+    499 is nginx's "Client Closed Request": the client never sees it. Debug level: network noise, not a server
+    error (an offline PC shows in the journal). The watchdog sends the next heartbeat 5 s later.
     """
-    logger.info(
-        "Client disconnected mid-request: %s %s", request.method, request.url.path
-    )
+    logger.debug("Client disconnected mid-request: %s %s", request.method, request.url.path)
     return Response(status_code=499)
 
 
@@ -116,6 +86,25 @@ async def setup_guard(request: Request, call_next):
 # its responses are not signed.
 app.add_middleware(HmacSigningMiddleware)
 
+
+# Added last = the outermost middleware, so it also sees errors of the ones above.
+@app.middleware("http")
+async def log_unhandled_errors(request: Request, call_next):
+    """An unhandled exception: one ERROR line naming the request, with the traceback (logs.py). Without this,
+    Starlette re-raises it and uvicorn logs a bare "Exception in ASGI application". The response is the same
+    plain 500 Starlette sends (unsigned, so a watchdog treats it as a failed request)."""
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        # BaseHTTPMiddleware re-raises the error "from" the task group that caught it, a group holding the same
+        # error: the traceback would be printed twice.
+        cause = exc.__cause__
+        if isinstance(cause, BaseExceptionGroup) and exc in cause.exceptions:
+            exc.__cause__ = None
+            exc.__suppress_context__ = True
+        logger.exception("Unhandled error in %s %s", request.method, request.url.path)
+        return PlainTextResponse("Internal Server Error", status_code=500)
+
 # First-run wizard: /setup, /setup/totp_qr, /setup/complete
 app.include_router(setup_router)
 
@@ -134,14 +123,24 @@ app.include_router(admin_api_router)
 app.include_router(journal_router)
 
 
+# Docker's healthcheck asks every 30 s: a database failure is logged once, then its recovery.
+_health_failing = False
+
+
 @app.get("/health")
 def health(db: sqlite3.Connection = Depends(get_db)) -> dict[str, str]:
     """The app runs and the database answers. No authentication, no signature, no error details."""
+    global _health_failing
     try:
         db.execute("SELECT 1").fetchone()
     except sqlite3.Error as e:
-        logger.exception("Healthcheck DB failed")
+        if not _health_failing:
+            _health_failing = True
+            logger.exception("Health check: database not responding")
         raise HTTPException(status_code=503, detail="db_error") from e
+    if _health_failing:
+        _health_failing = False
+        logger.info("Health check: database OK again")
     return {"status": "ok"}
 
 

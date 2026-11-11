@@ -17,6 +17,7 @@ services:
     environment:
       - LISTEN_PORT=${VIGIL_PORT:-8088}
       - TZ=${TZ:-UTC}
+      - NO_COLOR=${NO_COLOR:-}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:${VIGIL_PORT:-8088}/health"]
       interval: 30s

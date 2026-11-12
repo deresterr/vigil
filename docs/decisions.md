@@ -1,6 +1,6 @@
 # Design decisions
 
-The decisions the code refers to as D1–D26, in short. The reasoning behind each is in the issues and pull
+The decisions the code refers to as D1–D27, in short. The reasoning behind each is in the issues and pull
 requests named next to it; the threat model in full is in the [README](../README.md#threat-model).
 
 | # | Decision |
@@ -31,6 +31,7 @@ requests named next to it; the threat model in full is in the [README](../README
 | D24 | Nothing from the child's environment reaches the lock screen process: the watchdog builds `vigil_ui`'s environment from a fixed list with .NET diagnostics off, startup hooks are disabled, and no native library is extracted at run time (#79). |
 | D25 | Published as the same repository, with its history, issues and pull requests. |
 | D26 | Schema migrations start from the v0.8 schema: no database of an earlier version is migrated (#78). |
+| D27 | Fail-closed whatever the PC's network: no server answer since the service started or woke up (Fast Startup included), or none for 30 s, locks at once, without a grace period after logon. No network at all only changes the lock screen's message, never the decision: the child can switch Wi-Fi off without elevation (#128). |
 
 ## Open
 

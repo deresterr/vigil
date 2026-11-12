@@ -27,7 +27,7 @@ everywhere the same problem occurs, not only where it was reported.
   `e2e/ui-standalone.ps1` (CI, before it): vigil_ui's test mode for every lock reason must close itself after
   `--exit-after`; it prints the CPU use and ui.log.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/decisions.md` — the design decisions D1–D26 the code refers to. `docs/installer.md`, `docs/guardian.md`
+- `docs/decisions.md` — the design decisions D1–D27 the code refers to. `docs/installer.md`, `docs/guardian.md`
   describe those parts. When a doc and the code disagree, the code wins: fix the doc.
 
 ## Verify before saying "done"
@@ -47,7 +47,7 @@ everywhere the same problem occurs, not only where it was reported.
 ## Invariants (changing any of these is a design decision — ask first)
 - **Fail-closed**: no server answer since the service started, or none for 30 s (monotonic clock, which counts
   sleep: after a wake-up the first failed heartbeat locks) ⇒ lock. Never fail-open. Whether the PC has a network
-  at all only picks the message (`network_down`, #128) — the child can switch Wi-Fi off without elevation.
+  at all only picks the message (`network_down`, #128, D27) — the child can switch Wi-Fi off without elevation.
 - **uvicorn `--workers 1`**: time accounting relies on a single process + `asyncio.Lock` in `get_db()`.
 - **Time is server-side**: delta between a device's heartbeats, clamped to `heartbeat_delta_max`, zero after a gap,
   added to its child (D7: time = sum over the child's devices; locks and settings are per child).

@@ -1,6 +1,6 @@
 # Architecture
 
-How the system works today. The decisions behind it (D1–D26) are in [`decisions.md`](decisions.md), the
+How the system works today. The decisions behind it (D1–D27) are in [`decisions.md`](decisions.md), the
 installer in [`installer.md`](installer.md), the guardian in [`guardian.md`](guardian.md).
 
 ```
@@ -162,7 +162,7 @@ Wi-Fi joined, cable in).
    (local message), unless an offline grant is active (see Offline unlock). Also on request timeouts and
    unexpected exceptions. The grace runs on `Environment.TickCount64`, which counts sleep: after a wake-up — also
    from a shutdown with Fast Startup, which hibernates the service instead of stopping it — the PC is locked until
-   the server answers, so a PC that joins Wi-Fi after logon shows the lock for those seconds (#128).
+   the server answers, so a PC that joins Wi-Fi after logon shows the lock for those seconds (#128, D27).
    The reason only changes the message, never the lock: `device_unpaired` when the last failure was the server
    refusing this computer's key (401 `invalid_signature`: removed or re-paired in the panel), so the lock screen
    says the PC needs pairing again; `network_down` when this PC has no network at all (the connect found no

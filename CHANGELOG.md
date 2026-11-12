@@ -1,7 +1,7 @@
 # Changelog
 
 User-visible changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
-the release tags. The reasoning behind each design decision (D1–D26) is in [`docs/decisions.md`](docs/decisions.md).
+the release tags. The reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](docs/decisions.md).
 
 ## [Unreleased]
 

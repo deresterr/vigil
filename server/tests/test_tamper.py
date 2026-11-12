@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 import time_machine
 
-from app.db import get_connection
+from app.crypto import hash_password
+from app.db import get_connection, set_config_value
 from tests.conftest import Watchdog
 
 
@@ -182,3 +183,41 @@ def test_malformed_guardian_reports_are_rejected(watchdog):
                  {"occurred_utc": "2020-01-01T00:00:00Z"}):
         assert _guardian_report(watchdog, **over).status_code == 422, over
     assert _events("tamper_guardian") == []
+
+
+def _stamps(event_type: str) -> list[datetime]:
+    with get_connection() as conn:
+        rows = conn.execute("SELECT ts_utc FROM events WHERE event_type = ? ORDER BY id", (event_type,)).fetchall()
+    return [datetime.fromisoformat(r[0]) for r in rows]
+
+
+def test_sleep_or_fast_startup_is_a_shutdown_and_a_start(client, watchdog):
+    """Same process, hours on the server's clock, seconds on the awake clock: the PC was off (#130)."""
+    pc = Pc(watchdog)
+    pc.tick()
+    before = datetime.now(timezone.utc)
+    with time_machine.travel(before + timedelta(hours=8), tick=True):
+        pc.tick(seconds=20)
+        assert _wd_events() == [
+            ("watchdog_shutdown", {"instance_id": pc.instance, "sleep": True}),
+            ("watchdog_started", {"same_boot": False, "after": "sleep", "asleep_seconds": 8 * 3600 - 20}),
+        ]
+        (off,), (on,) = _stamps("watchdog_shutdown"), _stamps("watchdog_started")
+        assert abs((off - before).total_seconds()) < 5
+        assert abs((on - (before + timedelta(hours=8) - timedelta(seconds=20))).total_seconds()) < 5
+        # Both reach the journal (PC on/off), the start newest.
+        with get_connection() as conn:
+            set_config_value(conn, "parent_password_hash", hash_password("haslo"))
+        client.post("/admin/login", data={"password": "haslo"})
+        types = [e["type"] for d in client.get("/admin/api/journal").json()["days"] for e in d["entries"]]
+        assert [t for t in types if t.startswith("watchdog_")] == ["watchdog_started", "watchdog_shutdown"]
+
+
+def test_short_sleep_and_a_slow_server_leave_no_entry(watchdog):
+    pc = Pc(watchdog)
+    pc.tick()
+    with time_machine.travel(datetime.now(timezone.utc) + timedelta(seconds=100), tick=True):
+        pc.tick(seconds=5)  # 95 s asleep: under the threshold
+    with time_machine.travel(datetime.now(timezone.utc) + timedelta(minutes=10), tick=True):
+        pc.tick(seconds=600)  # awake the whole time, the server was down: no sleep (the outage itself is logged)
+    assert [e[0] for e in _wd_events()] == ["tamper_watchdog_silent"]

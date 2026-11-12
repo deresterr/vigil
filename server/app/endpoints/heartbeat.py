@@ -149,7 +149,8 @@ async def heartbeat(
 
     # === 6. Tamper telemetry (#7) ===
     if body.has_telemetry:
-        process_telemetry(db, device, body.instance_id, body.awake_ms, body.awake_ms_at_start, body.failed_attempts)
+        process_telemetry(db, device, body.instance_id, body.awake_ms, body.awake_ms_at_start, body.failed_attempts,
+                          parse_iso_utc(dev["last_heartbeat_utc"]) if dev["last_heartbeat_utc"] else None)
 
     # === 7. Offline TOTP (#9) ===
     offline_secret = sync_offline_totp(db, device, body.totp_fp, [g.model_dump() for g in body.offline_grants])

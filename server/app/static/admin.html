@@ -698,8 +698,12 @@ const GUARDIAN_CHECKS = {
 };
 const mins = sec => fmtMinutes(Math.max(1, Math.round(sec / 60)));
 const JOURNAL = {
-  watchdog_started:   d => ({cat: 'pc', tone: d.same_boot ? 'muted' : 'ok', icon: 'power', title: d.same_boot ? t('Vigil uruchomiony ponownie') : t('Komputer włączony')}),
-  watchdog_shutdown:  d => ({cat: 'pc', tone: 'muted', icon: 'power', title: t('Komputer wyłączony'),
+  // after: 'sleep' / sleep: true — no goodbye, the same watchdog after a gap: sleep or Fast Startup (#130).
+  watchdog_started:   d => ({cat: 'pc', tone: d.same_boot ? 'muted' : 'ok', icon: 'power',
+                             title: d.same_boot ? t('Vigil uruchomiony ponownie')
+                                  : d.after === 'sleep' ? t('Komputer włączony lub wybudzony') : t('Komputer włączony')}),
+  watchdog_shutdown:  d => ({cat: 'pc', tone: 'muted', icon: 'power',
+                             title: d.sleep ? t('Komputer wyłączony lub uśpiony') : t('Komputer wyłączony'),
                              sub: d.on_since ? t('Włączony od {since} ({time})', {since: d.on_since, time: fmtMinutes(d.minutes)}) : ''}),
   watchdog_offline:   d => ({cat: 'pc', tone: 'muted', icon: 'power', title: t('Brak połączenia z serwerem'),
                              sub: t('Przez ok. {time}', {time: mins(d.awake_gap_seconds)})}),

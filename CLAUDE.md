@@ -103,7 +103,8 @@ everywhere the same problem occurs, not only where it was reported.
   a null key. Menus and fields go through `Screens/Prompts.cs` (digits work without ANSI too); the CI drives
   them with `-Keys <file>` (`ScriptedConsole`: plain-text output, throws when the script runs out — exit 3).
   Windows 10 conhost (Consolas, no font fallback) has no ✓/✗, braille spinners or rounded borders: `Theme` uses
-  √/× and the line spinner unless `WT_SESSION` is set, square borders everywhere.
+  √/× and the line spinner unless `WT_SESSION` is set, square borders everywhere. The screens write through
+  `App.C`, an `IndentedConsole` (left margin, tracked line start): never `AnsiConsole` directly.
 - PowerShell: an MSBuild property with a dot after a dash in a splatted array (`-p:Version=0.0.0-ci.89`) reached
   dotnet mangled (MSB1001). Pass such arguments as one quoted string: `"-p:Version=$Version"`.
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using

@@ -1,4 +1,4 @@
-using System.Windows.Media;
+﻿using System.Windows.Media;
 
 namespace Vigil.Ui;
 
@@ -35,7 +35,6 @@ public static class Palette
     public static readonly SolidColorBrush Time = Make(0x8f, 0xa5, 0xc2);
     public static readonly SolidColorBrush Night = Make(0xa9, 0x9c, 0xd6);
     public static readonly SolidColorBrush Lock = Make(0xd6, 0x8f, 0x8f);
-    public static readonly SolidColorBrush LockBorder = Make(0x5e, 0x34, 0x34);
     public static readonly SolidColorBrush Pause = Make(0xa3, 0xa3, 0xa3);
     /// <summary>No server (or a rejected key): not a parent's lock, so no state color.</summary>
     public static readonly SolidColorBrush Offline = Make(0x9a, 0x9a, 0x9a);

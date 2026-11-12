@@ -34,7 +34,8 @@ internal sealed class App
 
     public static int Run(Cli cli, LogReport log)
     {
-        var console = cli.KeysFile is { } keys ? ScriptedConsole.Create(keys) : AnsiConsole.Console;
+        // Every screen a little off the window's left edge (#120).
+        var console = new IndentedConsole(cli.KeysFile is { } keys ? ScriptedConsole.Create(keys) : AnsiConsole.Console);
         var app = new App(console, log, cli.ChildUserName);
         try
         {
@@ -121,7 +122,7 @@ internal sealed class App
                 Theme.Problem(C, CheckLevel.Fail, error);
                 Theme.Blank(C);
             }
-            var code = Pairing.NormalizeCode(Prompts.Line(C, Strings.UiCodePrompt));
+            var code = Pairing.NormalizeCode(Prompts.Code(C, Strings.UiCodePrompt, length: 8, group: 4));
             if (code is not null) return code;
             error = Strings.CodeFormat;
         }

@@ -90,11 +90,24 @@ public partial class LockWindow : Window
         }
     }
 
-    // === TOTP field: digits only, and it keeps the keyboard focus ===
+    // === TOTP field: digits only, shown as "123 456" (as authenticator apps show it), keeps the focus ===
+
+    private static string Digits(string text) => new(text.Where(char.IsAsciiDigit).Take(6).ToArray());
+
+    private static string Grouped(string digits) => digits.Length > 3 ? digits[..3] + " " + digits[3..] : digits;
 
     private void TotpInput_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
         e.Handled = !e.Text.All(char.IsAsciiDigit);
+    }
+
+    private void TotpInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        // Typing, Backspace over the space and pasting all end here: the digits, regrouped, caret at the end.
+        var grouped = Grouped(Digits(TotpInput.Text));
+        if (TotpInput.Text == grouped) return;
+        TotpInput.Text = grouped;
+        TotpInput.CaretIndex = grouped.Length;
     }
 
     private void TotpInput_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -105,14 +118,11 @@ public partial class LockWindow : Window
 
     private void TotpInput_Pasting(object sender, DataObjectPastingEventArgs e)
     {
-        // Accept "123 456" or "123-456" from a password manager: keep the digits, max 6.
+        // Accept "123 456" or "123-456" from a password manager: keep the digits, max 6 (TextChanged groups).
         e.CancelCommand();
         if (e.SourceDataObject.GetData(DataFormats.UnicodeText) is not string pasted) return;
         var box = TotpInput;
-        var merged = box.Text[..box.SelectionStart] + pasted + box.Text[(box.SelectionStart + box.SelectionLength)..];
-        var digits = new string(merged.Where(char.IsAsciiDigit).Take(6).ToArray());
-        box.Text = digits;
-        box.CaretIndex = digits.Length;
+        box.Text = Digits(box.Text[..box.SelectionStart] + pasted + box.Text[(box.SelectionStart + box.SelectionLength)..]);
     }
 
     private void TotpInput_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -142,8 +152,8 @@ public partial class LockWindow : Window
 
     private async void CheckTotp_Click(object sender, RoutedEventArgs e)
     {
-        var code = _vm.TotpCode.Trim();
-        if (code.Length != 6 || !code.All(char.IsAsciiDigit))
+        var code = Digits(_vm.TotpCode);
+        if (code.Length != 6)
         {
             _vm.StatusMessage = Strings.CodeNeedsSixDigits;
             return;
@@ -151,7 +161,7 @@ public partial class LockWindow : Window
 
         // Always 60 min: the code alone grants an hour; other amounts from the parent panel.
         _vm.StatusMessage = "";
-        await ApplyGrant(60);
+        await ApplyGrant(code, 60);
     }
 
     private async void Retry_Click(object sender, RoutedEventArgs e)
@@ -210,7 +220,7 @@ public partial class LockWindow : Window
         }
     }
 
-    private async Task ApplyGrant(int minutes)
+    private async Task ApplyGrant(string code, int minutes)
     {
         _vm.Phase = LockUiPhase.GrantPending;
 
@@ -234,7 +244,7 @@ public partial class LockWindow : Window
 
         try
         {
-            var resp = await ipc.SendTotpAsync(_vm.TotpCode, minutes, CancellationToken.None);
+            var resp = await ipc.SendTotpAsync(code, minutes, CancellationToken.None);
 
             if (resp.Ok)
             {

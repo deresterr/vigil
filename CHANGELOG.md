@@ -44,6 +44,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - Log lines have one format with a colored level; `NO_COLOR=1` in `.env` turns the colors off.
 
 - The heartbeat tells a locked computer when the night ends (`ui_state.night_end_local`).
+- Codes are grouped as they are typed and shown: the pairing code as 1234 5678 in the panel, the TOTP code as
+  123 456 in the setup wizard.
 
 ### Client
 - The installer's pairing-code hint points to the panel's new place: Settings → Add computer (or Re-pair).
@@ -58,6 +60,7 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - If the Vigil service stops unexpectedly while the computer is locked, the lock screen stays until the service is
   back, instead of disappearing after 30 seconds.
 - "Shut down" asks on the lock screen itself instead of in a Windows message box.
+- The code field on the lock screen groups the digits as 123 456 (a pasted code with spaces or dashes works too).
 - A computer removed or re-paired in the panel says so on its lock screen instead of "No connection to the server".
 - The lock screen clock always shows the server's time; messages after a code use the panel's format ("1 h
   added"); no technical error text is shown to the child; Polish texts no longer say "watchdog" or assume a boy.
@@ -66,7 +69,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - The computer's key and the offline TOTP secret are written with their restricted permissions from the start,
   never readable by other accounts for a moment.
 - Installer: the panel's turquoise accent; "night time" instead of "quiet hours"; Polish texts say "profil
-  domyślny" and "zasady" instead of "Default profile" and "policy"; menu digits stay in order.
+  domyślny" and "zasady" instead of "Default profile" and "policy"; menu digits stay in order. The screens
+  start a little off the window's left edge, and the pairing code is typed as 1234 5678.
 
 ## [0.8.2] - 2026-11-10
 

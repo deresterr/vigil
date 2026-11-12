@@ -170,9 +170,9 @@
     .act-label { margin: 16px 0 8px; font-size: 0.75rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
     .act-label.first { margin-top: 0; }
     .action-grid.night-grid { grid-template-columns: repeat(3, 1fr); }
-    .btn-time { background: var(--time-bg); color: var(--time-text); box-shadow: inset 0 0 0 1px var(--time-line); }
+    .btn-time { background: var(--time-bg); color: var(--time-text); box-shadow: inset 0 0 0 1px var(--btn-line); }
     .btn-time:hover:not(:disabled) { background: var(--time-bg-hover); }
-    .btn-night { background: var(--night-bg); color: var(--night-text); }
+    .btn-night { background: var(--night-bg); color: var(--night-text); box-shadow: inset 0 0 0 1px var(--btn-line); }
     .btn-night:hover:not(:disabled) { background: var(--night-bg-hover); }
     .lock-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px;
                    background: var(--bg); border: 1px solid var(--bg); text-align: left; padding: 12px 14px; color: var(--text); }
@@ -235,7 +235,7 @@
       transition: transform 0.25s ease, opacity 0.25s ease, visibility 0s linear 0s;
     }
     #notice.error { border-color: var(--danger); }
-    #notice.success { border-color: var(--ok-fill); }
+    #notice.success { border-color: var(--accent); }
     .modal-backdrop {
       display: none; position: fixed; inset: 0;
       background: var(--backdrop); z-index: 50;
@@ -271,7 +271,7 @@
       font-family: inherit;
     }
     .secret-row .copy-btn:active { transform: scale(0.95); }
-    .secret-row .copy-btn.copied { background: var(--ok-fill); }
+    .secret-row .copy-btn.copied { background: var(--accent-hover); }
     .secret-label { font-size: 0.85rem; color: var(--text-2); margin: 12px 0 0; font-weight: 600; }
     .secret-label:first-child { margin-top: 0; }
     /* Child switcher (D7, variant D): name in the header + bottom sheet */

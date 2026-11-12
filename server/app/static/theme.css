@@ -1,8 +1,9 @@
 /* The colors of the panel, the setup wizard and the login page (#116), inlined by pages.py.
    One accent (cyan) for the main actions, focus and selection; each state has one color everywhere — the status
-   card, dots, tags, the journal and the buttons that change it: time/limit = steel blue, night = violet, manual
-   lock = dusty red, unlocked/online = green, pause = grey (with its own icon) — all muted to the steel's
-   saturation (#118). Alerts, errors and deleting keep the strong red (--danger), so they still warn. */
+   card, dots, tags, the journal and the buttons that change it: time/limit = slate grey (#4b5563 fill, light text,
+   #122), night = violet, manual lock = dusty red, unlocked/online = green, pause = grey (with its own icon) — all
+   muted (#118). Alerts, errors and deleting keep the strong red (--danger), so they still warn. Confirmations
+   use the accent. client/ui/Palette.cs mirrors the state colors for the lock screen and the tray. */
 :root {
   --bg: #1a1a1a;  --bar: #1f1f1f;  --surface: #232323;  --hover: #2a2a2a;
   --border: #333;  --divider: #2e2e2e;  --border-strong: #444;
@@ -13,9 +14,9 @@
   --accent: #0891b2;  --accent-hover: #0e7490;  --accent-line: #22d3ee;  --accent-text: #67e8f9;
   --accent-bg: #0e2a33;  --accent-border: #155e75;
 
-  --ok: #8cc4a0;  --ok-bg: #1f2b24;  --ok-fill: #16a34a;  --ok-fill-hover: #15803d;
-  --time: #8fa5c2;  --time-text: #b4c5db;  --time-bg: #1f2631;  --time-bg-hover: #283244;
-  --time-line: rgba(255, 255, 255, 0.35);  /* the +min buttons' outline: their fill is close to the card (#118) */
+  --ok: #8cc4a0;  --ok-bg: #1f2b24;
+  --time: #d1d5db;  --time-text: #f3f4f6;  --time-bg: #4b5563;  --time-bg-hover: #5b6574;
+  --btn-line: rgba(255, 255, 255, 0.35);  /* outline of the +min and night buttons, so they stand out (#118, #122) */
   --night: #a99cd6;  --night-text: #c4bce6;  --night-bg: #27243a;  --night-bg-hover: #322e4a;
   --pause: #a3a3a3;  --pause-bg: #2a2a2a;
   --lock: #d68f8f;  --lock-text: #e6b4b4;  --lock-sub: #b08a8a;  --lock-bg: #2d2020;  --lock-border: #5e3434;

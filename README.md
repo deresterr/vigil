@@ -36,6 +36,12 @@ manages everything from a browser and unlocks with a TOTP code from their phone.
 - A guardian task puts back what keeps the service running; every repair and every other sign of tampering
   ends up as an alert in the parent panel.
 
+<p align="center">
+  <img src="docs/images/lock-limit.png" alt="Lock screen: the time for today is up, a field for the parent's code" width="380">
+  &nbsp;
+  <img src="docs/images/lock-night.png" alt="Lock screen at night time: the computer unlocks at 06:30" width="380">
+</p>
+
 Details: [`docs/architecture.md`](docs/architecture.md).
 
 ## Features
@@ -45,7 +51,8 @@ Details: [`docs/architecture.md`](docs/architecture.md).
 - Manual lock and extra time from the panel; extra time also with a TOTP code typed on the lock screen.
 - Unlocking with the phone code works without a connection to the server.
 - A pause the child starts from the tray: time is not counted, the screen is locked.
-- Journal in the parent panel with alerts about attempts to get around Vigil, confirmed by the parent.
+- Journal in the parent panel: when each computer was on, asleep or shut down, what the parent changed, and
+  alerts about attempts to get around Vigil, confirmed by the parent.
 - Panel, lock screen and installer in English or Polish, following the browser and Windows language.
 - The client is one file, `vigil_setup.exe`: a console wizard to install, a menu to check, update, re-pair or uninstall.
 

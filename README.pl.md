@@ -36,6 +36,12 @@ wszystkim z przeglądarki i odblokowuje kodem TOTP z telefonu.
 - Zadanie strażnika przywraca to, co utrzymuje usługę przy życiu; każda naprawa i każdy inny ślad manipulacji
   trafia jako alert do panelu rodzica.
 
+<p align="center">
+  <img src="docs/images/lock-limit.pl.png" alt="Ekran blokady: czas na dziś się skończył, pole na kod od rodzica" width="380">
+  &nbsp;
+  <img src="docs/images/lock-night.pl.png" alt="Ekran blokady w ciszy nocnej: komputer odblokuje się o 06:30" width="380">
+</p>
+
 Szczegóły (po angielsku): [`docs/architecture.md`](docs/architecture.md).
 
 ## Co potrafi
@@ -45,7 +51,8 @@ Szczegóły (po angielsku): [`docs/architecture.md`](docs/architecture.md).
 - Blokada ręczna i dodatkowy czas z panelu; dodatkowy czas także kodem TOTP wpisanym na ekranie blokady.
 - Odblokowanie kodem z telefonu działa bez połączenia z serwerem.
 - Pauza uruchamiana przez dziecko z zasobnika: czas nie leci, ekran jest zablokowany.
-- Dziennik w panelu rodzica z alertami o próbach obejścia Vigila, potwierdzanymi przez rodzica.
+- Dziennik w panelu rodzica: kiedy każdy komputer był włączony, uśpiony albo wyłączony, co zmienił rodzic,
+  i alerty o próbach obejścia Vigila, potwierdzane przez rodzica.
 - Panel, ekran blokady i instalator po polsku albo angielsku — według języka przeglądarki i Windows.
 - Klient to jeden plik, `vigil_setup.exe`: kreator w konsoli do instalacji, menu do sprawdzenia, aktualizacji,
   ponownego parowania i odinstalowania.

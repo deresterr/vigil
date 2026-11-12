@@ -109,7 +109,7 @@ w telefonie rodzica (Aegis, Google Authenticator, …).
 ```yaml
 services:
   vigil:
-    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :0.8.0
+    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :0.9.0
     container_name: vigil
     restart: unless-stopped
     ports:

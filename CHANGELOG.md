@@ -9,7 +9,7 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 - A heartbeat arriving while a change from the panel was being saved could stop the server for 30 seconds and
   end with "database is locked" in the log; the change and the computers waited with it.
 - Panel, setup wizard and login share one color scheme: one accent (cyan) for the main actions, focus and the
-  selected item and confirmations, and one muted color per state everywhere — time slate grey, night violet,
+  selected item and confirmations, and one muted color per state everywhere — time graphite, night violet,
   manual lock red, unlocked green, pause grey; alerts and deleting keep a strong red. The extra-time and
   night-time buttons are outlined so they stand out from the card. The status card shows a tick, a padlock or
   pause bars in the state's color instead of an emoji. Journal icons take the color of what the entry is about

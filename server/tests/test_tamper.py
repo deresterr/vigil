@@ -112,7 +112,7 @@ def test_sleep_does_not_count(watchdog):
 
 def test_incomplete_telemetry_is_rejected(watchdog):
     r = watchdog.post("/v1/heartbeat", {"session_active": True, "user_active": True,
-                                        "current_time_utc": "2026-11-04T11:00:00Z", "uptime_seconds": 1,
+                                        "current_time_utc": "2026-11-04T11:00:00Z",
                                         "instance_id": "x"}, verify=False)
     assert r.status_code == 422
 

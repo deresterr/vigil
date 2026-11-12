@@ -103,9 +103,15 @@ def _m002_delta_carry(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM config WHERE key = 'watchdog_server_url'")
 
 
+def _m003_online_window(conn: sqlite3.Connection) -> None:
+    """The panel's "online" window is a constant (admin_api.ONLINE_WITHIN_S): nothing could set the key."""
+    conn.execute("DELETE FROM config WHERE key = 'heartbeat_grace_seconds'")
+
+
 MIGRATIONS: list[tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("baseline v0.8", _m001_baseline),
     ("devices.delta_carry_ms", _m002_delta_carry),
+    ("config.heartbeat_grace_seconds removed", _m003_online_window),
 ]
 
 LATEST_VERSION = len(MIGRATIONS)

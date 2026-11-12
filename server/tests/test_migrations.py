@@ -80,4 +80,27 @@ def test_v08_database_migrates(db_path, caplog):
     assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
     assert _query(db_path, "SELECT delta_carry_ms FROM devices") == [(0,)]
     assert _query(db_path, "SELECT 1 FROM config WHERE key = 'watchdog_server_url'") == []
-    assert [r.getMessage() for r in caplog.records] == ["Database migrated to schema 2 (devices.delta_carry_ms)"]
+    assert [r.getMessage() for r in caplog.records] == [
+        "Database migrated to schema 2 (devices.delta_carry_ms)",
+        "Database migrated to schema 3 (config.heartbeat_grace_seconds removed)",
+    ]
+
+
+def test_v082_database_migrates(db_path, caplog):
+    """A database of v0.8.2 (schema 2) loses the panel's online window, which is a constant now; the rest of
+    the config stays."""
+    import app.migrations as migrations
+
+    with closing(sqlite3.connect(db_path, isolation_level=None)) as conn:
+        conn.execute("BEGIN")
+        for _name, apply in migrations.MIGRATIONS[:2]:
+            apply(conn)
+        conn.execute("PRAGMA user_version = 2")
+        conn.execute("INSERT INTO config VALUES ('heartbeat_grace_seconds', '30'), ('timezone', 'Europe/Warsaw')")
+        conn.execute("COMMIT")
+    app.db.init_database()
+    assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
+    assert _query(db_path, "SELECT 1 FROM config WHERE key = 'heartbeat_grace_seconds'") == []
+    assert _query(db_path, "SELECT value FROM config WHERE key = 'timezone'") == [("Europe/Warsaw",)]
+    assert [r.getMessage() for r in caplog.records] == [
+        "Database migrated to schema 3 (config.heartbeat_grace_seconds removed)"]

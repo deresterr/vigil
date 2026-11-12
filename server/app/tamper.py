@@ -30,9 +30,6 @@ SILENCE_THRESHOLD_S = 90
 # Off (asleep, or shut down with Fast Startup) for longer than this: a shutdown and a start in the journal.
 ASLEEP_THRESHOLD_S = 120
 
-GOODBYE_REASONS = ("service_stop", "shutdown")
-
-
 def process_telemetry(
     db: sqlite3.Connection,
     device: Device,

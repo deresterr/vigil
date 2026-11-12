@@ -124,7 +124,7 @@ class Watchdog:
                 "session_active": active,
                 "user_active": active,
                 "current_time_utc": datetime.now(UTC).isoformat(),
-                "uptime_seconds": 100,
+                "uptime_seconds": 100,  # still sent by the watchdog (servers up to 0.8.2 require it)
                 **telemetry,
             },
         )

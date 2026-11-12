@@ -48,7 +48,7 @@ signature like "server unreachable".
 
 | Endpoint | Body | Notes |
 |---|---|---|
-| `POST /v1/heartbeat` | `session_active, user_active, current_time_utc, uptime_seconds` | → `lock_required, lock_reason, minutes_used, minutes_remaining, next_check_seconds, server_time_utc, ui_state` |
+| `POST /v1/heartbeat` | `session_active, user_active, current_time_utc` (+ tamper telemetry, offline TOTP; `uptime_seconds` is still sent for servers up to 0.8.2, which require it) | → `lock_required, lock_reason, minutes_remaining, next_check_seconds, ui_state` (+ `totp_secret`); the server's time in the `X-Server-Time` header |
 | `POST /v1/goodbye` | `instance_id, reason` (`service_stop`\|`shutdown`) | sent from the service's StopAsync; see Tamper detection |
 | `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`; response `mode`, `minutes`, `until_local` (night). every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` (toggle) or `{"paused": bool}` (target state) | starting a pause is refused while a higher-priority lock is active; a target equal to the current state changes nothing |

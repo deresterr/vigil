@@ -20,6 +20,6 @@
   --night: #a99cd6;  --night-text: #c4bce6;  --night-bg: #27243a;  --night-bg-hover: #322e4a;
   --pause: #a3a3a3;  --pause-bg: #2a2a2a;
   --lock: #d68f8f;  --lock-text: #e6b4b4;  --lock-sub: #b08a8a;  --lock-bg: #2d2020;  --lock-border: #5e3434;
-  --danger: #ef4444;  --danger-hover: #dc2626;  --danger-text: #fca5a5;
+  --danger: #ef4444;  --danger-text: #fca5a5;
   --danger-border: #7f1d1d;  --danger-bg: #2a1a1a;
 }

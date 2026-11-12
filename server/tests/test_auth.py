@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from app.db import get_connection
 from tests.conftest import Watchdog
 
-BODY = {"session_active": True, "user_active": True, "current_time_utc": "2026-11-04T11:00:00Z", "uptime_seconds": 1}
+BODY = {"session_active": True, "user_active": True, "current_time_utc": "2026-11-04T11:00:00Z"}
 
 
 def _detail(r):

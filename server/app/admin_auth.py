@@ -21,9 +21,8 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from .crypto import verify_password as _crypto_verify_password
 from .db import get_config_value, get_db, set_config_value
 
-# Cookie name + properties
 SESSION_COOKIE = "vigil_session"
-SESSION_MAX_AGE_SECONDS = 24 * 60 * 60  # 24h
+SESSION_MAX_AGE_SECONDS = 24 * 60 * 60
 _ITSDANGEROUS_SALT = "vigil-admin-session-v1"
 
 

@@ -13,7 +13,6 @@ Children and devices (D7):
 - POST   /admin/api/pairing_code            — one-time code: new device of a child, or re-pair a device
 - DELETE /admin/api/pairing_code            — cancel it
 Server-wide:
-- GET/POST /admin/api/config                — timezone, heartbeat_grace_seconds
 - GET /admin/api/totp, POST /admin/api/regen_totp — the one TOTP secret for all children
 - POST /admin/api/change_password
 """
@@ -25,13 +24,13 @@ import io
 import sqlite3
 from datetime import datetime, timezone
 from typing import Annotated
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 import pyotp
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..admin_auth import (
     issue_session_cookie,
@@ -45,7 +44,6 @@ from ..crypto import hash_password
 from ..db import (
     ensure_child_day,
     get_child,
-    get_config_int,
     get_config_value,
     get_db,
     log_event,
@@ -82,17 +80,22 @@ def _child_or_404(db: sqlite3.Connection, child_id: int) -> sqlite3.Row:
 # === Status ===
 
 
-def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, grace: int, today: str) -> dict:
+# "Online" in the panel: a heartbeat within this many seconds. The watchdog heartbeats every 5 s while a session
+# is active and at least every 60 s otherwise.
+ONLINE_WITHIN_S = 60
+
+
+def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, today: str) -> dict:
     ago = None
     online = False
     last_local = None
     if row["last_heartbeat_utc"]:
         last = parse_iso_utc(row["last_heartbeat_utc"])
         ago = int((now_utc - last).total_seconds())
-        online = ago <= grace * 2  # 2x grace: a bit tolerant for the panel
+        online = ago <= ONLINE_WITHIN_S
         last_local = last.astimezone(tz).strftime("%Y-%m-%d %H:%M")
     active_now = online and bool(row["last_active_utc"]) and \
-        (now_utc - parse_iso_utc(row["last_active_utc"])).total_seconds() <= grace * 2
+        (now_utc - parse_iso_utc(row["last_active_utc"])).total_seconds() <= ONLINE_WITHIN_S
     return {
         "id": row["id"],
         "name": row["name"],
@@ -144,7 +147,6 @@ async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None 
     """Everything the panel polls every 5 s: all children in brief, one child (child_id, default the
     first) in full. `child` is null while there is no child yet."""
     now_utc, tz = _now_tz(db)
-    grace = get_config_int(db, "heartbeat_grace_seconds")
     today = now_utc.astimezone(tz).date().isoformat()
     children = db.execute("SELECT * FROM children ORDER BY id").fetchall()
     unacked = dict(db.execute(
@@ -154,7 +156,7 @@ async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None 
     summaries, detail = [], None
     devices_online = devices_total = 0
     for child in children:
-        devices = [_device_view(d, now_utc, tz, grace, today) for d in
+        devices = [_device_view(d, now_utc, tz, today) for d in
                    db.execute("SELECT * FROM devices WHERE child_id = ? ORDER BY id", (child["id"],))]
         online = sum(d["online"] for d in devices)
         devices_online += online
@@ -407,40 +409,6 @@ async def new_pairing_code(body: PairingCodeBody, db: sqlite3.Connection = Depen
 async def cancel_pairing_code(db: sqlite3.Connection = Depends(get_db)) -> dict:
     clear_pairing_code(db)
     return {"ok": True}
-
-
-# === Server-wide config ===
-
-
-class ConfigBody(_Body):
-    timezone: str | None = None
-    # Panel only ("online" = last heartbeat within 2x grace); the watchdog has its own grace.
-    heartbeat_grace_seconds: Annotated[int, Field(ge=1, le=600)] | None = None
-
-    @field_validator("timezone")
-    @classmethod
-    def _valid_tz(cls, v):
-        if v is not None:
-            try:
-                ZoneInfo(v)
-            except (ZoneInfoNotFoundError, ValueError) as e:
-                raise ValueError("invalid_timezone") from e
-        return v
-
-
-@router.get("/config")
-async def get_config(db: sqlite3.Connection = Depends(get_db)) -> dict:
-    return {k: get_config_value(db, k) for k in ConfigBody.model_fields}
-
-
-@router.post("/config")
-async def update_config(body: ConfigBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
-    fields = body.model_dump(exclude_none=True)
-    for key, value in fields.items():
-        set_config_value(db, key, value)
-    if fields:
-        log_event(db, "config_updated", {"keys": sorted(fields), "via": "admin_ui"})
-    return {"ok": True, "updated": sorted(fields)}
 
 
 # === TOTP (one secret for all children) ===

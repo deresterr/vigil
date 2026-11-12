@@ -53,6 +53,13 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
   123 456 in the setup wizard.
 
 ### Client
+- The lock screen's limit badge takes the panel's graphite (light grey outline and hourglass) instead of steel blue.
+- A computer whose clock runs 5 s or more ahead of the server's (Windows syncs it once a week) no longer shows
+  the lock screen for a moment at start: a request refused for its time is sent again at once with the server's
+  time.
+- Behind a reverse proxy that redirects to HTTPS the installer says which address to use instead of failing
+  pairing with "HTTP 405". Vigil no longer follows redirects or uses the system proxy, and accepts only small
+  answers from the server.
 - A computer that joins Wi-Fi only after logon showed "No connection to your parent's server" for a moment at
   every start. The lock is the same (no answer from the server yet), but it now says the computer is not
   connected to a network and goes as soon as the network is there.

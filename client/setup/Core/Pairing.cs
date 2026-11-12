@@ -20,14 +20,36 @@ public static class Pairing
     public static bool IsValidUrl(string normalized) =>
         Uri.TryCreate(normalized, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && uri.Host.Length > 0;
 
-    public static bool IsHealthy(string serverUrl)
+    /// <summary>
+    /// The way the watchdog talks to the server (HeartbeatClient): no redirects — one turned the pairing POST into
+    /// a GET (405) behind a proxy that forces HTTPS — no system proxy (the server is on the LAN or a VPN, and the
+    /// service runs as SYSTEM with other proxy settings than this user), small responses (#132).
+    /// </summary>
+    private static HttpClient NewClient(TimeSpan timeout) =>
+        new(new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = false })
+        {
+            Timeout = timeout,
+            MaxResponseContentBufferSize = 64 * 1024,
+        };
+
+    public static bool IsHealthy(string serverUrl) => Check(serverUrl).Ok;
+
+    /// <summary>/health answers 200; or where the server sends us instead (the address to type), or neither.</summary>
+    public static (bool Ok, string? RedirectTo) Check(string serverUrl)
     {
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
-            return http.GetAsync(serverUrl + "/health").GetAwaiter().GetResult().StatusCode == HttpStatusCode.OK;
+            using var http = NewClient(TimeSpan.FromSeconds(6));
+            using var resp = http.GetAsync(serverUrl + "/health").GetAwaiter().GetResult();
+            if (resp.StatusCode == HttpStatusCode.OK) return (true, null);
+            if ((int)resp.StatusCode is >= 300 and < 400 && resp.Headers.Location is { } to)
+            {
+                var target = (to.IsAbsoluteUri ? to : new Uri(new Uri(serverUrl + "/"), to)).ToString();
+                return (false, Regex.Replace(target, "/health/?$", "", RegexOptions.IgnoreCase).TrimEnd('/'));
+            }
+            return (false, null);
         }
-        catch (Exception) { return false; }
+        catch (Exception) { return (false, null); }
     }
 
     /// <summary>"1234 5678", "1234-5678" → "12345678"; null unless 8 digits.</summary>
@@ -44,7 +66,7 @@ public static class Pairing
     public static string Pair(string serverUrl, string code)
     {
         HttpResponseMessage resp;
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        using var http = NewClient(TimeSpan.FromSeconds(10));
         try
         {
             resp = http.PostAsync(serverUrl + "/v1/pair",

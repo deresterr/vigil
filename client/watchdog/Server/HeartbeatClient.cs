@@ -38,14 +38,24 @@ public sealed class HeartbeatClient : IDisposable
         _signingKey = signingKey;
         _clock = clock;
         _logger = logger;
-        // Drop idle pooled connections well before the server does (uvicorn --timeout-keep-alive 75).
-        // Otherwise a request sometimes reuses a connection the server is just closing -> 10054 reset.
-        var handler = new SocketsHttpHandler { PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30) };
+        var handler = new SocketsHttpHandler
+        {
+            // Drop idle pooled connections well before the server does (uvicorn --timeout-keep-alive 75).
+            // Otherwise a request sometimes reuses a connection the server is just closing -> 10054 reset.
+            PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30),
+            // A redirect turned the POST into a GET (405 behind a proxy that forces HTTPS); the address in
+            // vigil.toml is the one to use (#132).
+            AllowAutoRedirect = false,
+            // The server is on the LAN or a VPN: no proxy from SYSTEM's settings or HTTP(S)_PROXY (#132).
+            UseProxy = false,
+        };
         _http = new HttpClient(handler)
         {
             BaseAddress = new Uri(config.ServerUrl + "/"),
             // Not the default 100 s: a slow heartbeat is as good as none
             Timeout = TimeSpan.FromSeconds(10),
+            // Buffered before the signature is checked: not the default 2 GB from whoever answers (#132).
+            MaxResponseContentBufferSize = 64 * 1024,
         };
     }
 
@@ -90,8 +100,25 @@ public sealed class HeartbeatClient : IDisposable
 
     /// <summary>
     /// Every /v1/* call: nonce and timestamp, signed request, response signature checked, body deserialized.
+    /// A request the server rejected for its timestamp is sent once more at once: the rejection carried the
+    /// server's time, so the second one is signed with it (#132). The PC's clock is what the first request of a
+    /// service start uses, and Windows outside a domain syncs it once a week — 5 s ahead is already too far.
     /// </summary>
     private async Task<(T result, string nonce)> PostSignedAsync<T>(
+        string path, object body, CancellationToken ct) where T : class
+    {
+        try
+        {
+            return await PostSignedOnceAsync<T>(path, body, ct).ConfigureAwait(false);
+        }
+        catch (TimestampRejectedException ex)
+        {
+            _logger.LogInformation("{Path}: {Reason}, sent again with the server's time", path, ex.Message);
+            return await PostSignedOnceAsync<T>(path, body, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<(T result, string nonce)> PostSignedOnceAsync<T>(
         string path, object body, CancellationToken ct) where T : class
     {
         // Nonce: 16 random bytes, base64url without padding (the server's format)
@@ -127,8 +154,9 @@ public sealed class HeartbeatClient : IDisposable
             && resp.StatusCode != (System.Net.HttpStatusCode)429)
         {
             var bodyStr = Encoding.UTF8.GetString(responseBytes);
+            var location = resp.Headers.Location is { } to ? $" (redirect to {to})" : "";
             throw new HttpRequestException(
-                $"{path} returned {(int)resp.StatusCode} {resp.ReasonPhrase}: {bodyStr}");
+                $"{path} returned {(int)resp.StatusCode} {resp.ReasonPhrase}{location}: {bodyStr}");
         }
 
         // 200 and 401/429 after authentication are signed; no signature = rejected before authentication.
@@ -138,9 +166,12 @@ public sealed class HeartbeatClient : IDisposable
 
         if (signatureHeader is null)
         {
+            var detail = resp.StatusCode == System.Net.HttpStatusCode.Unauthorized ? RejectionDetail(responseBytes) : null;
             // invalid_signature: the server no longer knows this key (re-paired or removed in the panel).
-            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized && IsInvalidSignature(responseBytes))
+            if (detail == "invalid_signature")
                 throw new KeyRejectedException($"{path}: the server rejected this computer's key (invalid_signature)");
+            if (detail is "timestamp_too_old" or "timestamp_in_future")
+                throw new TimestampRejectedException(detail);
             // Rejected before authentication (bad signature, timestamp, reused nonce): nothing to trust.
             var bodyStr = Encoding.UTF8.GetString(responseBytes);
             throw new HttpRequestException(
@@ -161,15 +192,16 @@ public sealed class HeartbeatClient : IDisposable
     }
 
     /// <summary>The body of a pre-auth 401 is FastAPI's {"detail": "..."} (server/app/auth.py _reject).</summary>
-    private static bool IsInvalidSignature(byte[] body)
+    private static string? RejectionDetail(byte[] body)
     {
         try
         {
             using var doc = JsonDocument.Parse(body);
-            return doc.RootElement.TryGetProperty("detail", out var d)
-                && d.ValueKind == JsonValueKind.String && d.GetString() == "invalid_signature";
+            return doc.RootElement.TryGetProperty("detail", out var d) && d.ValueKind == JsonValueKind.String
+                ? d.GetString()
+                : null;
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { return null; }
     }
 
     /// <summary>Request signature; must match canonical_request() in server/app/auth.py.</summary>
@@ -211,6 +243,12 @@ public sealed class HeartbeatClient : IDisposable
 /// An HttpRequestException like any other network failure, so heartbeats stay fail-closed exactly as before.
 /// </summary>
 public sealed class KeyRejectedException(string message) : HttpRequestException(message);
+
+/// <summary>
+/// The server rejected the request's timestamp (401 timestamp_too_old / timestamp_in_future) and told its time
+/// in X-Server-Time; PostSignedAsync sends it once more. A second rejection fails like an unreachable server.
+/// </summary>
+public sealed class TimestampRejectedException(string reason) : HttpRequestException(reason);
 
 public sealed class SignatureMismatchException : Exception
 {

@@ -281,15 +281,7 @@ public sealed class Verify
     private static byte[] Unprotect(string path, byte[]? entropy) =>
         ProtectedData.Unprotect(File.ReadAllBytes(path), entropy, DataProtectionScope.LocalMachine);
 
-    private static bool ServerReachable(string url)
-    {
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
-            return http.GetAsync(url.TrimEnd('/') + "/health").GetAwaiter().GetResult().IsSuccessStatusCode;
-        }
-        catch (Exception) { return false; }
-    }
+    private static bool ServerReachable(string url) => Pairing.IsHealthy(url.TrimEnd('/'));
 
     /// <summary>The message without the "Category: …" / "EventId: …" lines Microsoft.Extensions.Logging puts first.</summary>
     private static string? FirstMessageLine(string? description) =>

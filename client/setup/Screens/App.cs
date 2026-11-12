@@ -100,11 +100,12 @@ internal sealed class App
                 error = Strings.UiServerInvalid;
                 continue;
             }
-            var ok = C.Status().Spinner(Theme.SpinnerFor(C)).SpinnerStyle(Theme.Accent)
-                .Start(Theme.Esc(Strings.UiServerChecking(url)), _ => Pairing.IsHealthy(url));
-            Log.Info($"wizard: server {url} {(ok ? "responds" : "does not respond")}");
+            var (ok, redirectTo) = C.Status().Spinner(Theme.SpinnerFor(C)).SpinnerStyle(Theme.Accent)
+                .Start(Theme.Esc(Strings.UiServerChecking(url)), _ => Pairing.Check(url));
+            Log.Info($"wizard: server {url} " +
+                     (ok ? "responds" : redirectTo is not null ? $"redirects to {redirectTo}" : "does not respond"));
             if (ok) return url;
-            error = Strings.UiServerNoAnswer(url);
+            error = redirectTo is not null ? Strings.ServerRedirects(url, redirectTo) : Strings.UiServerNoAnswer(url);
         }
     }
 

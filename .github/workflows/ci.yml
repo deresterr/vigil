@@ -85,6 +85,10 @@ jobs:
         shell: pwsh
         # A pre-release version per run: vigil_setup tells an installed CI build from a newer one.
         run: ./build-package.ps1 -Configuration Release -Version "0.0.0-ci.${{ github.run_number }}"
+      - name: Lock screen test mode (vigil_ui alone, every lock reason)
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./e2e/ui-standalone.ps1 -PartsDir build/parts
       # The package for the VM test of a PR only (~100 MB a run). Named after the PR's head commit and kept one
       # day: an older one comes back with Re-run jobs.
       - uses: actions/upload-artifact@v4

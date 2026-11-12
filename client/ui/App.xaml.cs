@@ -306,6 +306,7 @@ public partial class App : Application
         });
         if (exitAfter > 0)
         {
+            UiLog.Write($"standalone: exit in {exitAfter} s");
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(exitAfter) };
             timer.Tick += (_, _) => { timer.Stop(); HideLock(); Shutdown(0); };
             timer.Start();

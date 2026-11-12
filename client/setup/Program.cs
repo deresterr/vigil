@@ -123,7 +123,9 @@ static (string Url, string Code) RequireUrlAndCode(Cli cli)
 {
     if (cli.ServerUrl is null || cli.PairingCode is null) throw new SetupException(Strings.InstallNeedsParams);
     var url = Normalize(cli.ServerUrl);
-    if (!Pairing.IsHealthy(url)) throw new SetupException(Strings.ServerNotResponding(url));
+    var (ok, redirectTo) = Pairing.Check(url);
+    if (redirectTo is not null) throw new SetupException(Strings.ServerRedirects(url, redirectTo));
+    if (!ok) throw new SetupException(Strings.ServerNotResponding(url));
     return (url, Code(cli.PairingCode));
 }
 

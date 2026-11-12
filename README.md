@@ -31,7 +31,8 @@ manages everything from a browser and unlocks with a TOTP code from their phone.
 - The server adds the time to the child — summed over all of the child's PCs — and decides whether to lock:
   manual lock, night time, daily limit or a pause, in that order.
 - The service shows or removes the full-screen lock in the child's session.
-- No answer from the server for 30 s means locked (fail-closed). The parent's TOTP code unlocks it even then.
+- No answer from the server for 30 s means locked (fail-closed). The parent's TOTP code unlocks it even then,
+  until the server answers again: from then on the server decides, and the minutes used offline are not counted.
 - A guardian task puts back what keeps the service running; every repair and every other sign of tampering
   ends up as an alert in the parent panel.
 
@@ -85,7 +86,9 @@ booted from a USB stick (offline as well), or forged requests from an administra
 
 **Network:** the server speaks plain HTTP. Requests and responses are signed, but the pairing response carries the
 PC's key in the clear, and the panel password travels unencrypted too: whoever can read that traffic can act as
-that PC or as the parent. On a network you do not trust, put a reverse proxy with TLS in front of the server.
+that PC or as the parent. On a network you do not trust, put a reverse proxy with TLS in front of the server and
+give `vigil_setup.exe` its `https://` address: Vigil follows no redirects, uses no system proxy, and the certificate
+must be one Windows trusts.
 
 What counts as a vulnerability under this model: [`SECURITY.md`](SECURITY.md).
 

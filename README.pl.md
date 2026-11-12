@@ -31,7 +31,8 @@ wszystkim z przeglądarki i odblokowuje kodem TOTP z telefonu.
 - Serwer dolicza czas dziecku — łącznie ze wszystkich jego komputerów — i decyduje o blokadzie: blokada ręczna,
   cisza nocna, dzienny limit albo pauza, w tej kolejności.
 - Usługa pokazuje albo zdejmuje pełnoekranową blokadę w sesji dziecka.
-- Brak odpowiedzi serwera przez 30 s oznacza blokadę (fail-closed). Kod TOTP rodzica odblokowuje i wtedy.
+- Brak odpowiedzi serwera przez 30 s oznacza blokadę (fail-closed). Kod TOTP rodzica odblokowuje i wtedy,
+  do powrotu połączenia: od tej chwili decyduje serwer, a minuty użyte offline nie są liczone.
 - Zadanie strażnika przywraca to, co utrzymuje usługę przy życiu; każda naprawa i każdy inny ślad manipulacji
   trafia jako alert do panelu rodzica.
 
@@ -85,7 +86,9 @@ z pendrive'a (też offline) ani sfałszowanych żądań od administratora, któr
 
 **Sieć:** serwer mówi zwykłym HTTP. Żądania i odpowiedzi są podpisane, ale odpowiedź parowania niesie klucz PC
 jawnym tekstem, a hasło do panelu też idzie niezaszyfrowane: kto może czytać ten ruch, może podszyć się pod ten PC
-albo pod rodzica. W sieci, której nie ufasz, postaw przed serwerem reverse proxy z TLS.
+albo pod rodzica. W sieci, której nie ufasz, postaw przed serwerem reverse proxy z TLS i podaj w `vigil_setup.exe`
+jego adres `https://`: Vigil nie idzie za przekierowaniami, nie używa proxy systemowego, a certyfikat musi być
+zaufany przez Windows.
 
 Co w tym modelu jest podatnością: [`SECURITY.pl.md`](SECURITY.pl.md).
 

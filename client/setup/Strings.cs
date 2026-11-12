@@ -70,6 +70,8 @@ public static class Strings
         "Podaj co najmniej jeden z: -ServerUrl, -PairingCode.", "Give at least one of: -ServerUrl, -PairingCode.");
     public static string ServerNotResponding(string url) => T(
         $"Serwer {url} nie odpowiada.", $"The server {url} does not respond.");
+    public static string ServerRedirects(string url, string to) => T(
+        $"Serwer {url} przekierowuje na {to}. Wpisz ten adres.", $"The server {url} redirects to {to}. Use that address.");
     public static string InvalidServerUrl(string raw) => T(
         $"To nie jest adres serwera: {raw}", $"This is not a server address: {raw}");
     public static string CodeFormat => T(

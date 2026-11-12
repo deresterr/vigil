@@ -83,6 +83,8 @@ const I18N_EN = /*I18N_EN*/{
   "Komputer nie był wyłączany · przerwa ok. {time}": "The computer was not shut down · gap about {time}",
   "Komputer wyłączony": "Computer shut down",
   "Komputer włączony": "Computer started",
+  "Komputer wyłączony lub uśpiony": "Computer shut down or asleep",
+  "Komputer włączony lub wybudzony": "Computer started or woken up",
   "Komputery": "Computers",
   "Komputery dostępne": "Computers available",
   "Konfiguracja Vigil": "Vigil setup",

@@ -6,6 +6,8 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
 ## [Unreleased]
 
 ### Server
+- The Journal shows when a computer was asleep or shut down with Fast Startup (the Windows default), not only
+  after a restart: "Computer shut down or asleep" and "Computer started or woken up".
 - A heartbeat arriving while a change from the panel was being saved could stop the server for 30 seconds and
   end with "database is locked" in the log; the change and the computers waited with it.
 - Panel, setup wizard and login share one color scheme: one accent (cyan) for the main actions, focus and the

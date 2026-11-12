@@ -25,10 +25,10 @@ jobs:
       server: ${{ github.event_name == 'push' || steps.f.outputs.server == 'true' }}
       client: ${{ github.event_name == 'push' || steps.f.outputs.client == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: f
         if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             server:
@@ -51,8 +51,8 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -67,7 +67,7 @@ jobs:
     if: needs.changes.outputs.client == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Parse PowerShell scripts (Windows PowerShell 5.1, which Build.cmd runs build-package.ps1 with)
         shell: powershell
         run: |
@@ -78,7 +78,7 @@ jobs:
             foreach ($e in $errs) { $bad++; "::error file=$($_.Name),line=$($e.Extent.StartLineNumber)::$($e.Message)" }
           }
           exit $bad
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
       - name: Build package
@@ -91,14 +91,14 @@ jobs:
         run: ./e2e/ui-standalone.ps1 -PartsDir build/parts
       # The package for the VM test of a PR only (~100 MB a run). Named after the PR's head commit and kept one
       # day: an older one comes back with Re-run jobs.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.event_name == 'pull_request'
         with:
           name: vigil-client-${{ github.event.pull_request.head.sha }}
           path: dist/
           retention-days: 1
       # A real install on the throwaway runner (D22): the package above against the server of this commit.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip

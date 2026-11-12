@@ -1,8 +1,8 @@
-fastapi==0.162.2
+fastapi==0.162.5
 uvicorn[standard]==0.54.0
-pyotp==2.9.0
-argon2-cffi==23.1.0
-qrcode==7.4.2
+pyotp==2.10.0
+argon2-cffi==25.1.0
+qrcode==8.2
 Pillow>=10.4.0
 python-multipart==0.0.33
 itsdangerous==2.2.0

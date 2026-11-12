@@ -31,7 +31,6 @@ class HeartbeatRequest(_Wire):
     session_active: bool
     user_active: bool
     current_time_utc: str
-    uptime_seconds: int
     # Tamper telemetry (#7): all four or none.
     instance_id: InstanceId | None = None
     awake_ms: NonNegInt | None = None

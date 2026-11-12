@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _configure_connection(conn: sqlite3.Connection) -> None:
     """Pragmas and row factory of every new connection."""
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 30000")  # 30 s
+    conn.execute("PRAGMA busy_timeout = 30000")
 
 
 def init_database() -> int:
@@ -42,7 +42,7 @@ def init_database() -> int:
         mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
         if mode.lower() != "wal":
             logger.warning("Could not enable WAL mode, current: %s", mode)
-        conn.execute("PRAGMA synchronous = NORMAL")  # WAL + NORMAL: safe and fast
+        conn.execute("PRAGMA synchronous = NORMAL")
         return migrate(conn)
 
 
@@ -94,13 +94,6 @@ def get_config_values(conn: sqlite3.Connection, keys: tuple[str, ...]) -> dict[s
     placeholders = ",".join("?" * len(keys))
     rows = dict(conn.execute(f"SELECT key, value FROM config WHERE key IN ({placeholders})", keys).fetchall())
     return {k: rows.get(k, CONFIG_DEFAULTS.get(k, "")) for k in keys}
-
-
-def get_config_int(conn: sqlite3.Connection, key: str) -> int:
-    val = get_config_value(conn, key)
-    if val is None:
-        raise RuntimeError(f"No config value for {key!r}")
-    return int(val)
 
 
 def set_config_value(conn: sqlite3.Connection, key: str, value: str | int) -> None:

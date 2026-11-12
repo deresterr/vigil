@@ -2,7 +2,7 @@
 
 Pause: lock_reason = "pause", no time accrues, screen locked. Per child (D7): a pause started on one
 PC locks all of the child's PCs, like every other lock. A target state makes a repeated "I'm back" (a double
-click, a click on each monitor) harmless; without a body it toggles, as older watchdogs expect.
+click, a click on each monitor) harmless; without one it toggles (the tray icon).
 """
 
 from __future__ import annotations

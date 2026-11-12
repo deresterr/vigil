@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import Device, authenticate_request
 from ..db import get_child, get_config_values, get_db, log_event
-from ..lock_logic import child_today, compute_lock_reason, minutes_remaining, night_window_at, parse_iso_utc, utc_iso
+from ..lock_logic import child_today, compute_lock_reason, minutes_remaining, night_window_at, parse_iso_utc
 from ..models import GoodbyeRequest, GuardianRepaired, HeartbeatRequest, TamperEvent
 from ..offline import sync_offline_totp
 from ..tamper import process_goodbye, process_telemetry
@@ -161,10 +161,8 @@ async def heartbeat(
     return {
         "lock_required": lock_reason is not None,
         "lock_reason": lock_reason,
-        "minutes_used": minutes_used,
         "minutes_remaining": remaining,
         "next_check_seconds": 5 if body.session_active else 30,
-        "server_time_utc": utc_iso(now_utc),
         "ui_state": ui_state,
         # Only when the watchdog holds a different (or no) TOTP secret; the response is HMAC-signed.
         **({"totp_secret": offline_secret} if offline_secret else {}),

@@ -7,7 +7,7 @@ from app.db import get_connection, set_config_value
 from tests.conftest import Watchdog, add_child
 
 PASSWORD = "haslo-rodzica"
-HB = {"session_active": True, "user_active": True, "current_time_utc": "2026-11-04T11:00:00Z", "uptime_seconds": 1}
+HB = {"session_active": True, "user_active": True, "current_time_utc": "2026-11-04T11:00:00Z"}
 
 
 def _login(client):

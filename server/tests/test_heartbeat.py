@@ -10,8 +10,7 @@ from tests.conftest import Watchdog, config, set_schedule, set_used, state_for
 
 TZ = ZoneInfo("Europe/Warsaw")
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=TZ)  # Wednesday, outside night window
-HB_IDLE = {"session_active": False, "user_active": False, "current_time_utc": "2026-11-04T11:00:00Z",
-           "uptime_seconds": 1}
+HB_IDLE = {"session_active": False, "user_active": False, "current_time_utc": "2026-11-04T11:00:00Z"}
 
 
 def test_time_accumulates_while_active(watchdog):

@@ -42,6 +42,6 @@ def test_nonce_is_burned_by_a_request_that_fails_later(client, watchdog):
     r = watchdog.post("/v1/heartbeat", {"session_active": "not a bool"}, verify=False, nonce="n-late")
     assert r.status_code == 422
     r = Watchdog(client).post("/v1/heartbeat", {
-        "session_active": True, "user_active": True, "current_time_utc": "2026-11-12T12:00:00+00:00",
-        "uptime_seconds": 1}, verify=False, nonce="n-late")
+        "session_active": True, "user_active": True, "current_time_utc": "2026-11-12T12:00:00+00:00"},
+        verify=False, nonce="n-late")
     assert r.status_code == 401 and r.json()["detail"] == "duplicate_nonce"

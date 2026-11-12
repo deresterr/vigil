@@ -18,11 +18,6 @@ from .db import ensure_child_day
 # === Datetime helpers ===
 
 
-def utc_iso(dt: datetime) -> str:
-    """ISO 8601 UTC with a 'Z' suffix, milliseconds."""
-    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-
-
 def parse_iso_utc(s: str) -> datetime:
     """Parses ISO 8601; 'Z' and a naive time are UTC."""
     if s.endswith("Z"):

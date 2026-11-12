@@ -21,7 +21,7 @@ namespace Vigil.Ui;
 /// spawning; a crashed service is back in about a minute), fail-closed (#120).
 /// --standalone-test shows the overlay without a watchdog, for UI work (only from the command line: the
 /// watchdog starts vigil_ui without it, and nothing in the environment switches it on, D24);
-/// there --mode=night|limit|manual|pause|server_unreachable|device_unpaired, --lang=en|pl (instead of the Windows
+/// there --mode=night|limit|manual|pause|server_unreachable|network_down|device_unpaired, --lang=en|pl (instead of the Windows
 /// language) and
 /// --exit-after=SECONDS (closes itself and restores the taskbar; a killed process cannot).
 /// </summary>
@@ -307,7 +307,7 @@ public partial class App : Application
             else if (a.StartsWith("--lang=", StringComparison.Ordinal))
                 System.Globalization.CultureInfo.CurrentUICulture = new System.Globalization.CultureInfo(a["--lang=".Length..]);
         }
-        var offline = reason is "server_unreachable" or "device_unpaired";
+        var offline = reason is "server_unreachable" or "network_down" or "device_unpaired";
         ShowLock(new IpcSetState
         {
             LockReason = reason,

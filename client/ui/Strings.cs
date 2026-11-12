@@ -34,6 +34,7 @@ public static class Strings
         LockReason.Manual => T("Rodzic zablokował komputer", "Your parent locked the computer"),
         LockReason.Pause => T("Pauza — czas nie leci", "Paused — time is not counted"),
         LockReason.ServerUnreachable => T("Brak połączenia z serwerem rodzica", "No connection to your parent's server"),
+        LockReason.NetworkDown => T("Komputer nie jest połączony z siecią", "This computer is not connected to a network"),
         LockReason.DeviceUnpaired => T("Ten komputer nie jest połączony z panelem rodzica",
                                        "This computer is not linked to your parent's panel"),
         _ => T("Komputer jest zablokowany", "The computer is locked"),
@@ -55,6 +56,9 @@ public static class Strings
         LockReason.ServerUnreachable => s.ShowTotpField
             ? T("Rodzic może odblokować komputer kodem z telefonu.", "Your parent can unlock the computer with the code from their phone.")
             : T("Komputer odblokuje się po przywróceniu połączenia.", "The computer unlocks when the connection is back."),
+        // Mostly the seconds before Wi-Fi joins after logon (#128): the lock goes by itself once it does.
+        LockReason.NetworkDown => T("Odblokuje się po połączeniu z serwerem rodzica.",
+                                    "It unlocks once it reaches your parent's server."),
         LockReason.DeviceUnpaired => s.ShowTotpField
             ? T("Rodzic może go odblokować kodem z telefonu i sparować ponownie.",
                 "Your parent can unlock it with the code from their phone and pair it again.")

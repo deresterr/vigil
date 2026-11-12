@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.EventLog;
 using Vigil.Watchdog;
 using Vigil.Watchdog.Configuration;
 using Vigil.Watchdog.Detection;
@@ -48,6 +49,8 @@ builder.Logging.AddEventLog(eventLog =>
     eventLog.SourceName = VigilLayout.WatchdogEventSource;
     eventLog.LogName = "Application";
 });
+// The host lets only warnings into the Event Log; a server outage also logs its end (Information) there.
+builder.Logging.AddFilter<EventLogLoggerProvider>(typeof(OutageLog).FullName, LogLevel.Information);
 
 builder.Services.AddWindowsService(options =>
 {

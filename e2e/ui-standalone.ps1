@@ -13,7 +13,7 @@ $log = Join-Path $env:LOCALAPPDATA 'Vigil\ui.log'
 $failed = 0
 
 # Every reason in both languages without the keyboard hook, then the first one with it, as deployed.
-$runs = foreach ($mode in 'limit', 'night', 'manual', 'pause', 'server_unreachable', 'device_unpaired') {
+$runs = foreach ($mode in 'limit', 'night', 'manual', 'pause', 'server_unreachable', 'network_down', 'device_unpaired') {
     foreach ($lang in 'pl', 'en') { , @($mode, $lang, $false) }
 }
 $runs += , @('limit', 'pl', $true)

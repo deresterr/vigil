@@ -138,6 +138,10 @@ everywhere the same problem occurs, not only where it was reported.
 - `client/ui` has both `System.Drawing` (tray icon) and `System.Windows.Media` (WPF): `Color` and `Brush` exist in
   both, so qualify them in a file that sees both. vigil_ui's colors live in `Palette.cs`, mirroring the panel's
   `theme.css` — change them there and in `theme.css` together.
+- Server: every write in a request goes through `get_db()` (its `asyncio.Lock`), dependencies included. The /v1
+  nonce INSERT on a connection of its own waited out SQLite's 30 s busy timeout inside the event loop while a
+  panel request held the lock with an uncommitted write — that request could never commit (#123). FastAPI
+  resolves `Depends(get_db)` once per request, so a dependency and its endpoint share the connection.
 - DPAPI secrets are written with `FileAcls.WriteSecret` (restricted ACL from creation): a LocalMachine blob with
   our public entropy decrypts in any local process, so a moment with the folder's inherited ACL leaks it.
 

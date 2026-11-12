@@ -80,7 +80,7 @@ jobs:
           exit $bad
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
       - name: Build package
         shell: pwsh
         # A pre-release version per run: vigil_setup tells an installed CI build from a newer one.
@@ -106,7 +106,13 @@ jobs:
       - name: Server for the installer e2e
         # tzdata: Windows has no IANA time zone database for zoneinfo
         run: pip install -r server/requirements.txt tzdata
+      # The update a parent does: the latest release installed first (#141).
+      - name: Latest release's installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download --repo "${{ github.repository }}" --pattern vigil_setup.exe --dir previous
       - name: Installer e2e
         shell: pwsh
         timeout-minutes: 25
-        run: ./e2e/installer-e2e.ps1 -PackageDir dist -ServerDir server
+        run: ./e2e/installer-e2e.ps1 -PackageDir dist -ServerDir server -PreviousSetup previous/vigil_setup.exe

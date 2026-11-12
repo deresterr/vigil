@@ -78,11 +78,4 @@ public static class ConsoleWindow
         Console.WriteLine(Strings.PressAnyKey);
         Console.ReadKey(intercept: true);
     }
-
-    /// <summary>True when the window closes with this process (started by a double click or by UAC).</summary>
-    public static bool IsOwn()
-    {
-        var processes = new uint[2];
-        return Native.Win32.GetConsoleProcessList(processes, 2) == 1;
-    }
 }

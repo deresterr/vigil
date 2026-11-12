@@ -6,8 +6,8 @@
     Starts the server from this checkout on localhost with a temporary database, completes the setup
     wizard over HTTP and drives vigil_setup.exe in parameter mode:
 
-        vigil_setup install
-        -> vigil_setup update (same key, no pairing)
+        vigil_setup install (the latest release's, with -PreviousSetup; this package's otherwise)
+        -> vigil_setup update (same key, no pairing): the update from the latest release
         -> the one-file package: installed files = the parts; copies without a payload refuse to update
         -> broken installs (verify must fail; update repairs)
         -> vigil_setup update-config with re-pairing
@@ -41,6 +41,10 @@
 
 .PARAMETER ServerDir
     The server\ folder of the checkout; its requirements (plus tzdata on Windows) must be installed.
+
+.PARAMETER PreviousSetup
+    vigil_setup.exe of the latest release (CI: downloaded from GitHub Releases). The first install is done
+    with it, so the update that follows is the one a parent does. Empty: this package installs first.
 #>
 
 [CmdletBinding()]
@@ -49,7 +53,8 @@ param(
     [string] $PartsDir = '',
     [string] $ServerDir = '',
     [int] $Port = 8089,
-    [string] $ChildUsername = 'vigilchild'
+    [string] $ChildUsername = 'vigilchild',
+    [string] $PreviousSetup = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -257,12 +262,24 @@ try {
     $script:AdminSession = $session
     Assert-That ((Invoke-Admin Get 'status').children.Count -eq 1) 'setup wizard completed, one child'
 
-    Write-Section "vigil_setup install (child account: $ChildUsername)"
     New-ChildAccount $ChildUsername
     $code = New-PairingCode @{ child_id = 1; device_name = 'CI runner' }
-    Assert-Setup 'install' -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
-    Wait-Until { (Get-Device).online } 60 'the PC is online (signed heartbeats accepted)'
-    Assert-Verify 0 'vigil_setup install'
+    if ($PreviousSetup) {
+        # The release's own installer and verify: this package's verify would report the older version.
+        $previous = (Resolve-Path $PreviousSetup).Path
+        Write-Section "Latest release: install (child account: $ChildUsername)"
+        Write-Host "> $previous -Mode install" -ForegroundColor DarkGray
+        $null | & $previous -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername | Out-Host
+        Assert-That ($LASTEXITCODE -eq 0) "the latest release installs (exit code 0, got $LASTEXITCODE)"
+        Wait-Until { (Get-Device).online } 60 'the PC is online (signed heartbeats accepted)'
+        $null | & $previous -Mode verify | Out-Host
+        Assert-That ($LASTEXITCODE -eq 0) "the latest release's verify (exit code 0, got $LASTEXITCODE)"
+    } else {
+        Write-Section "vigil_setup install (child account: $ChildUsername)"
+        Assert-Setup 'install' -Mode install -ServerUrl $ServerUrl -PairingCode $code -ChildUsername $ChildUsername
+        Wait-Until { (Get-Device).online } 60 'the PC is online (signed heartbeats accepted)'
+        Assert-Verify 0 'vigil_setup install'
+    }
 
     Write-Section 'vigil_setup update (same key, no pairing)'
     $keyBefore = Get-KeyHash

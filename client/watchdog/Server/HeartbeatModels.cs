@@ -16,6 +16,7 @@ public sealed class HeartbeatRequest
     [JsonPropertyName("current_time_utc")]
     public required string CurrentTimeUtc { get; init; }
 
+    /// <summary>Not read by the server since 0.9.0; servers up to 0.8.2 require it.</summary>
     [JsonPropertyName("uptime_seconds")]
     public required int UptimeSeconds { get; init; }
 
@@ -112,17 +113,11 @@ public sealed class HeartbeatResponse
     [JsonPropertyName("lock_reason")]
     public string? LockReason { get; init; }  // limit | night | manual | pause | null
 
-    [JsonPropertyName("minutes_used")]
-    public int MinutesUsed { get; init; }
-
     [JsonPropertyName("minutes_remaining")]
     public int MinutesRemaining { get; init; }
 
     [JsonPropertyName("next_check_seconds")]
     public int NextCheckSeconds { get; init; } = 5;
-
-    [JsonPropertyName("server_time_utc")]
-    public string? ServerTimeUtc { get; init; }
 
     [JsonPropertyName("ui_state")]
     public UiState? UiState { get; init; }

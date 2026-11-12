@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Native;
 
 namespace Vigil.Watchdog.Detection;

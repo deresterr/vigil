@@ -8,7 +8,7 @@ everywhere the same problem occurs, not only where it was reported.
   time/lock rules `app/lock_logic.py` + `app/endpoints/heartbeat.py`. Admin UI = static HTML in `app/static/`;
   `pages.py` inlines the shared files (`theme.css`: every color of the three pages, #116 — `tests/test_theme.py`
   fails on a color written elsewhere; `i18n.js`; `schedule.js`: the weekly grid of the panel and the wizard).
-- `client/` — .NET 8 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
+- `client/` — .NET 10 (`Vigil.sln`): `watchdog` (Windows Service, SYSTEM), `ui` (WPF `vigil_ui`: tray + lock overlay,
   child's session, started and kept alive by the watchdog), `setup` (`vigil_setup.exe`, the C# installer of D22:
   console, trimmed, `requireAdministrator`; core in `Core/` never touches the console, `IReport` gets the output;
   without parameters `Screens/` shows the wizard or the status + menu on Spectre.Console, with `-Mode ...` the
@@ -21,7 +21,8 @@ everywhere the same problem occurs, not only where it was reported.
   (the files on their own). `Build.cmd` runs it. `docs/installer.md` describes the installer, the README
   the emergency path from WinRE.
 - `e2e/installer-e2e.ps1` — installer end-to-end test: CI runs it on the throwaway `windows-latest` runner
-  (server of the same commit on localhost; install → update → one-file package checks → broken installs →
+  (server of the same commit on localhost; install of the latest release → update with this package (the
+  parent's update, #141) → one-file package checks → broken installs →
   re-pair → uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" →
   uninstall, then the wizard and the menu through a key script). Never on a real PC.
   `e2e/ui-standalone.ps1` (CI, before it): vigil_ui's test mode for every lock reason must close itself after

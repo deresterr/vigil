@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Configuration;
 
 namespace Vigil.Watchdog.Server;
@@ -21,7 +20,6 @@ namespace Vigil.Watchdog.Server;
 public sealed class HeartbeatClient : IDisposable
 {
     private readonly HttpClient _http;
-    private readonly VigilConfig _config;
     private readonly byte[] _signingKey;
     private readonly ServerClock _clock;
     private readonly ILogger<HeartbeatClient> _logger;
@@ -34,7 +32,6 @@ public sealed class HeartbeatClient : IDisposable
 
     public HeartbeatClient(VigilConfig config, byte[] signingKey, ServerClock clock, ILogger<HeartbeatClient> logger)
     {
-        _config = config;
         _signingKey = signingKey;
         _clock = clock;
         _logger = logger;
@@ -220,9 +217,6 @@ public sealed class HeartbeatClient : IDisposable
         Buffer.BlockCopy(responseBody, 0, message, nonceBytes.Length, responseBody.Length);
 
         var actualBytes = HMACSHA256.HashData(_signingKey, message);
-        var actualB64 = Convert.ToBase64String(actualBytes);
-
-        // Constant-time comparison.
         var expectedBytes = Convert.FromBase64String(expectedB64);
         return CryptographicOperations.FixedTimeEquals(actualBytes, expectedBytes);
     }
@@ -240,7 +234,7 @@ public sealed class HeartbeatClient : IDisposable
 
 /// <summary>
 /// The server refused this computer's key (401 invalid_signature): it was re-paired or removed in the panel.
-/// An HttpRequestException like any other network failure, so heartbeats stay fail-closed exactly as before.
+/// An HttpRequestException like any other network failure, so heartbeats stay fail-closed.
 /// </summary>
 public sealed class KeyRejectedException(string message) : HttpRequestException(message);
 

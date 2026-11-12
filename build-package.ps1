@@ -70,12 +70,12 @@ if ($missing) {
 
 try {
     $sdks = dotnet --list-sdks 2>&1
-    $has8 = $sdks | Where-Object { $_ -match '^8\.' }
-    if (-not $has8) {
-        throw ".NET 8 SDK required. Install: winget install Microsoft.DotNet.SDK.8"
+    $has10 = $sdks | Where-Object { $_ -match '^10\.' }
+    if (-not $has10) {
+        throw ".NET 10 SDK required. Install: winget install Microsoft.DotNet.SDK.10"
     }
 } catch [System.Management.Automation.CommandNotFoundException] {
-    throw "dotnet CLI not found. Install: winget install Microsoft.DotNet.SDK.8"
+    throw "dotnet CLI not found. Install: winget install Microsoft.DotNet.SDK.10"
 }
 
 foreach ($dir in $OutputDir, $PartsDir) {
@@ -87,7 +87,7 @@ foreach ($dir in $OutputDir, $PartsDir) {
 foreach ($p in $projects) {
     $projDir = Join-Path $PSScriptRoot $p.Dir
     # Windows PowerShell 5.1 Join-Path takes two arguments only.
-    $publishDir = Join-Path $projDir "bin\$Configuration\net8.0-windows\win-x64\publish"
+    $publishDir = Join-Path $projDir "bin\$Configuration\net10.0-windows\win-x64\publish"
 
     if (-not $SkipBuild) {
         Write-Host ""

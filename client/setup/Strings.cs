@@ -83,7 +83,6 @@ public static class Strings
     public static string UiMenuTitle => T("Instalator", "Installer");
     public static string UiStep(int n, int total, string title) => T($"Krok {n} z {total} · {title}", $"Step {n} of {total} · {title}");
     public static string UiMenuHint => T("Strzałki i Enter albo cyfra", "Arrow keys and Enter, or a digit");
-    public static string UiFieldHint => T("Enter zatwierdza, Esc czyści pole", "Enter confirms, Esc clears the field");
     public static string UiPressEnter => T("Enter — dalej", "Enter — continue");
     public static string UiPressEnterMenu => T("Enter — powrót do menu", "Enter — back to the menu");
     public static string UiPressEnterExit => T("Enter — zakończ", "Enter — exit");

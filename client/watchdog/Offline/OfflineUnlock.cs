@@ -2,7 +2,6 @@
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Configuration;
 using Vigil.Watchdog.Ui;
 using Vigil.Watchdog.Server;

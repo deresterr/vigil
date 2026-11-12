@@ -1,9 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using System.ServiceProcess;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vigil.Watchdog.Server;
 

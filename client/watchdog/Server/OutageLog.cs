@@ -1,6 +1,5 @@
 ﻿using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using Microsoft.Extensions.Logging;
 
 namespace Vigil.Watchdog.Server;
 

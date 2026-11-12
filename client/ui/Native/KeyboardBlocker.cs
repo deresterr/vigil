@@ -1,5 +1,4 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Windows.Input;
@@ -25,10 +24,9 @@ public sealed class KeyboardBlocker : IDisposable
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_SYSKEYDOWN = 0x0104;
-    private const int WM_KEYUP = 0x0101;
-    private const int WM_SYSKEYUP = 0x0105;
 
     private const uint LLKHF_ALTDOWN = 0x20;
+    private const int VK_CONTROL = 0x11;
 
     private IntPtr _hookId = IntPtr.Zero;
     private readonly LowLevelKeyboardProc _proc;  // keeps the delegate alive for the native callback
@@ -84,7 +82,7 @@ public sealed class KeyboardBlocker : IDisposable
 
         // Alt from the hook's own flag (LLKHF_ALTDOWN): Keyboard.Modifiers is not reliable in this callback
         var altDown = (info.flags & LLKHF_ALTDOWN) != 0;
-        var ctrlDown = (GetKeyState(0x11) & 0x8000) != 0;  // VK_CONTROL
+        var ctrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
 
         // Alt+Tab, Alt+F4, Alt+Esc, Alt+Space
         if (altDown && (key == Key.Tab || key == Key.F4 || key == Key.Escape || key == Key.Space))

@@ -1,7 +1,7 @@
 # vigil_setup.exe — the installer
 
 One program (`client/setup`, D22): the wizard and the menu for the parent, the parameter mode for scripts
-and CI, `verify`, and the guardian task. .NET 8, self-contained, trimmed single file (~12 MB), console,
+and CI, `verify`, and the guardian task. .NET 10, self-contained, trimmed single file (~12 MB), console,
 `requireAdministrator` (UAC). It speaks Windows' display language (Polish or English, `Strings.cs`).
 
 ## The package: one file

@@ -149,10 +149,12 @@ public static class Strings
         "Vigil is installed as a system service and starts counting the child's time right away.");
     public static string UiSummaryLock => T(
         "Gdy skończy się limit albo zacznie cisza nocna, komputer pokaże ekran blokady.",
-        "When the limit runs out or quiet hours start, the computer shows the lock screen.");
+        "When the limit runs out or night time starts, the computer shows the lock screen.");
     public static string UiSummaryPolicies(string? account) => T(
-        $"Na koncie {account ?? "domyślnym"} zostaną wyłączone Menedżer zadań, zmiana hasła, skróty ułatwień dostępu i gesty touchpada. To jedno konto, więc dotyczy to też Ciebie.",
-        $"On the {account ?? "default"} account Task Manager, password change, accessibility shortcuts and touchpad gestures are turned off. It is one account, so this applies to you too.");
+        (account is null ? "W profilu domyślnym" : $"Na koncie {account}") +
+        " zostaną wyłączone: Menedżer zadań, zmiana hasła, skróty ułatwień dostępu i gesty touchpada. To jedno konto, więc dotyczy to też Ciebie.",
+        (account is null ? "In the default profile" : $"On the {account} account") +
+        " Task Manager, password change, accessibility shortcuts and touchpad gestures are turned off. It is one account, so this applies to you too.");
     public static string UiSummaryNothingYet => T(
         "Do tej chwili niczego nie zmieniono. Kod zostanie użyty dopiero po wybraniu „Zainstaluj”.",
         "Nothing has been changed so far. The code is used only once you choose “Install”.");
@@ -233,7 +235,7 @@ public static class Strings
         "There are several accounts on this computer and no -ChildUsername was given");
     public static string ChildAccount(string name) => T($"Konto dziecka: {name}", $"Child's account: {name}");
     public static string AccountLabel(string name) => T($"Konto {name}", $"Account {name}");
-    public static string DefaultProfile => T("Default profile", "Default profile");
+    public static string DefaultProfile => T("Profil domyślny", "Default profile");
 
     // === Verify ===
 
@@ -245,7 +247,7 @@ public static class Strings
     public static string SectionService(string name) => T($"Usługa {name}", $"Service {name}");
     public static string SectionFiles(string dir) => T($"Pliki w {dir}", $"Files in {dir}");
     public static string SectionTasks => T("Zadania i rozruch", "Tasks and boot");
-    public static string SectionPolicies => T("Policy użytkownika", "User policies");
+    public static string SectionPolicies => T("Zasady użytkownika", "User policies");
     public static string SectionRuntime => T("Działanie", "Runtime");
     public static string SectionRemoved => T(
         "Vigil nie jest zainstalowany — sprawdzam, czy nic nie zostało",
@@ -294,11 +296,11 @@ public static class Strings
     public static string BootMenu(string policy) => T($"Menu F8 wyłączone (bootmenupolicy {policy})", $"F8 menu disabled (bootmenupolicy {policy})");
 
     public static string NoChildAccountForVerify(string? problem) => T(
-        $"Nie ustalono konta dziecka ({problem}) — sprawdzam tylko Default profile",
+        $"Nie ustalono konta dziecka ({problem}) — sprawdzam tylko profil domyślny",
         $"Child's account not determined ({problem}) — checking the Default profile only");
     public static string HiveUnreadable(string label) => T($"{label}: nie da się odczytać rejestru", $"{label}: registry cannot be read");
-    public static string PoliciesSet(string label, int count) => T($"{label}: policy ustawione ({count} wartości)", $"{label}: policies set ({count} values)");
-    public static string PoliciesRemoved(string label) => T($"{label}: policy usunięte", $"{label}: policies removed");
+    public static string PoliciesSet(string label, int count) => T($"{label}: zasady ustawione ({count} wartości)", $"{label}: policies set ({count} values)");
+    public static string PoliciesRemoved(string label) => T($"{label}: zasady usunięte", $"{label}: policies removed");
 
     public static string UiRunning => T("vigil_ui działa w sesji użytkownika", "vigil_ui runs in the user's session");
     public static string NobodyLoggedOn => T("Nikt nie jest zalogowany — vigil_ui nie musi działać", "Nobody is logged on — vigil_ui need not run");
@@ -323,7 +325,7 @@ public static class Strings
     public static string StepFiles => T("Kopiowanie plików", "Copying files");
     public static string StepConfig => T("Zapisywanie konfiguracji", "Saving the configuration");
     public static string StepService => T("Rejestrowanie usługi", "Registering the service");
-    public static string StepProtection => T("Ochrona przed wyłączeniem", "Protection against switching off");
+    public static string StepProtection => T("Ochrona przed wyłączeniem Vigila", "Protection against turning Vigil off");
     public static string StepPolicies => T("Ustawienia konta dziecka", "Child's account settings");
     public static string StepAcls => T("Uprawnienia do plików", "File permissions");
     public static string StepStart => T("Uruchamianie Vigila", "Starting Vigil");
@@ -384,8 +386,8 @@ public static class Strings
     public static string OldServiceRemoved => T("Poprzednia usługa usunięta", "Previous service removed");
     public static string ServiceRemoved => T("Usługa usunięta", "Service removed");
     public static string ServiceCreated => T(
-        "Usługa zarejestrowana (start automatyczny, restart×3 po awarii, bez restartu komputera)",
-        "Service registered (automatic start, restart×3 on failure, no computer restart)");
+        "Usługa zarejestrowana (start automatyczny, po awarii do 3 ponownych uruchomień usługi)",
+        "Service registered (automatic start, up to 3 service restarts after a failure)");
     public static string ServiceDaclSet => T("DACL usługi: Admin tylko query/start", "Service DACL: Admin query/start only");
     public static string ServiceDaclFailed(int rc, string output) => T(
         $"sc sdset nie powiodło się ({rc}): {output} — Admin może zatrzymać usługę", $"sc sdset failed ({rc}): {output} — Admin can stop the service");
@@ -425,7 +427,7 @@ public static class Strings
         "The F8 menu and WinRE are not restored: Standard is the Windows 10/11 default; enable a disabled WinRE with 'reagentc /enable'.");
 
     public static string NoChildDefaultOnly => T(
-        "Brak konta dziecka — ustawienia tylko w Default profile (konta tworzone później)",
+        "Brak konta dziecka — ustawienia tylko w profilu domyślnym (konta tworzone później)",
         "No child's account — settings in the Default profile only (accounts created later)");
     public static string PoliciesApplied(string label, bool live) => T(
         $"{label}: ustawione{(live ? " (zalogowane)" : "")}", $"{label}: set{(live ? " (signed in)" : "")}");

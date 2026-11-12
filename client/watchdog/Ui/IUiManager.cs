@@ -18,8 +18,8 @@ public interface IUiManager
     /// <summary>Hides the lock overlay; vigil_ui keeps running. Idempotent.</summary>
     Task DismissAsync(CancellationToken ct);
 
-    /// <summary>Tray tooltip state (sent after every heartbeat, re-sent after a respawn).</summary>
-    Task SendTrayStateAsync(bool paused, bool canPause, int minutesRemaining, CancellationToken ct);
+    /// <summary>Tray tooltip state (sent after every heartbeat, re-sent after a respawn); 0 = no limit today.</summary>
+    Task SendTrayStateAsync(int minutesRemaining, CancellationToken ct);
 
     /// <summary>True while we want the overlay shown (set by EnsureLocked, cleared by Dismiss) and a user's
     /// session is there to show it in.</summary>
@@ -44,7 +44,8 @@ public sealed record LockState(
     bool ShowResumeButton,
     bool ShowRetryButton,
     int MinutesRemaining,
-    string? CurrentTimeDisplay);
+    string? CurrentTimeDisplay,
+    string? NightEndLocal = null);
 
 public sealed record TotpFromLockscreen(string Code, int MinutesToGrant);
 /// <summary>Codes and numbers only; vigil_ui words them (i18n, D21).</summary>

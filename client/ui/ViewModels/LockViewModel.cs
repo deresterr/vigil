@@ -1,18 +1,19 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Media;
 
 namespace Vigil.Ui.ViewModels;
 
 /// <summary>
 /// The lock screen's states:
 ///
-///   Initial          → Locked (message and controls from UiState)
-///   Locked + code    → GrantPending (sent to the watchdog, waiting)
-///   GrantPending OK  → GrantApplied ("Added X minutes")
-///   GrantPending err → Locked (with the error)
-///
-/// After GrantApplied the watchdog sees the unlock at its next tick and removes the overlay.
+///   Locked              — badge, title and detail from UiState; the code field / Retry / Back when offered
+///   Locked + code       → GrantPending (sent to the watchdog, waiting)
+///   GrantPending OK     → GrantApplied ("1 h added") until the watchdog unlocks
+///   GrantPending error  → Locked (with the error)
+///   Locked + Shut down  → ConfirmShutdown (on the overlay: a system message box fought the topmost windows)
+///   ConfirmShutdown     → Locked (Cancel, Esc) or the power-off
 /// </summary>
 public sealed class LockViewModel : INotifyPropertyChanged
 {
@@ -38,31 +39,25 @@ public sealed class LockViewModel : INotifyPropertyChanged
         get => _state;
         set
         {
-            if (!Equals(_state, value))
-            {
-                _state = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(MainMessage));
-                OnPropertyChanged(nameof(ShowTotpField));
-                OnPropertyChanged(nameof(ShowResumeButton));
-                OnPropertyChanged(nameof(ShowRetryButton));
-                OnPropertyChanged(nameof(MinutesRemainingText));
-            }
+            if (Equals(_state, value)) return;
+            _state = value;
+            OnPropertyChanged();
+            foreach (var name in new[] { nameof(Title), nameof(Detail), nameof(StateBrush), nameof(StateIcon),
+                         nameof(IsNight), nameof(ShowTotpField), nameof(ShowResumeButton), nameof(ShowRetryButton) })
+                OnPropertyChanged(name);
         }
     }
 
-    public string MainMessage        => Strings.LockMessage(_state.Reason, _state.ShowTotpField);
-    public bool ShowTotpField        => _phase == LockUiPhase.Locked && _state.ShowTotpField;
-    public bool ShowResumeButton     => _phase == LockUiPhase.Locked && _state.ShowResumeButton;
-    public bool ShowRetryButton      => _phase == LockUiPhase.Locked && _state.ShowRetryButton;
+    public string Title => Strings.LockTitle(_state.Reason);
+    public string Detail => Strings.LockDetail(_state);
+    public System.Windows.Media.Brush StateBrush => Palette.ForState(_state.Reason);
+    public Geometry StateIcon => Icons.ForState(_state.Reason);
+    /// <summary>Night: the text dims further (a dark room).</summary>
+    public bool IsNight => _state.Reason == LockReason.Night;
 
-    /// <summary>
-    /// Time left, shown during a pause; empty when none is left (no "0 min left").
-    /// </summary>
-    public string MinutesRemainingText =>
-        _state.ShowResumeButton && _state.MinutesRemaining > 0
-            ? Strings.Remaining(_state.MinutesRemaining)
-            : "";
+    public bool ShowTotpField => _state.ShowTotpField;
+    public bool ShowResumeButton => _state.ShowResumeButton;
+    public bool ShowRetryButton => _state.ShowRetryButton;
 
     private string _totpCode = "";
     public string TotpCode
@@ -80,6 +75,7 @@ public sealed class LockViewModel : INotifyPropertyChanged
     }
 
     private string _currentTime = DateTime.Now.ToString("HH:mm");
+    /// <summary>The server's time (watchdog, every second while locked); the PC clock only without a watchdog.</summary>
     public string CurrentTime
     {
         get => _currentTime;
@@ -99,7 +95,8 @@ public sealed class LockViewModel : INotifyPropertyChanged
 
 public enum LockUiPhase
 {
-    Locked,         // message, and the code field / Retry when offered
-    GrantPending,   // code sent, waiting for the answer
-    GrantApplied,   // success shown until the watchdog unlocks
+    Locked,           // badge and texts, and the code field / Retry / Back when offered
+    GrantPending,     // code sent, waiting for the answer
+    GrantApplied,     // success shown until the watchdog unlocks
+    ConfirmShutdown,  // "Shut down the computer?" on the overlay
 }

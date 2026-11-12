@@ -190,3 +190,15 @@ def test_server_sends_codes_not_sentences(watchdog):
         code = pyotp.TOTP(config("totp_secret")).now()
         r = watchdog.post("/v1/totp_attempt", {"code": code, "minutes_to_grant": 30})
         assert r.json() == {"ok": True, "mode": "extend_night", "minutes": 30, "until_local": "2026-11-04 23:30"}
+
+
+def test_night_lock_tells_when_it_ends(watchdog):
+    """The lock screen says "the computer unlocks at 06:30": the end of the night in progress, as a time only."""
+    with time_machine.travel(datetime(2026, 11, 4, 23, 0, tzinfo=TZ), tick=False) as t:
+        assert watchdog.heartbeat()["ui_state"]["night_end_local"] == "06:30"
+        t.shift(timedelta(hours=3))  # 02:00, after midnight: still the same night
+        assert watchdog.heartbeat()["ui_state"]["night_end_local"] == "06:30"
+    with time_machine.travel(NOON, tick=False):  # a limit lock: no night end
+        set_used("2026-11-04", 120)
+        hb = watchdog.heartbeat()
+        assert hb["lock_reason"] == "limit" and "night_end_local" not in hb["ui_state"]

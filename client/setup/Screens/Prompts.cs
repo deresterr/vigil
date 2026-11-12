@@ -25,7 +25,7 @@ internal static class Prompts
             {
                 var label = Theme.Esc(items[i].Label.PadRight(width));
                 c.MarkupLine(i == selected
-                    ? $" [bold aqua]›[/] [aqua]{items[i].Key}[/]  [bold]{label}[/]"
+                    ? $" [bold {Theme.AccentTag}]›[/] [{Theme.AccentTag}]{items[i].Key}[/]  [bold]{label}[/]"
                     : $"   [grey]{items[i].Key}[/]  {label}");
             }
             c.MarkupLine($"[grey]{Theme.Esc(Strings.UiMenuHint)}[/]");
@@ -65,7 +65,7 @@ internal static class Prompts
                 }
                 selected = moved;
                 if (chosen < 0) continue;
-                if (!ansi) c.MarkupLine($" [bold aqua]›[/] [bold]{Theme.Esc(items[chosen].Label)}[/]");
+                if (!ansi) c.MarkupLine($" [bold {Theme.AccentTag}]›[/] [bold]{Theme.Esc(items[chosen].Label)}[/]");
                 c.WriteLine();
                 return items[chosen].Value;
             }
@@ -115,6 +115,41 @@ internal static class Prompts
             }
             if (char.IsControl(k.KeyChar)) continue;
             text.Append(k.KeyChar);
+            c.Write(k.KeyChar.ToString(), Theme.Accent);
+        }
+    }
+
+    /// <summary>A code of up to <paramref name="length"/> digits, shown in groups ("1234 5678" for
+    /// <paramref name="group"/> 4). Other keys are ignored; Backspace removes a digit, Esc the whole field.
+    /// Returns the digits typed (maybe fewer than <paramref name="length"/>: the caller says so).</summary>
+    public static string Code(IAnsiConsole c, string prompt, int length, int group)
+    {
+        c.Markup($"[bold]{Theme.Esc(prompt)}[/] ");
+        var digits = new StringBuilder();
+        void Erase(int chars) => c.Write(string.Concat(Enumerable.Repeat("\b \b", chars)));
+        while (true)
+        {
+            var key = c.Input.ReadKey(intercept: true);
+            if (key is null) continue;
+            var k = key.Value;
+            switch (k.Key)
+            {
+                case ConsoleKey.Enter:
+                    c.WriteLine();
+                    return digits.ToString();
+                case ConsoleKey.Backspace when digits.Length > 0:
+                    // The space before the first digit of a group goes with it.
+                    Erase(digits.Length % group == 1 && digits.Length > 1 ? 2 : 1);
+                    digits.Length--;
+                    continue;
+                case ConsoleKey.Escape:
+                    Erase(digits.Length + (digits.Length - 1) / group);
+                    digits.Clear();
+                    continue;
+            }
+            if (!char.IsAsciiDigit(k.KeyChar) || digits.Length == length) continue;
+            if (digits.Length > 0 && digits.Length % group == 0) c.Write(" ");
+            digits.Append(k.KeyChar);
             c.Write(k.KeyChar.ToString(), Theme.Accent);
         }
     }

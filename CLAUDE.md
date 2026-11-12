@@ -24,6 +24,8 @@ everywhere the same problem occurs, not only where it was reported.
   (server of the same commit on localhost; install → update → one-file package checks → broken installs →
   re-pair → uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" →
   uninstall, then the wizard and the menu through a key script). Never on a real PC.
+  `e2e/ui-standalone.ps1` (CI, before it): vigil_ui's test mode for every lock reason must close itself after
+  `--exit-after`; it prints the CPU use and ui.log.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
 - `docs/decisions.md` — the design decisions D1–D26 the code refers to. `docs/installer.md`, `docs/guardian.md`
   describe those parts. When a doc and the code disagree, the code wins: fix the doc.
@@ -101,7 +103,8 @@ everywhere the same problem occurs, not only where it was reported.
   a null key. Menus and fields go through `Screens/Prompts.cs` (digits work without ANSI too); the CI drives
   them with `-Keys <file>` (`ScriptedConsole`: plain-text output, throws when the script runs out — exit 3).
   Windows 10 conhost (Consolas, no font fallback) has no ✓/✗, braille spinners or rounded borders: `Theme` uses
-  √/× and the line spinner unless `WT_SESSION` is set, square borders everywhere.
+  √/× and the line spinner unless `WT_SESSION` is set, square borders everywhere. The screens write through
+  `App.C`, an `IndentedConsole` (left margin, tracked line start): never `AnsiConsole` directly.
 - PowerShell: an MSBuild property with a dot after a dash in a splatted array (`-p:Version=0.0.0-ci.89`) reached
   dotnet mangled (MSB1001). Pass such arguments as one quoted string: `"-p:Version=$Version"`.
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using
@@ -128,6 +131,15 @@ everywhere the same problem occurs, not only where it was reported.
 - vigil_ui runs with a process DACL that denies the user `PROCESS_TERMINATE`/`WRITE_DAC`: never open the
   own process by PID inside it (e.g. `Process.GetCurrentProcess().MainModule`) — use pseudo-handles or
   `GetModuleHandle(null)`.
+- WPF `Left/Top/Width/Height` are device-independent units, WinForms `Screen.Bounds` are pixels: sized from Bounds,
+  the overlay was 1.5× the screen at 150 % scaling, off-center, with "Shut down" off the edge (#120). Place lock
+  windows with `WindowFrame.Restore` (SetWindowPos, pixels). A `WindowStyle=None` window still has `WS_SYSMENU`:
+  Alt+Space offered Move and Close on the overlay — the bit is removed and system commands are refused.
+- `client/ui` has both `System.Drawing` (tray icon) and `System.Windows.Media` (WPF): `Color` and `Brush` exist in
+  both, so qualify them in a file that sees both. vigil_ui's colors live in `Palette.cs`, mirroring the panel's
+  `theme.css` — change them there and in `theme.css` together.
+- DPAPI secrets are written with `FileAcls.WriteSecret` (restricted ACL from creation): a LocalMachine blob with
+  our public entropy decrypts in any local process, so a moment with the folder's inherited ACL leaks it.
 
 ## Conventions
 - Code, comments, logs, commit messages: English.

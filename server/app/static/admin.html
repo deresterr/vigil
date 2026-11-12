@@ -1089,7 +1089,9 @@ function addChild() {
 function showPairingCode(r, forWhat) {
   showModal(t('Kod parowania'),
     `<p class="muted" style="margin-top: 0;">${esc(forWhat)}</p>` +
-    '<p style="font-size: 2.2em; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 12px 0;">' + esc(r.code) + '</p>' +
+    // "1234 5678", as vigil_setup groups it while it is typed
+    '<p style="font-size: 2.2em; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 12px 0;">' +
+      esc(r.code.replace(/^(\d{4})(\d{4})$/, '$1 $2')) + '</p>' +
     '<p class="muted">' + t('Ważny do {time}, jednorazowy. Uruchom <code>vigil_setup.exe</code> na tym komputerze i wpisz ten kod, gdy instalator o niego poprosi.', {time: esc(r.expires_local)}) + '</p>' +
     `<button class="btn btn-ghost" onclick="cancelPairing()" style="margin-top: 8px;">${t('Anuluj kod')}</button>`);
   loadStatus();

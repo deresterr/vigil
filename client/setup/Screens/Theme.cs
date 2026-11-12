@@ -20,7 +20,10 @@ internal static class Theme
     public static Spinner SpinnerFor(IAnsiConsole c) =>
         c.Profile.Capabilities.Unicode && RichFont ? Spectre.Console.Spinner.Known.Dots : Spectre.Console.Spinner.Known.Line;
 
-    public static readonly Style Accent = new(Color.Aqua);
+    /// <summary>The parent panel's accent (theme.css --accent-line, #120): the same turquoise as the panel. A console
+    /// without 24-bit color gets the nearest one Spectre finds (aqua/cyan).</summary>
+    public const string AccentTag = "#22d3ee";
+    public static readonly Style Accent = new(new Color(0x22, 0xd3, 0xee));
     public static readonly Style Muted = new(Color.Grey);
 
     public static string Esc(string? text) => Markup.Escape(text ?? "");
@@ -44,7 +47,7 @@ internal static class Theme
     public static void Header(IAnsiConsole c, string title, string? step = null)
     {
         c.Clear(true);
-        c.Write(new Rule($"[bold aqua]Vigil[/] [grey]·[/] [bold]{Esc(title)}[/] [grey]· {Esc(AppVersion.Display)}[/]")
+        c.Write(new Rule($"[bold {AccentTag}]Vigil[/] [grey]·[/] [bold]{Esc(title)}[/] [grey]· {Esc(AppVersion.Display)}[/]")
             .LeftJustified().RuleStyle(Muted));
         if (step is not null) c.MarkupLine($"[bold]{Esc(step)}[/]");
         c.WriteLine();

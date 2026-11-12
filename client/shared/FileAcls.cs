@@ -34,13 +34,32 @@ public static class FileAcls
     };
 
     /// <summary>Protected ACL with exactly <see cref="SecretRules"/> on one file.</summary>
-    public static void ProtectSecret(string path)
+    public static void ProtectSecret(string path) => new FileInfo(path).SetAccessControl(SecretSecurity());
+
+    /// <summary>
+    /// Writes a DPAPI secret. A new file is created with <see cref="SecretRules"/> already in place: written with
+    /// the folder's inherited ACL first, it was readable by Authenticated Users until the ACL was set, and a
+    /// LocalMachine DPAPI blob with our (public) entropy decrypts in any local process (#120). An existing file
+    /// keeps its ACL while it is rewritten (SYSTEM full; Administrators full only between the installer's
+    /// Reclaim and LockDown), then gets <see cref="SecretRules"/> again.
+    /// </summary>
+    public static void WriteSecret(string path, byte[] data)
+    {
+        using (var stream = new FileInfo(path).Create(FileMode.Create, FileSystemRights.Write, FileShare.None,
+                   bufferSize: 4096, FileOptions.None, SecretSecurity()))
+        {
+            stream.Write(data, 0, data.Length);
+        }
+        ProtectSecret(path);
+    }
+
+    private static FileSecurity SecretSecurity()
     {
         var sec = new FileSecurity();
         sec.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         foreach (var rule in SecretRules)
             sec.AddAccessRule(new FileSystemAccessRule(rule.Sid, rule.Rights, AccessControlType.Allow));
-        new FileInfo(path).SetAccessControl(sec);
+        return sec;
     }
 
     /// <summary>

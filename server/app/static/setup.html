@@ -137,7 +137,7 @@
     </div>
     <div class="qr-wrap" id="qrWrap"><div class="loading" data-i18n>Ładowanie kodu QR…</div></div>
     <label for="totpCode" data-i18n>Kod weryfikacyjny (6 cyfr)</label>
-    <input type="text" id="totpCode" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*">
+    <input type="text" id="totpCode" placeholder="000 000" maxlength="7" inputmode="numeric" autocomplete="one-time-code">
     <p class="totp-skip" data-i18n>Zostaw puste i kliknij „Pomiń”, jeśli nie chcesz teraz konfigurować TOTP.</p>
     <div class="actions">
       <button class="btn btn-secondary" onclick="goTo(2)" data-i18n>← Wróć</button>
@@ -283,8 +283,17 @@ function skipTotp() {
   goTo(4);
 }
 
+// The code as authenticator apps show it, "123 456"; only the digits are sent.
+function totpDigits() {
+  return document.getElementById('totpCode').value.replace(/\D/g, '');
+}
+document.getElementById('totpCode').addEventListener('input', e => {
+  const d = e.target.value.replace(/\D/g, '').slice(0, 6);
+  e.target.value = d.length > 3 ? d.slice(0, 3) + ' ' + d.slice(3) : d;
+});
+
 function verifyTotp() {
-  const code = document.getElementById('totpCode').value.trim();
+  const code = totpDigits();
   if (!code) { skipTotp(); return; }
   if (!/^\d{6}$/.test(code)) { showError(t('Kod TOTP musi mieć 6 cyfr.')); return; }
   // The server checks it when the wizard completes
@@ -310,7 +319,7 @@ function esc(s) {
 
 function finish() {
   showError('');
-  const totpCode = totpVerified ? document.getElementById('totpCode').value.trim() : '';
+  const totpCode = totpVerified ? totpDigits() : '';
 
   const payload = {
     child_name:           document.getElementById('childName').value.trim(),

@@ -1,36 +1,82 @@
-<Application x:Class="Vigil.Ui.App"
+﻿<Application x:Class="Vigil.Ui.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:Vigil.Ui"
              ShutdownMode="OnExplicitShutdown">
     <!-- ShutdownMode=OnExplicitShutdown: the app ends only on Shutdown(), not with its first window; the lock
-         windows (one per monitor) are recreated on DisplaySettingsChanged. -->
+         windows (one per monitor) are recreated on DisplaySettingsChanged. Colors: Palette.cs (the panel's). -->
     <Application.Resources>
-        <!-- Night palette: black background, muted text. A locked screen at night must not light up the
-             room; the text stays readable without emitting much light. -->
-        <SolidColorBrush x:Key="BackgroundDarkBrush" Color="#000000"/>
-        <SolidColorBrush x:Key="ForegroundLightBrush" Color="#9a9a9a"/>
-        <SolidColorBrush x:Key="MutedBrush" Color="#707070"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#4a6888"/>
-        <SolidColorBrush x:Key="DangerBrush" Color="#8a4040"/>
-
-        <!-- Style globalne -->
+        <!-- Outlined buttons with their own template: the default one turns light blue on hover, which glows
+             on a black screen. -->
         <Style TargetType="Button">
-            <Setter Property="Background" Value="#222222"/>
-            <Setter Property="Foreground" Value="#9a9a9a"/>
-            <Setter Property="BorderBrush" Value="#3a3a3a"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{x:Static ui:Palette.Control}"/>
+            <Setter Property="BorderBrush" Value="{x:Static ui:Palette.ControlBorder}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="Padding" Value="24,10"/>
             <Setter Property="FontSize" Value="20"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{x:Static ui:Palette.ControlHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{x:Static ui:Palette.AccentLine}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+
+        <!-- The main action of a screen (Check, Back to the computer): the panel's accent, outlined. -->
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Foreground" Value="{x:Static ui:Palette.AccentText}"/>
+            <Setter Property="BorderBrush" Value="{x:Static ui:Palette.AccentBorder}"/>
+        </Style>
+
+        <!-- Shut down after the confirmation: Cancel's text color, the accent's frame (the question's badge
+             already carries the red). -->
+        <Style x:Key="PowerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="BorderBrush" Value="{x:Static ui:Palette.AccentBorder}"/>
+        </Style>
+
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#0f0f0f"/>
-            <Setter Property="Foreground" Value="#b8b8b8"/>
-            <Setter Property="BorderBrush" Value="#3a3a3a"/>
+            <Setter Property="Background" Value="{x:Static ui:Palette.Field}"/>
+            <Setter Property="Foreground" Value="{x:Static ui:Palette.FieldText}"/>
+            <Setter Property="BorderBrush" Value="{x:Static ui:Palette.AccentBorder}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Padding" Value="10,6"/>
             <Setter Property="FontSize" Value="28"/>
-            <Setter Property="CaretBrush" Value="#b8b8b8"/>
+            <Setter Property="CaretBrush" Value="{x:Static ui:Palette.FieldText}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{x:Static ui:Palette.AccentLine}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Application.Resources>
 </Application>

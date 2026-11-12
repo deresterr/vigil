@@ -16,11 +16,13 @@ namespace Vigil.Ui;
 ///   unlock     → overlay off, tray only
 ///   tray_state → tooltip
 ///   exit       → quit (service stopping)
-/// Without the watchdog it quits: on a failed connect at once, after a lost pipe within 30 s
-/// (a restarted watchdog kills it anyway and spawns a fresh one).
+/// Without the watchdog it quits: on a failed connect at once, after a lost pipe within 30 s — unless locked:
+/// then the overlay stays until a restarted watchdog replaces this process (it kills the old one before
+/// spawning; a crashed service is back in about a minute), fail-closed (#120).
 /// --standalone-test shows the overlay without a watchdog, for UI work (only from the command line: the
 /// watchdog starts vigil_ui without it, and nothing in the environment switches it on, D24);
-/// there --mode=night|limit|manual|pause|server_unreachable, --lang=en|pl (instead of the Windows language) and
+/// there --mode=night|limit|manual|pause|server_unreachable|device_unpaired, --lang=en|pl (instead of the Windows
+/// language) and
 /// --exit-after=SECONDS (closes itself and restores the taskbar; a killed process cannot).
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -47,6 +49,15 @@ public partial class App : Application
     private TrayIcon? _tray;
     private bool _locked;
 
+    /// <summary>The app is ending (Quit, or Windows ending the session): the lock windows may close.</summary>
+    public static bool Quitting { get; private set; }
+
+    private void Quit(int exitCode)
+    {
+        Quitting = true;
+        Shutdown(exitCode);
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -55,19 +66,21 @@ public partial class App : Application
         UiLog.Write($"start pid={Environment.ProcessId}");
         DispatcherUnhandledException += (_, ex) => UiLog.Write("unhandled: " + ex.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, ex) => UiLog.Write("unhandled: " + ex.ExceptionObject);
-        SessionEnding += (_, ex) => UiLog.Write("session ending: " + ex.ReasonSessionEnding);
+        SessionEnding += (_, ex) =>
+        {
+            Quitting = true;  // WPF closes the windows next
+            UiLog.Write("session ending: " + ex.ReasonSessionEnding);
+        };
 
         // A previous instance killed while locked leaves the taskbar hidden.
         TaskbarHider.RestoreAll();
 
         _useKeyboardBlocker = !Array.Exists(e.Args, a => a == "--no-keyboard-blocker");
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
-        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-        _clockTimer.Tick += (_, _) => ViewModel.CurrentTime = DateTime.Now.ToString("HH:mm");
-        _clockTimer.Start();
 
         if (IsStandalone)
         {
+            StartPcClock();
             ApplyArgvStandalone(e.Args);
             return;
         }
@@ -85,7 +98,7 @@ public partial class App : Application
         {
             // Only the watchdog may run us: it creates the pipe right before spawning.
             UiLog.Write("pipe connect failed, exiting: " + ex.Message);
-            Shutdown(1);
+            Quit(1);
             return;
         }
 
@@ -106,7 +119,7 @@ public partial class App : Application
                 _tray?.ShowState(t);
                 break;
             case IpcExit:
-                Shutdown(0);
+                Quit(0);
                 break;
         }
     }
@@ -144,7 +157,9 @@ public partial class App : Application
             ShowResumeButton = s.ShowResumeButton,
             ShowRetryButton = s.ShowRetryButton,
             MinutesRemaining = s.MinutesRemaining,
+            NightEndLocal = s.NightEndLocal,
         };
+        // The watchdog's time (the server's, #92), every second while locked; the PC clock only without it.
         if (!string.IsNullOrEmpty(s.CurrentTimeDisplay))
             ViewModel.CurrentTime = s.CurrentTimeDisplay;
 
@@ -191,13 +206,31 @@ public partial class App : Application
 
     private void OnPipeLost()
     {
-        UiLog.Write("pipe to the watchdog lost");
         _tray?.ShowDisconnected();
-        ViewModel.StatusMessage = Strings.WatchdogLost;
-        // The overlay stays meanwhile (fail-closed); a restarted watchdog replaces this process.
+        StartPcClock();
+        if (_locked)
+        {
+            // Fail-closed: the overlay stays until a restarted watchdog replaces this process. Quitting after
+            // 30 s left the desktop open until the service restart (60 s after a crash).
+            UiLog.Write("pipe to the watchdog lost while locked: staying locked");
+            ViewModel.StatusMessage = Strings.ServiceLost;
+            return;
+        }
+        UiLog.Write("pipe to the watchdog lost: exiting in 30 s");
         _pipeLossTimer = new DispatcherTimer { Interval = PipeLossExit };
-        _pipeLossTimer.Tick += (_, _) => Shutdown(0);
+        _pipeLossTimer.Tick += (_, _) => Quit(0);
         _pipeLossTimer.Start();
+    }
+
+    /// <summary>Without a watchdog (standalone, pipe lost) nothing sends the time: the PC clock keeps the
+    /// overlay's clock going.</summary>
+    private void StartPcClock()
+    {
+        if (_clockTimer is not null) return;
+        ViewModel.CurrentTime = DateTime.Now.ToString("HH:mm");
+        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+        _clockTimer.Tick += (_, _) => ViewModel.CurrentTime = DateTime.Now.ToString("HH:mm");
+        _clockTimer.Start();
     }
 
     private async void OnTrayClick()
@@ -239,7 +272,7 @@ public partial class App : Application
     private void CloseWindows()
     {
         _topmostEnforcer.Clear();
-        foreach (var w in _windows) w.Close();
+        foreach (var w in _windows) w.CloseFromApp();
         _windows.Clear();
     }
 
@@ -274,16 +307,21 @@ public partial class App : Application
             else if (a.StartsWith("--lang=", StringComparison.Ordinal))
                 System.Globalization.CultureInfo.CurrentUICulture = new System.Globalization.CultureInfo(a["--lang=".Length..]);
         }
+        var offline = reason is "server_unreachable" or "device_unpaired";
         ShowLock(new IpcSetState
         {
             LockReason = reason,
-            ShowTotpField = true,
-            ShowRetryButton = reason == "server_unreachable",
+            ShowTotpField = reason != "pause",
+            ShowResumeButton = reason == "pause",
+            ShowRetryButton = offline,
+            MinutesRemaining = reason == "pause" ? 80 : 0,
+            NightEndLocal = reason == "night" ? "06:30" : null,
         });
         if (exitAfter > 0)
         {
+            UiLog.Write($"standalone: exit in {exitAfter} s");
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(exitAfter) };
-            timer.Tick += (_, _) => { timer.Stop(); HideLock(); Shutdown(0); };
+            timer.Tick += (_, _) => { timer.Stop(); HideLock(); Quit(0); };
             timer.Start();
         }
     }

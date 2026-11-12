@@ -31,8 +31,9 @@ public static class Palette
     // theme.css --accent: the tray icon
     public static readonly System.Drawing.Color TrayIcon = System.Drawing.Color.FromArgb(0x08, 0x91, 0xb2);
 
-    // theme.css state colors
-    public static readonly SolidColorBrush Time = Make(0x8f, 0xa5, 0xc2);
+    // theme.css state colors. Limit: --time, the panel's light graphite (#122, #126); the panel also fills its
+    // badge with --time-bg, the overlay keeps every state an outline on black.
+    public static readonly SolidColorBrush Time = Make(0xd1, 0xd5, 0xdb);
     public static readonly SolidColorBrush Night = Make(0xa9, 0x9c, 0xd6);
     public static readonly SolidColorBrush Lock = Make(0xd6, 0x8f, 0x8f);
     public static readonly SolidColorBrush Pause = Make(0xa3, 0xa3, 0xa3);

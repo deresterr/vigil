@@ -51,6 +51,7 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
   123 456 in the setup wizard.
 
 ### Client
+- The lock screen's limit badge takes the panel's graphite (light grey outline and hourglass) instead of steel blue.
 - A computer whose clock runs 5 s or more ahead of the server's (Windows syncs it once a week) no longer shows
   the lock screen for a moment at start: a request refused for its time is sent again at once with the server's
   time.

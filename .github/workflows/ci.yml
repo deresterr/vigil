@@ -85,11 +85,6 @@ jobs:
         shell: pwsh
         # A pre-release version per run: vigil_setup tells an installed CI build from a newer one.
         run: ./build-package.ps1 -Configuration Release -Version "0.0.0-ci.${{ github.run_number }}"
-      - name: TEMPORARY packages (latest patch, advisories)
-        shell: pwsh
-        run: |
-          dotnet list client/Vigil.sln package --outdated --highest-patch
-          dotnet list client/Vigil.sln package --vulnerable --include-transitive
       - name: Lock screen test mode (vigil_ui alone, every lock reason)
         shell: pwsh
         timeout-minutes: 5

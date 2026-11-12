@@ -146,18 +146,27 @@ on the child's PC, whose browser cookies the child can copy).
 
 Every 5 s (1 s while locked in a user's session, also while vigil_ui is being brought back; up to 60 s if the
 server says so — 30 s while nobody is logged on). A logon (the SCM's session-change notification) starts the
-next tick at once.
+next tick at once, and so does a new IP address after a failed heartbeat (`NetworkChange.NetworkAddressChanged`:
+Wi-Fi joined, cable in).
 1. `UiManager.EnsureRunningAsync` — vigil_ui running and connected in the active session (below).
 2. `SessionDetector` — any WTS session ≠ 0 in Active state. Not Connected: that is the console at the logon
    screen with nobody signed in.
 3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, tray state.
-4. No valid response for > grace ⇒ lock with reason `server_unreachable` (local message), unless an
-   offline grant is active (see Offline unlock). Also on request timeouts and unexpected exceptions. When the
-   last failure was the server refusing this computer's key (401 `invalid_signature`: removed or re-paired in the
-   panel) the reason is `device_unpaired`, so the lock screen says the PC needs pairing again; it behaves the same.
+4. No valid response since the service started, or none for > 30 s ⇒ lock with reason `server_unreachable`
+   (local message), unless an offline grant is active (see Offline unlock). Also on request timeouts and
+   unexpected exceptions. The grace runs on `Environment.TickCount64`, which counts sleep: after a wake-up — also
+   from a shutdown with Fast Startup, which hibernates the service instead of stopping it — the PC is locked until
+   the server answers, so a PC that joins Wi-Fi after logon shows the lock for those seconds (#128).
+   The reason only changes the message, never the lock: `device_unpaired` when the last failure was the server
+   refusing this computer's key (401 `invalid_signature`: removed or re-paired in the panel), so the lock screen
+   says the PC needs pairing again; `network_down` when this PC has no network at all (the connect found no
+   route — `NetworkUnreachable`/`NetworkDown` — or a name did not resolve with no interface up; the child can
+   switch the network off without elevation, so it is never a reason to unlock).
    Durations (grace, uptime, the kill window of vigil_ui) are measured on `Environment.TickCount64`, never on the
    wall clock: an administrator who set the clock back after the last heartbeat would otherwise get a negative
    "time since last success" and no lock.
+   Logs: a failed heartbeat is one Information line, outside the Event Log; `OutageLog` writes a warning there
+   when no answer has come for 30 s (cause, attempts, last error) and one entry when the server answers again.
 
 vigil_ui (D8) is spawned in the active session (`WTSQueryUserToken` → `CreateProcessAsUser`, desktop
 `WinSta0\Default`) with a process/thread DACL that gives the user no terminate, suspend or WRITE_DAC
@@ -175,7 +184,7 @@ Its environment (D24) is built by the watchdog from a fixed list (system values,
 token, `DOTNET_EnableDiagnostics=0`), nothing from the child's own: `HKCU\Environment` is writable without
 elevation, and the .NET runtime would take startup hooks or a profiler from it. Its native WPF libraries sit
 next to it in ProgramData; nothing is extracted at run time. `vigil_ui.exe --standalone-test [--mode=night|
-limit|manual|pause|server_unreachable|device_unpaired] [--lang=en|pl] [--no-keyboard-blocker] [--exit-after=SECONDS]`
+limit|manual|pause|server_unreachable|network_down|device_unpaired] [--lang=en|pl] [--no-keyboard-blocker] [--exit-after=SECONDS]`
 shows the overlay without a watchdog, for UI work (its "Shut down" only asks; nothing powers off); only from the
 command line.
 
@@ -206,7 +215,7 @@ other programs out.
 
 ## Offline unlock (`offline.py`, `Offline/OfflineUnlock.cs`)
 
-When the watchdog has failed closed (`server_unreachable`), a TOTP code typed on the lock overlay is
+When the watchdog has failed closed (`server_unreachable`, `network_down`, `device_unpaired`), a TOTP code typed on the lock overlay is
 verified by the watchdog itself: ±1 step, each step once, every 3rd failure locks 60/300/900 s (cap),
 grant ≤ 120 min, ended as soon as the server answers. Codes are checked at the server's time (`ServerClock`);
 the lockout and the grant run on the monotonic clock, which a clock change does not move. The secret comes from the server in the signed

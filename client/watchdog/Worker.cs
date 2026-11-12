@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.NetworkInformation;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
@@ -16,7 +17,7 @@ namespace Vigil.Watchdog;
 /// 1. vigil_ui running and connected in the active session
 /// 2. session state → heartbeat
 /// 3. apply the response (lock / unlock, tray)
-/// 4. fail-closed when the server has been silent longer than the grace period
+/// 4. fail-closed when the server has not answered since the start or for longer than the grace period
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class Worker : BackgroundService
@@ -29,6 +30,7 @@ public sealed class Worker : BackgroundService
     private readonly TotpSecretStore _totpStore;
     private readonly OfflineUnlock _offline;
     private readonly ServerClock _clock;
+    private readonly OutageLog _outage;
     // True while the lock on screen is our own fail-closed lock (server unreachable): TOTP codes
     // are then verified locally (#9) instead of being forwarded to the server.
     private volatile bool _offlineLocked;
@@ -45,6 +47,12 @@ public sealed class Worker : BackgroundService
     // The last heartbeat was refused for this computer's key (removed or re-paired in the panel): the offline
     // lock says so instead of "no connection", so the parent knows to pair it again (#120).
     private volatile bool _keyRejected;
+    // The last heartbeat failed because this PC has no network at all (Wi-Fi not joined yet): the offline lock
+    // says so instead of blaming the server (#128). The message only; the lock is the same.
+    private volatile bool _networkDown;
+
+    // Fail-closed (invariant): no answer since the service started, or none for this long, means locked.
+    private const double GraceSeconds = 30;
 
     // Tick interval: 5 s normally; 1 s while locked, so an unlock shows at once and a vanished vigil_ui
     // is back within a second instead of leaving the desktop open for 5 s.
@@ -61,6 +69,7 @@ public sealed class Worker : BackgroundService
         TotpSecretStore totpStore,
         OfflineUnlock offline,
         ServerClock clock,
+        ILogger<OutageLog> outageLogger,
         ILogger<Worker> logger)
     {
         _config = config;
@@ -70,6 +79,7 @@ public sealed class Worker : BackgroundService
         _totpStore = totpStore;
         _offline = offline;
         _clock = clock;
+        _outage = new OutageLog("Heartbeat", outageLogger);
         _logger = logger;
 
         _ui.OnTotpAttempt += HandleTotpFromLockscreenAsync;
@@ -78,6 +88,12 @@ public sealed class Worker : BackgroundService
         _ui.OnPauseToggle += HandlePauseToggleAsync;
         // A logon: vigil_ui and any lock at once, not after the idle interval of an empty PC (30–60 s).
         VigilServiceLifetime.SessionLoggedOn += WakeUp;
+        // A new address after a failed heartbeat (Wi-Fi joined, cable in): try now, so a lock waiting for the
+        // network goes as soon as it is there. Not while the server answers: addresses change for other reasons too.
+        NetworkChange.NetworkAddressChanged += (_, _) =>
+        {
+            if (Volatile.Read(ref _failedAttempts) > 0) WakeUp();
+        };
     }
 
     private readonly SemaphoreSlim _retrySignal = new(0, 1);
@@ -223,6 +239,8 @@ public sealed class Worker : BackgroundService
             _lastSuccessMs = ServerClock.MonotonicMs;
             _failedAttempts = 0;
             _keyRejected = false;
+            _networkDown = false;
+            _outage.Success();
             _offline.OnServerReachable(req.OfflineGrants);
             if (!string.IsNullOrEmpty(response.TotpSecret))
             {
@@ -236,9 +254,12 @@ public sealed class Worker : BackgroundService
         {
             _failedAttempts++;
             _keyRejected = ex is KeyRejectedException;
-            _logger.LogWarning(ex,
-                "Heartbeat failed (last success {Ago})",
+            _networkDown = OutageLog.IsNoNetwork(ex);
+            // One line per failure outside the Event Log; OutageLog writes there when it lasts (#128).
+            _logger.LogInformation(
+                "Heartbeat failed: {Error} (last success {Ago})", ex.Message,
                 _lastSuccessMs is { } at ? $"{SecondsSince(at):F0} s ago" : "never since the service started");
+            _outage.Failure(ex);
         }
 
         if (serverOk && response is not null)
@@ -256,16 +277,15 @@ public sealed class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Fail-closed (invariant): lock once the server has been silent longer than the grace period
-    /// (90 s after service start, 30 s otherwise). Called after a failed heartbeat and after any
-    /// tick that threw, so no exception path can skip it. An active offline TOTP grant (#9) is the
-    /// only thing that keeps the PC unlocked meanwhile.
+    /// Fail-closed (invariant): lock when the server has not answered since the service started, or not for longer
+    /// than the grace period — on the monotonic clock, which counts sleep: a PC woken up (also from a shutdown with
+    /// Fast Startup, which hibernates the service) is locked until the server answers. Called after a failed
+    /// heartbeat and after any tick that threw, so no exception path can skip it. An active offline TOTP grant (#9)
+    /// is the only thing that keeps the PC unlocked meanwhile.
     /// </summary>
     private async Task FailClosedIfOverdueAsync(CancellationToken ct)
     {
-        var graceSeconds = SecondsSince(_startMs) < 90 ? 90 : 30;
-        // Never reached the server since the start: overdue at the first failure, as before.
-        var overdue = _lastSuccessMs is not { } at || SecondsSince(at) > graceSeconds;
+        var overdue = _lastSuccessMs is not { } at || SecondsSince(at) > GraceSeconds;
         if (overdue && _offline.IsGrantActive)
         {
             // Parent unlocked with a TOTP code while offline (#9): stay unlocked until the grant ends.
@@ -278,8 +298,8 @@ public sealed class Worker : BackgroundService
             var canUnlock = _offline.HasSecret;
             _offlineLocked = true;
             await _ui.EnsureLockedAsync(new LockState(
-                // Both are this watchdog's own locks (codes, worded by vigil_ui); the server knows neither.
-                Reason: _keyRejected ? "device_unpaired" : "server_unreachable",
+                // This watchdog's own locks (codes, worded by vigil_ui); the server knows none of them.
+                Reason: _keyRejected ? "device_unpaired" : _networkDown ? "network_down" : "server_unreachable",
                 ShowTotpField: canUnlock,  // vigil_ui words the message by it: code from the phone or wait
                 ShowResumeButton: false,
                 ShowRetryButton: true,

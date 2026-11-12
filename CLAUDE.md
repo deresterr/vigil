@@ -45,7 +45,9 @@ everywhere the same problem occurs, not only where it was reported.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 
 ## Invariants (changing any of these is a design decision — ask first)
-- **Fail-closed**: server unreachable > grace (30 s; 90 s after service start) ⇒ lock. Never fail-open.
+- **Fail-closed**: no server answer since the service started, or none for 30 s (monotonic clock, which counts
+  sleep: after a wake-up the first failed heartbeat locks) ⇒ lock. Never fail-open. Whether the PC has a network
+  at all only picks the message (`network_down`, #128) — the child can switch Wi-Fi off without elevation.
 - **uvicorn `--workers 1`**: time accounting relies on a single process + `asyncio.Lock` in `get_db()`.
 - **Time is server-side**: delta between a device's heartbeats, clamped to `heartbeat_delta_max`, zero after a gap,
   added to its child (D7: time = sum over the child's devices; locks and settings are per child).

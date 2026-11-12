@@ -24,6 +24,7 @@ public enum LockReason
     Manual,
     Pause,             // the child's own pause: time is not counted
     ServerUnreachable, // the watchdog's own fail-closed lock
+    NetworkDown,       // the same, but this PC has no network at all (Wi-Fi not joined yet, cable out)
     DeviceUnpaired,    // the same, but the server refused this computer's key (removed or re-paired in the panel)
 }
 
@@ -36,6 +37,7 @@ public static class LockReasonExtensions
         "manual"             => LockReason.Manual,
         "pause"              => LockReason.Pause,
         "server_unreachable" => LockReason.ServerUnreachable,
+        "network_down"       => LockReason.NetworkDown,
         "device_unpaired"    => LockReason.DeviceUnpaired,
         _ => throw new ArgumentOutOfRangeException(nameof(s), $"Unknown lock reason: {s}"),
     };

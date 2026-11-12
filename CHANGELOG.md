@@ -51,6 +51,11 @@ the release tags. The reasoning behind each design decision (D1–D26) is in [`d
   123 456 in the setup wizard.
 
 ### Client
+- A computer that joins Wi-Fi only after logon showed "No connection to your parent's server" for a moment at
+  every start. The lock is the same (no answer from the server yet), but it now says the computer is not
+  connected to a network and goes as soon as the network is there.
+- The Event Log no longer gets a warning for every failed contact with the server (one a second while locked):
+  one warning when there has been no answer for 30 seconds, one entry when the server answers again.
 - The installer's pairing-code hint points to the panel's new place: Settings → Add computer (or Re-pair).
 - The lock screen takes the panel's colors: a round badge with the state's icon in its color (limit, night,
   manual lock, pause), a title and one line below it, outlined turquoise controls, and no bright green on the

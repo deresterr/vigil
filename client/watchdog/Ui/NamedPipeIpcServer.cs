@@ -1,7 +1,7 @@
 using System.IO.Pipes;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
+using Vigil.Watchdog.Native;
 
 namespace Vigil.Watchdog.Ui;
 

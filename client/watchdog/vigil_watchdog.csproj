@@ -32,8 +32,6 @@
     <PackageReference Include="Tomlyn" Version="0.17.0" />
     <!-- DPAPI (signing.dat, totp.dat) -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
-    <!-- NamedPipeServerStreamAcl + PipeSecurity: the pipe's DACL -->
-    <PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
     <!-- EventLogReader: the guardian's findings (Guardian/GuardianReporter.cs) -->
     <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.0" />
   </ItemGroup>

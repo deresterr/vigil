@@ -20,3 +20,14 @@ end_of_line = crlf
 
 [*.{yml,yaml,json,html,css,js}]
 indent_size = 2
+
+# TEMPORARY (v0.9.0 review, never merged): dead-code analyzers.
+[*.cs]
+dotnet_diagnostic.IDE0005.severity = warning
+dotnet_diagnostic.IDE0035.severity = warning
+dotnet_diagnostic.IDE0051.severity = warning
+dotnet_diagnostic.IDE0052.severity = warning
+dotnet_diagnostic.IDE0059.severity = warning
+dotnet_diagnostic.IDE0060.severity = warning
+dotnet_diagnostic.CA1812.severity = warning
+dotnet_diagnostic.CA1823.severity = warning

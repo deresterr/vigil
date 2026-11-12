@@ -35,78 +35,20 @@ jobs:
               - 'server/**'
               - '.github/workflows/ci.yml'
             client:
-              - 'client/**'
-              # the installer e2e runs the server of the same commit (#104)
-              - 'server/app/**'
-              - 'build-package.ps1'
-              - 'Build.cmd'
-              - 'e2e/**'
-              - '.github/workflows/ci.yml'
-
-  server:
-    needs: changes
-    if: needs.changes.outputs.server == 'true'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: server/requirements*.txt
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check .
-      - run: pytest -q
-      - run: docker build -t vigil-server:ci .
-
-  client:
     needs: changes
     if: needs.changes.outputs.client == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse PowerShell scripts (Windows PowerShell 5.1, which Build.cmd runs build-package.ps1 with)
-        shell: powershell
-        run: |
-          $bad = 0
-          Get-ChildItem -Recurse -Include *.ps1 -Path e2e, build-package.ps1 | ForEach-Object {
-            $errs = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
-            foreach ($e in $errs) { $bad++; "::error file=$($_.Name),line=$($e.Extent.StartLineNumber)::$($e.Message)" }
-          }
-          exit $bad
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - name: Build package
+      - name: Build with dead-code analyzers (TEMPORARY)
         shell: pwsh
-        # A pre-release version per run: vigil_setup tells an installed CI build from a newer one.
-        run: ./build-package.ps1 -Configuration Release -Version "0.0.0-ci.${{ github.run_number }}"
-      - name: Lock screen test mode (vigil_ui alone, every lock reason)
+        run: dotnet build client/Vigil.sln -c Release -clp:Summary -nologo -p:Version=0.0.0-review
+      - name: Vulnerable packages
         shell: pwsh
-        timeout-minutes: 5
-        run: ./e2e/ui-standalone.ps1 -PartsDir build/parts
-      # The package for the VM test of a PR only (~100 MB a run). Named after the PR's head commit and kept one
-      # day: an older one comes back with Re-run jobs.
-      - uses: actions/upload-artifact@v4
-        if: github.event_name == 'pull_request'
-        with:
-          name: vigil-client-${{ github.event.pull_request.head.sha }}
-          path: dist/
-          retention-days: 1
-      # A real install on the throwaway runner (D22): the package above against the server of this commit.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: server/requirements*.txt
-      - name: Server for the installer e2e
-        # tzdata: Windows has no IANA time zone database for zoneinfo
-        run: pip install -r server/requirements.txt tzdata
-      - name: Installer e2e
+        run: dotnet list client/Vigil.sln package --vulnerable --include-transitive
+      - name: Outdated packages
         shell: pwsh
-        timeout-minutes: 25
-        run: ./e2e/installer-e2e.ps1 -PackageDir dist -ServerDir server
+        run: dotnet list client/Vigil.sln package --outdated

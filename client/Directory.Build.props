@@ -4,5 +4,9 @@
        version with the package. -->
   <PropertyGroup>
     <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+    <!-- TEMPORARY (v0.9.0 review): run IDE analyzers in the build; IDE0005 needs the doc file. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573;CS1572;CS1574;CS1587</NoWarn>
   </PropertyGroup>
 </Project>

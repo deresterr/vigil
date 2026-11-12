@@ -43,7 +43,7 @@ public partial class LockWindow : Window
         Closing += OnClosing;
     }
 
-    /// <summary>App unlocking or rebuilding the windows: the only close that goes through.</summary>
+    /// <summary>App unlocking or rebuilding the windows: with the app ending, the only close that goes through.</summary>
     public void CloseFromApp()
     {
         _closeAllowed = true;
@@ -52,7 +52,7 @@ public partial class LockWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (_closeAllowed) return;
+        if (_closeAllowed || App.Quitting) return;
         e.Cancel = true;  // WM_CLOSE from anywhere else (another process can post it)
         UiLog.Write("lock window close refused");
     }

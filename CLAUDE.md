@@ -24,6 +24,8 @@ everywhere the same problem occurs, not only where it was reported.
   (server of the same commit on localhost; install → update → one-file package checks → broken installs →
   re-pair → uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" →
   uninstall, then the wizard and the menu through a key script). Never on a real PC.
+  `e2e/ui-standalone.ps1` (CI, before it): vigil_ui's test mode for every lock reason must close itself after
+  `--exit-after`; it prints the CPU use and ui.log.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
 - `docs/decisions.md` — the design decisions D1–D26 the code refers to. `docs/installer.md`, `docs/guardian.md`
   describe those parts. When a doc and the code disagree, the code wins: fix the doc.

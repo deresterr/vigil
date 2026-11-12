@@ -49,6 +49,15 @@ public partial class App : Application
     private TrayIcon? _tray;
     private bool _locked;
 
+    /// <summary>The app is ending (Quit, or Windows ending the session): the lock windows may close.</summary>
+    public static bool Quitting { get; private set; }
+
+    private void Quit(int exitCode)
+    {
+        Quitting = true;
+        Shutdown(exitCode);
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -57,7 +66,11 @@ public partial class App : Application
         UiLog.Write($"start pid={Environment.ProcessId}");
         DispatcherUnhandledException += (_, ex) => UiLog.Write("unhandled: " + ex.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, ex) => UiLog.Write("unhandled: " + ex.ExceptionObject);
-        SessionEnding += (_, ex) => UiLog.Write("session ending: " + ex.ReasonSessionEnding);
+        SessionEnding += (_, ex) =>
+        {
+            Quitting = true;  // WPF closes the windows next
+            UiLog.Write("session ending: " + ex.ReasonSessionEnding);
+        };
 
         // A previous instance killed while locked leaves the taskbar hidden.
         TaskbarHider.RestoreAll();
@@ -85,7 +98,7 @@ public partial class App : Application
         {
             // Only the watchdog may run us: it creates the pipe right before spawning.
             UiLog.Write("pipe connect failed, exiting: " + ex.Message);
-            Shutdown(1);
+            Quit(1);
             return;
         }
 
@@ -106,7 +119,7 @@ public partial class App : Application
                 _tray?.ShowState(t);
                 break;
             case IpcExit:
-                Shutdown(0);
+                Quit(0);
                 break;
         }
     }
@@ -205,7 +218,7 @@ public partial class App : Application
         }
         UiLog.Write("pipe to the watchdog lost: exiting in 30 s");
         _pipeLossTimer = new DispatcherTimer { Interval = PipeLossExit };
-        _pipeLossTimer.Tick += (_, _) => Shutdown(0);
+        _pipeLossTimer.Tick += (_, _) => Quit(0);
         _pipeLossTimer.Start();
     }
 
@@ -308,7 +321,7 @@ public partial class App : Application
         {
             UiLog.Write($"standalone: exit in {exitAfter} s");
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(exitAfter) };
-            timer.Tick += (_, _) => { timer.Stop(); HideLock(); Shutdown(0); };
+            timer.Tick += (_, _) => { timer.Stop(); HideLock(); Quit(0); };
             timer.Start();
         }
     }

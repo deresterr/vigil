@@ -1,8 +1,8 @@
 /* The colors of the panel, the setup wizard and the login page (#116), inlined by pages.py.
    One accent (cyan) for the main actions, focus and selection; each state has one color everywhere — the status
-   card, dots, tags, the journal and the buttons that change it: time/limit = slate grey (#4b5563 fill, light text,
-   #122), night = violet, manual lock = dusty red, unlocked/online = green, pause = grey (with its own icon) — all
-   muted (#118). Alerts, errors and deleting keep the strong red (--danger), so they still warn. Confirmations
+   card, dots, tags, the journal and the buttons that change it: time/limit = graphite (#313945 fill, light
+   text; #122, #126), night = violet, manual lock = dusty red, unlocked/online = green, pause = grey (with its own
+   icon) — all muted (#118). Alerts, errors and deleting keep the strong red (--danger), so they still warn. Confirmations
    use the accent. client/ui/Palette.cs mirrors the state colors for the lock screen and the tray. */
 :root {
   --bg: #1a1a1a;  --bar: #1f1f1f;  --surface: #232323;  --hover: #2a2a2a;
@@ -15,7 +15,7 @@
   --accent-bg: #0e2a33;  --accent-border: #155e75;
 
   --ok: #8cc4a0;  --ok-bg: #1f2b24;
-  --time: #d1d5db;  --time-text: #f3f4f6;  --time-bg: #4b5563;  --time-bg-hover: #5b6574;
+  --time: #d1d5db;  --time-text: #f3f4f6;  --time-bg: #313945;  --time-bg-hover: #3b4451;
   --btn-line: rgba(255, 255, 255, 0.35);  /* outline of the +min and night buttons, so they stand out (#118, #122) */
   --night: #a99cd6;  --night-text: #c4bce6;  --night-bg: #27243a;  --night-bg-hover: #322e4a;
   --pause: #a3a3a3;  --pause-bg: #2a2a2a;

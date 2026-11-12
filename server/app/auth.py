@@ -29,9 +29,9 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 
-from .db import get_config_value, get_connection
+from .db import get_config_value, get_db
 
 _MAX_FUTURE_SKEW_MS = 5000
 
@@ -62,11 +62,16 @@ def _reject(detail: str) -> HTTPException:
     return HTTPException(status_code=401, detail=detail)
 
 
-async def authenticate_request(request: Request) -> Device:
+async def authenticate_request(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Device:
     """Dependency for every /v1/* endpoint except /v1/pair; returns the sending device.
 
     Order matters: everything is checked before the nonce is stored, so a rejected request never
-    burns a nonce. Uses its own short-lived connection so the write lock is held only for the INSERT.
+    burns a nonce. The nonce is committed at once: a request that fails later has still used it.
+
+    The connection is get_db()'s, shared with the endpoint (FastAPI resolves a dependency once per
+    request). It used to be one of its own, outside get_db's lock (#123): while a panel request held the
+    lock with its write not yet committed, this INSERT waited out SQLite's 30 s busy timeout inside the event
+    loop, so the panel request could never commit — "database is locked", and the server stood still.
 
     Side effect: request.state.{signing_key_bytes, nonce} for the response-signing middleware.
     """
@@ -85,35 +90,35 @@ async def authenticate_request(request: Request) -> Device:
 
     body = await request.body()  # cached by Starlette; the endpoint reads it again
 
-    with get_connection() as db:
-        message = canonical_request(request.method, request.url.path, ts_header, nonce, body)
-        device: Device | None = None
-        key = b""
-        # Every key is tried (no early exit), so timing does not tell how many devices there are
-        # or which one matched.
-        for row in db.execute("SELECT id, child_id, name, signing_key FROM devices").fetchall():
-            candidate = decode_signing_key(row["signing_key"])
-            if hmac.compare_digest(sign(candidate, message), provided) and device is None:
-                device, key = Device(row["id"], row["child_id"], row["name"]), candidate
-        if device is None:
-            raise _reject("invalid_signature")
+    message = canonical_request(request.method, request.url.path, ts_header, nonce, body)
+    device: Device | None = None
+    key = b""
+    # Every key is tried (no early exit), so timing does not tell how many devices there are
+    # or which one matched.
+    for row in db.execute("SELECT id, child_id, name, signing_key FROM devices").fetchall():
+        candidate = decode_signing_key(row["signing_key"])
+        if hmac.compare_digest(sign(candidate, message), provided) and device is None:
+            device, key = Device(row["id"], row["child_id"], row["name"]), candidate
+    if device is None:
+        raise _reject("invalid_signature")
 
-        now = datetime.now(timezone.utc)
-        diff_ms = int(now.timestamp() * 1000) - ts_ms
-        max_age_ms = int(get_config_value(db, "max_request_age_seconds") or 60) * 1000
-        if diff_ms > max_age_ms:
-            raise _reject("timestamp_too_old")
-        if diff_ms < -_MAX_FUTURE_SKEW_MS:
-            raise _reject("timestamp_in_future")
+    now = datetime.now(timezone.utc)
+    diff_ms = int(now.timestamp() * 1000) - ts_ms
+    max_age_ms = int(get_config_value(db, "max_request_age_seconds") or 60) * 1000
+    if diff_ms > max_age_ms:
+        raise _reject("timestamp_too_old")
+    if diff_ms < -_MAX_FUTURE_SKEW_MS:
+        raise _reject("timestamp_in_future")
 
-        try:
-            db.execute("INSERT INTO used_nonces(nonce, ts_utc) VALUES (?, ?)", (nonce, now.isoformat()))
-        except sqlite3.IntegrityError as e:
-            raise _reject("duplicate_nonce") from e
+    try:
+        db.execute("INSERT INTO used_nonces(nonce, ts_utc) VALUES (?, ?)", (nonce, now.isoformat()))
+    except sqlite3.IntegrityError as e:
+        raise _reject("duplicate_nonce") from e
 
-        # Nonces older than the accepted request age can never be replayed anyway.
-        keep_s = int(get_config_value(db, "nonce_cache_seconds") or 120)
-        db.execute("DELETE FROM used_nonces WHERE ts_utc < ?", ((now - timedelta(seconds=keep_s)).isoformat(),))
+    # Nonces older than the accepted request age can never be replayed anyway.
+    keep_s = int(get_config_value(db, "nonce_cache_seconds") or 120)
+    db.execute("DELETE FROM used_nonces WHERE ts_utc < ?", ((now - timedelta(seconds=keep_s)).isoformat(),))
+    db.commit()
 
     request.state.signing_key_bytes = key
     request.state.nonce = nonce

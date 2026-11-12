@@ -68,6 +68,9 @@ def get_connection() -> Generator[sqlite3.Connection, None, None]:
 
 # Serializes every request's database access: heartbeats, pause toggles and panel calls interleave in one
 # asyncio loop. With one uvicorn worker this is the only layer needed; WAL and the timeout are a safety net.
+# Every write in a request goes through get_db (#123): a write on a connection of its own waits for SQLite's
+# lock synchronously, in the event loop, so the request holding it can never commit. Only startup and
+# read-only checks (setup_guard, "/") use get_connection directly; WAL readers never wait for a writer.
 _db_lock = asyncio.Lock()
 
 

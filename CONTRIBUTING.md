@@ -24,7 +24,7 @@ pytest -q
 docker compose -f compose.yaml -f compose.dev.yaml up -d   # live-mounted code, for the panel
 ```
 
-**Client** (Windows, .NET 8 SDK): `Build.cmd` → `dist\vigil_setup.exe`. CI builds it on `windows-latest` and runs
+**Client** (Windows, .NET 10 SDK): `Build.cmd` → `dist\vigil_setup.exe`. CI builds it on `windows-latest` and runs
 the installer end-to-end test (`e2e/installer-e2e.ps1`) on that throwaway runner; every pull request that touches
 the client gets the package as a build artifact. **Never run the e2e test on a real PC** — it installs, breaks and
 removes Vigil on purpose. Test the package on a virtual machine; for the lock screen alone there is

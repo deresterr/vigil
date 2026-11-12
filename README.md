@@ -153,7 +153,7 @@ Step by step: [`docs/installer.md`](docs/installer.md#emergency-windows-does-not
 
 - Server: `cd server && cp .env.example .env && docker compose up -d` builds the image locally
   (`VIGIL_PORT` and the time zone of the logs in `.env`). Tests: `pip install -r requirements-dev.txt && ruff check . && pytest -q`.
-- Client: Windows with the .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`), then `Build.cmd` →
+- Client: Windows with the .NET 10 SDK (`winget install Microsoft.DotNet.SDK.10`), then `Build.cmd` →
   `dist\vigil_setup.exe`. The package is self-contained; the child's PC does not need .NET.
 
 | Folder | Contents |

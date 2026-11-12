@@ -14,7 +14,7 @@
         FontFamily="Segoe UI"
         Cursor="Arrow">
 
-    <!-- Variant B of #120: black for the night, the state's color (the parent panel's) only on the badge, the
+    <!-- Black for the night, the state's color (the parent panel's) only on the badge, the
          controls outlined in the panel's accent. Placement and the system menu: LockWindow.xaml.cs. -->
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>

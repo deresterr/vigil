@@ -151,6 +151,11 @@ public static partial class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool CloseHandle(IntPtr hObject);
 
+    // The peer check of \\.\pipe\VigilUI (Ui/NamedPipeIpcServer.cs).
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetNamedPipeClientProcessId(IntPtr pipe, out uint clientProcessId);
+
     // === Awake clock (tamper telemetry, Detection/AwakeClock.cs) ===
     // 100 ns units since boot, excluding time spent in sleep/hibernate.
     [LibraryImport("kernel32.dll")]

@@ -153,7 +153,7 @@ Krok po kroku (po angielsku): [`docs/installer.md`](docs/installer.md#emergency-
 
 - Serwer: `cd server && cp .env.example .env && docker compose up -d` buduje obraz lokalnie
   (`VIGIL_PORT` i strefa czasowa logów w `.env`). Testy: `pip install -r requirements-dev.txt && ruff check . && pytest -q`.
-- Klient: Windows z .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`), potem `Build.cmd` →
+- Klient: Windows z .NET 10 SDK (`winget install Microsoft.DotNet.SDK.10`), potem `Build.cmd` →
   `dist\vigil_setup.exe`. Paczka jest samowystarczalna; PC dziecka nie potrzebuje .NET.
 
 | Katalog | Zawartość |

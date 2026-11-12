@@ -2,7 +2,6 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
-using Microsoft.Extensions.Logging;
 
 namespace Vigil.Watchdog.Ui;
 
@@ -63,7 +62,7 @@ public sealed class NamedPipeIpcServer : IDisposable
         await _pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
         var pid = await expectedPid.WaitAsync(ct).ConfigureAwait(false);
 
-        if (!GetNamedPipeClientProcessId(_pipe.SafePipeHandle.DangerousGetHandle(), out var clientPid)
+        if (!Win32.GetNamedPipeClientProcessId(_pipe.SafePipeHandle.DangerousGetHandle(), out var clientPid)
             || clientPid != pid)
         {
             _logger.LogWarning("Pipe client pid={Client} is not the vigil_ui we spawned (pid={Expected}), rejecting",
@@ -78,10 +77,6 @@ public sealed class NamedPipeIpcServer : IDisposable
         _readerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _readerTask = Task.Run(() => ReaderLoopAsync(_readerCts.Token), _readerCts.Token);
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetNamedPipeClientProcessId(IntPtr Pipe, out uint ClientProcessId);
 
     public async Task SendAsync(object message, CancellationToken ct)
     {

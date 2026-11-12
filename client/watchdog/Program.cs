@@ -1,8 +1,6 @@
 using System.Runtime.Versioning;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
 using Vigil.Watchdog;
 using Vigil.Watchdog.Configuration;

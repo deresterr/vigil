@@ -1,7 +1,6 @@
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
 using System.Runtime.Versioning;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Vigil.Shared;
 using Vigil.Watchdog.Server;

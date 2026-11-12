@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- WPF + WinForms for Screen.AllScreens (one lock window per monitor) and NotifyIcon (tray). -->
     <UseWindowsForms>true</UseWindowsForms>

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.Win32;
@@ -8,7 +7,7 @@ namespace Vigil.Shared;
 /// <summary>
 /// Everything the installer (vigil_setup) and the watchdog must agree on about an installation: paths,
 /// file names, the service, the guardian task and its event IDs, DPAPI entropy, the per-user policies.
-/// Linked into both projects (<Compile Include Link>) like IpcMessages.cs.
+/// Linked into both projects (Compile Include with Link) like IpcMessages.cs.
 ///
 /// File names and entropy strings are a compatibility contract with existing installs (CLAUDE.md):
 /// changing one breaks every PC installed before the change.

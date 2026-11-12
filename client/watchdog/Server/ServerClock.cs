@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-
-namespace Vigil.Watchdog.Server;
+﻿namespace Vigil.Watchdog.Server;
 
 /// <summary>
 /// The watchdog never trusts the PC's wall clock (#92). An administrator can set it, and a fresh VM may run an

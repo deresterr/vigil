@@ -23,7 +23,6 @@ public static class IconPainter
         return Icon.FromHandle(bmp.GetHicon());
     }
 
-    // Accent circle, two white bars
     private static void DrawPause(Graphics g)
     {
         using var bg = new SolidBrush(Palette.TrayIcon);

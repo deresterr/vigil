@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Net.NetworkInformation;
 using System.Runtime.Versioning;
-using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Vigil.Watchdog.Configuration;
@@ -54,9 +53,8 @@ public sealed class Worker : BackgroundService
     // Fail-closed (invariant): no answer since the service started, or none for this long, means locked.
     private const double GraceSeconds = 30;
 
-    // Tick interval: 5 s normally; 1 s while locked, so an unlock shows at once and a vanished vigil_ui
-    // is back within a second instead of leaving the desktop open for 5 s.
-    private static readonly TimeSpan _tickIntervalNormal = TimeSpan.FromSeconds(5);
+    // Locked: a tick every second, so an unlock shows at once and a vanished vigil_ui is back within a second
+    // instead of leaving the desktop open for 5 s.
     private static readonly TimeSpan _tickIntervalLocked = TimeSpan.FromSeconds(1);
     // Unlocked: the server's next_check_seconds (30 s while nobody is logged on), clamped to 5–60 s.
     private TimeSpan _tickIntervalAdaptive = TimeSpan.FromSeconds(5);
@@ -208,7 +206,7 @@ public sealed class Worker : BackgroundService
         catch (KeyRejectedException)
         {
             // Re-pairing replaces the key on the server before the installer stops this service: the
-            // server already knows, nothing to warn about (it was a warning in every verify after re-pairing).
+            // server already knows, nothing to warn about.
             _logger.LogInformation("Goodbye refused: the key was replaced or the device removed ({Reason})", reason);
         }
         catch (Exception ex)

@@ -5,92 +5,67 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
 
 ## [Unreleased]
 
-### Server
-- The setup wizard's summary no longer breaks a name or a time zone in the middle of a word.
-- The Journal shows when a computer was asleep or shut down with Fast Startup (the Windows default), not only
-  after a restart: "Computer shut down or asleep" and "Computer started or woken up".
-- A heartbeat arriving while a change from the panel was being saved could stop the server for 30 seconds and
-  end with "database is locked" in the log; the change and the computers waited with it.
-- Panel, setup wizard and login share one color scheme: one accent (cyan) for the main actions, focus and the
-  selected item and confirmations, and one muted color per state everywhere — time graphite, night violet,
-  manual lock red, unlocked green, pause grey; alerts and deleting keep a strong red. The extra-time and
-  night-time buttons are outlined so they stand out from the card. The status card shows a tick, a padlock or
-  pause bars in the state's color instead of an emoji. Journal icons take the color of what the entry is about
-  (night, limit, pause, lock, unlock) instead of all being cyan. "Generate new TOTP code" is no longer a bright
-  orange button.
-- One term for moving the night time in the panel: the Status tag ("Moved to 22:30"), the journal and "Clear
-  extra time and night time moves". One minute format in Status and the journal. "Show TOTP code" shows the key
-  too, like a new code. The wizard explains a wrong TOTP code or an unknown time zone instead of showing the
-  server's code.
-- A damaged password hash refuses the login instead of failing with a server error. A new computer's name comes
-  from the panel; the server no longer has a Polish default name.
-- Settings tab: the child's name, computers and "Delete child" are one card titled with the name ("Rename" opens
-  a dialog). The "Children" card is gone: children are picked and added from the menu at the name in the header,
-  which now opens with one child too. Shorter TOTP description.
-- Status tab, Actions: the buttons are grouped under "Time today" and "Move night time by", which now offers
-  30, 60 or 120 min instead of one "Night time +60 min" button. The manual lock is a switch that turns red while
-  it is on.
-- Status tab: today's limit and night time are two tags under the minutes used and left, instead of one line
-  joined with "•". The limit includes extra time ("Limit 2 h + 30 min"); the night tag shows the hours, the end
-  while it runs, or how long it is extended. The "summed over all computers" note is gone.
-- **A daily limit of 0 now means no limit that day** (until now: the whole day locked). The panel shows
-  "No limit", and the extra-time buttons are off on such a day. To keep a child off the PC for a day, use the
-  manual lock.
-- The limit field of the weekly table takes digits only: it used to save `12e0` as 12 and `1e3` as 1000. Times
-  keep digits and `:` as they are typed, and the field in error is marked.
-- The setup wizard sets the first child's week day by day, in the same table as Settings → Weekly schedule,
-  instead of one limit for Monday–Thursday, one for Friday–Sunday and one night time for the whole week.
-- Templates fill the weekly table, in the wizard and in the panel: "Default week" (the week a new child starts
-  with) and "Every day like Monday". They replace the panel's "Mo → Tu–Fr" button. A script that completes the
-  wizard without a week gets that default week.
-- The container log shows the server itself, not every request: one line when it starts (version, port,
-  database) and stops, a warning while the setup wizard is not completed, database migrations, and errors with
-  their traceback and the request they broke. HTTP requests are no longer logged; what happens on the children's
-  PCs stays in the panel's journal. A failing database health check is logged once, then its recovery.
-- Log lines have one format with a colored level; `NO_COLOR=1` in `.env` turns the colors off.
+## [0.9.0] - 2026-11-12
 
-- The heartbeat tells a locked computer when the night ends (`ui_state.night_end_local`).
-- Codes are grouped as they are typed and shown: the pairing code as 1234 5678 in the panel, the TOTP code as
-  123 456 in the setup wizard.
+**Updating:** the server image first (`docker compose pull && docker compose up -d`; it updates its database at
+start, so back up `data/` before), then the new `vigil_setup.exe` → **Update** on each child's PC. No new
+pairing; a 0.8 client keeps working with the 0.9 server until it is updated.
 
-### Client
-- The client runs on .NET 10 (supported until November 2028): .NET 8, which it carried until now, gets no
-  security fixes after 10 November 2026. Updating with the new `vigil_setup.exe` ("Update") is enough.
-- The lock screen's limit badge takes the panel's graphite (light grey outline and hourglass) instead of steel blue.
-- A computer whose clock runs 5 s or more ahead of the server's (Windows syncs it once a week) no longer shows
-  the lock screen for a moment at start: a request refused for its time is sent again at once with the server's
-  time.
-- Behind a reverse proxy that redirects to HTTPS the installer says which address to use instead of failing
-  pairing with "HTTP 405". Vigil no longer follows redirects or uses the system proxy, and accepts only small
-  answers from the server.
+### Panel
+- One color scheme for the panel, the setup wizard and the login: a turquoise accent and one muted color per
+  state — unlocked green, night violet, manual lock red, time limit graphite, pause grey. Alerts and deleting
+  stay a strong red. The status card shows an icon in the state's color instead of an emoji.
+- Status tab: today's limit and night time are two tags ("Limit 2 h + 30 min", "21:30–06:30", "Moved to
+  22:30"). Actions are grouped under "Time today" and "Move night time by" (30, 60 or 120 min); the manual lock
+  is a switch.
+- Settings tab: one card per child with its name, computers, "Add computer" and "Delete child". Children are
+  picked and added from the menu at the name in the header.
+- **A daily limit of 0 now means no limit that day** (until now: the whole day locked). To keep a child off the
+  PC for a day, use the manual lock.
+- The weekly table: the limit field takes digits only (it used to save `1e3` as 1000) and a wrong field is
+  marked; "Default week" and "Every day like Monday" fill the table. The setup wizard sets the first child's
+  week day by day in the same table.
+- The Journal shows when a computer was shut down, asleep or woken up, also with Fast Startup (the Windows
+  default). Its icons take the color of what an entry is about.
+- Codes are grouped as they are typed and shown: the pairing code as 1234 5678, the TOTP code as 123 456.
+  "Show TOTP code" shows the key too. The wizard explains a wrong TOTP code or an unknown time zone in words.
+
+### Lock screen and tray
+- A new look matching the panel: black, a round badge with the state's icon and color, and one line saying
+  what happens next — the night lock says when the computer unlocks, the pause how much time is left today.
+- With display scaling above 100 % the lock screen was larger than the screen and "Shut down" was off the
+  edge; it now covers each monitor exactly. "Shut down" asks on the lock screen itself.
+- Alt+Space no longer opens the lock screen's window menu, and another program can no longer close, move or
+  hide it for more than a moment.
 - A computer that joins Wi-Fi only after logon showed "No connection to your parent's server" for a moment at
-  every start. The lock is the same (no answer from the server yet), but it now says the computer is not
-  connected to a network and goes as soon as the network is there.
-- The Event Log no longer gets a warning for every failed contact with the server (one a second while locked):
-  one warning when there has been no answer for 30 seconds, one entry when the server answers again.
-- The installer's pairing-code hint points to the panel's new place: Settings → Add computer (or Re-pair).
-- The lock screen takes the panel's colors: a round badge with the state's icon in its color (limit, night,
-  manual lock, pause), a title and one line below it, outlined turquoise controls, and no bright green on the
-  pause screen. It stays black and dim, more so at night. The night lock says when the computer unlocks ("at
-  06:30"), the pause screen how much time is left today; its button reads "Back to the computer".
-- With display scaling above 100 % the lock screen was larger than the screen and off-center: the clock and
-  "Shut down" were off the edge. It now covers each monitor exactly.
-- Alt+Space no longer opens the lock screen's window menu (which could move or close it), and another program
-  can no longer close, move, hide or minimize the lock screen for more than half a second.
-- If the Vigil service stops unexpectedly while the computer is locked, the lock screen stays until the service is
-  back, instead of disappearing after 30 seconds.
-- "Shut down" asks on the lock screen itself instead of in a Windows message box.
-- The code field on the lock screen groups the digits as 123 456 (a pasted code with spaces or dashes works too).
-- A computer removed or re-paired in the panel says so on its lock screen instead of "No connection to the server".
-- The lock screen clock always shows the server's time; messages after a code use the panel's format ("1 h
-  added"); no technical error text is shown to the child; Polish texts no longer say "watchdog" or assume a boy.
-- Tray: the icon takes the panel's turquoise, the tooltip says that a click starts a pause, and a day without a
-  limit reads "No limit".
-- The computer's key and the offline TOTP secret are written with their restricted permissions from the start,
-  never readable by other accounts for a moment.
-- Installer: the panel's turquoise accent; "night time" instead of "quiet hours"; Polish texts say "profil
-  domyślny" and "zasady" instead of "Default profile" and "policy"; menu digits stay in order. The screens
-  start a little off the window's left edge, and the pairing code is typed as 1234 5678.
+  every start. It now says the computer is not connected to a network and unlocks as soon as it is. A clock
+  running a few seconds ahead of the server no longer flashes the lock at start.
+- A computer removed or re-paired in the panel says so on its lock screen. If the Vigil service stops while the
+  computer is locked, the lock stays until the service is back.
+- The lock screen's clock shows the server's time, the child sees no technical errors, and the Polish texts no
+  longer say "watchdog" or assume a boy.
+- Tray: a turquoise icon, the tooltip says that a click starts a pause, and a day without a limit reads
+  "No limit".
+
+### Installer
+- A turquoise accent, clearer Polish texts, the pairing code typed as 1234 5678, and the hint points to
+  Settings → Add computer.
+- Behind a reverse proxy that redirects to HTTPS the installer says which address to use instead of failing
+  with "HTTP 405". Vigil no longer follows redirects or uses the system proxy.
+
+### Server
+- A change saved in the panel while a computer sent its heartbeat could stop the server for 30 seconds
+  ("database is locked" in the log).
+- The container log shows the server itself: start and stop (version, port, database), migrations, warnings,
+  and errors with the request they broke — no line for every request. `NO_COLOR=1` turns the colors off.
+- A damaged password hash refuses the login instead of failing with a server error.
+
+### Security and maintenance
+- The client runs on .NET 10 (supported until November 2028): .NET 8 gets no security fixes after
+  10 November 2026.
+- The computer's key and the offline TOTP secret are written with their restricted permissions from the start.
+- The Windows Event Log gets one warning when the server has not answered for 30 seconds and one entry when it
+  answers again, instead of a warning for every failed attempt.
 
 ## [0.8.2] - 2026-11-10
 
@@ -161,7 +136,8 @@ The first public release.
 - Lock screen and installer in English or Polish, following Windows (D21).
 - No upgrade from builds before 0.8 (D23); the server's database starts from the 0.8 schema (D26).
 
-[Unreleased]: https://github.com/deresterr/vigil/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/deresterr/vigil/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/deresterr/vigil/releases/tag/v0.9.0
 [0.8.2]: https://github.com/deresterr/vigil/releases/tag/v0.8.2
 [0.8.1]: https://github.com/deresterr/vigil/releases/tag/v0.8.1
 [0.8.0]: https://github.com/deresterr/vigil/releases/tag/v0.8.0

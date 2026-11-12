@@ -34,7 +34,7 @@ everywhere the same problem occurs, not only where it was reported.
 ## Verify before saying "done"
 - Server: `cd server && pip install -r requirements-dev.txt && ruff check . && pytest -q`
 - Client: cannot build on Linux; CI (`.github/workflows/ci.yml`, windows-latest) compiles it
-  (path-filtered on PRs; every push to main builds everything and is never cancelled). The client job also runs
+  (path-filtered on PRs; every push to main builds everything; a running build is never cancelled, a queued one gives way to a newer push). The client job also runs
   for `server/app/**`: its installer e2e drives the server's API (#104 — a wizard change broke it on main only).
   Push the branch and read the CI result instead of guessing. CI uploads `dist/` of a PR as an artifact (kept
   one day; Re-run jobs brings it back) — that package is what runtime tests on a Windows VM use.

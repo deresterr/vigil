@@ -79,6 +79,9 @@ pairing; a 0.8 client keeps working with the 0.9 server until it is updated.
 
 ## [0.8.1] - 2026-11-10
 
+> **Withdrawn:** "Shut down" on the lock screen did nothing in this version (fixed in 0.8.2). Its release and
+> server image were removed; install the latest release instead.
+
 ### Server
 - Logging out of the panel, or changing the password, ends every panel session — also a copy of the cookie
   left in the browser of the child's PC. Logging out on one device logs out the others.
@@ -116,6 +119,9 @@ pairing; a 0.8 client keeps working with the 0.9 server until it is updated.
 
 ## [0.8.0] - 2026-11-09
 
+> **Withdrawn:** "Shut down" on the lock screen did nothing in this version (fixed in 0.8.2). Its release and
+> server image were removed; install the latest release instead.
+
 The first public release.
 
 ### Server
@@ -139,5 +145,5 @@ The first public release.
 [Unreleased]: https://github.com/deresterr/vigil/compare/v0.9.0...HEAD
 [0.9.0]: https://github.com/deresterr/vigil/releases/tag/v0.9.0
 [0.8.2]: https://github.com/deresterr/vigil/releases/tag/v0.8.2
-[0.8.1]: https://github.com/deresterr/vigil/releases/tag/v0.8.1
-[0.8.0]: https://github.com/deresterr/vigil/releases/tag/v0.8.0
+[0.8.1]: https://github.com/deresterr/vigil/tree/v0.8.1
+[0.8.0]: https://github.com/deresterr/vigil/tree/v0.8.0

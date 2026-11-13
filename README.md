@@ -1,3 +1,7 @@
+<p align="right">
+  <b>English</b> · <a href="README.pl.md">Polski</a>
+</p>
+
 <p align="center">
   <img src="docs/images/logo.svg" alt="" width="88">
 </p>
@@ -20,8 +24,7 @@
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://github.com/deresterr/vigil/releases/latest"><b>Download</b></a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="docs/threat-model.md">Threat model</a> ·
-  <a href="README.pl.md">Polski</a>
+  <a href="docs/threat-model.md">Threat model</a>
 </p>
 
 <table align="center">

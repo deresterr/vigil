@@ -9,6 +9,7 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
 - The status in the header shows only Online or Offline, for the child on screen (it counted every child's
   computers and showed the offline time in minutes only, e.g. "Offline (3421 min)"). Which computer and since
   when is in the Computers card.
+- Journal: durations of a day or more read in days and hours ("2 d 3 h" instead of "51 h 12 min").
 
 ## [0.9.0] - 2026-11-12
 

@@ -109,7 +109,7 @@ app on the parent's phone (Aegis, Google Authenticator, …).
 ```yaml
 services:
   vigil:
-    image: ghcr.io/deresterr/vigil-server:latest   # or a version, e.g. :0.9.0
+    image: ghcr.io/deresterr/vigil-server:latest   # or a version, e.g. :0.9.1
     container_name: vigil
     restart: unless-stopped
     ports:

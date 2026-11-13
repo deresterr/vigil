@@ -5,18 +5,22 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-13
+
+**Updating:** only the server image (`docker compose pull && docker compose up -d`); the database does not
+change. The computers can stay on 0.9.0: the client did not change, the 0.9.1 `vigil_setup.exe` differs only in
+its version number.
+
 ### Panel
-- The status in the header shows only Online or Offline, for the child on screen (it counted every child's
-  computers and showed the offline time in minutes only, e.g. "Offline (3421 min)"). Which computer and since
-  when is in the Computers card.
-- Journal: durations of a day or more read in days and hours ("2 d 3 h" instead of "51 h 12 min").
-- Weekly schedule (panel and setup wizard): night times are typed as digits, the ":" goes in by itself — a
-  phone's numeric keyboard has none. "2130" gives 21:30, "630" gives 06:30.
-- Weekly schedule: the limit field takes at most four digits (the limit is 0–1440 min).
+- The header shows Online or Offline for the child on screen. It counted the computers of every child and showed
+  the offline time in minutes only ("Offline (3421 min)"); which computer and since when is in the Computers card.
+- Weekly schedule (panel and setup wizard): night times are typed as digits and the ":" goes in by itself, as a
+  phone's numeric keyboard has none — "2130" gives 21:30, "630" gives 06:30. The limit field takes at most four
+  digits.
 - A dialog (e.g. "Add computer") or the child menu no longer closes when selecting a field's text with the mouse
-  ends outside it; only a click on the dimmed background closes it.
-- Journal: a pause shows only its time span ("16:02–16:14"), without the unclear "time was not counted"; one
-  under a minute reads "Pause · under a minute" instead of "0 min" and "16:02 – 16:02".
+  ends outside it.
+- Journal: a pause shows its time span ("16:02–16:14", "under a minute" for a short one) instead of "time was not
+  counted", and durations of a day or more read in days and hours ("2 d 3 h").
 
 ## [0.9.0] - 2026-11-12
 
@@ -155,7 +159,8 @@ The first public release.
 - Lock screen and installer in English or Polish, following Windows (D21).
 - No upgrade from builds before 0.8 (D23); the server's database starts from the 0.8 schema (D26).
 
-[Unreleased]: https://github.com/deresterr/vigil/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/deresterr/vigil/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/deresterr/vigil/releases/tag/v0.9.1
 [0.9.0]: https://github.com/deresterr/vigil/releases/tag/v0.9.0
 [0.8.2]: https://github.com/deresterr/vigil/releases/tag/v0.8.2
 [0.8.1]: https://github.com/deresterr/vigil/tree/v0.8.1

@@ -111,7 +111,7 @@ def test_panel_status_lists_children_and_the_selected_ones_pcs(client):
         assert client.get("/admin/api/status?child_id=9").status_code == 404
     assert [(c["id"], c["name"], c["lock_reason"], c["devices_online"], c["devices_total"])
             for c in s["children"]] == [(1, "Ola", None, 1, 2), (2, "Kuba", "manual", 1, 1)]
-    assert (s["devices_online"], s["devices_total"]) == (2, 3)
+    assert s["devices_total"] == 3
     assert [(d["name"], d["online"], d["minutes_today"]) for d in s["child"]["devices"]] == [
         ("PC", True, 1), ("Laptop", False, 0)]
     assert kuba_status["lock_reason"] == "manual"

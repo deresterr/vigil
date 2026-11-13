@@ -5,6 +5,11 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
 
 ## [Unreleased]
 
+### Panel
+- The status in the header shows only Online or Offline, for the child on screen (it counted every child's
+  computers and showed the offline time in minutes only, e.g. "Offline (3421 min)"). Which computer and since
+  when is in the Computers card.
+
 ## [0.9.0] - 2026-11-12
 
 **Updating:** the server image first (`docker compose pull && docker compose up -d`; it updates its database at

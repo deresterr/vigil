@@ -237,7 +237,6 @@ const I18N_EN = /*I18N_EN*/{
   "{from} – {to}, czas nie był liczony": "{from} – {to}, time was not counted",
   "{kills} razy w {sec} s": "{kills} times in {sec} s",
   "{n} komputer|{n} komputery|{n} komputerów": "{n} computer|{n} computers",
-  "{on} z {all} online": "{on} of {all} online",
   "Ładowanie kodu QR…": "Loading the QR code…",
   "Ładowanie…": "Loading…",
   "← Wróć": "← Back"

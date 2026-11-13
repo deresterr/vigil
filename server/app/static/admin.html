@@ -858,19 +858,14 @@ function renderStatus(s) {
     dot.className = 'dot';
     dot.style.background = 'var(--accent-line)';  // a pairing code is waiting for its PC
     text.textContent = t('Czeka na sparowanie');
-  } else if (!s.devices_total) {
+  } else if (!s.child?.devices.length) {
     dot.className = 'dot offline';
     text.textContent = t('Brak komputerów');
-  } else if (s.devices_total === 1) {
-    // The one PC; its details are at hand when it belongs to the child on screen.
-    const d = s.child?.devices[0];
-    dot.className = 'dot ' + (s.devices_online ? 'online' : 'offline');
-    text.textContent = s.devices_online ? 'Online'
-      : d?.last_heartbeat_ago_seconds != null ? `Offline (${Math.floor(d.last_heartbeat_ago_seconds / 60)} min)`
-      : 'Offline';
   } else {
-    dot.className = 'dot ' + (s.devices_online ? 'online' : 'offline');
-    text.textContent = t('{on} z {all} online', {on: s.devices_online, all: s.devices_total});
+    // The child on screen; which of its PCs and since when is in the Computers card.
+    const on = s.child.devices.some(d => d.online);
+    dot.className = 'dot ' + (on ? 'online' : 'offline');
+    text.textContent = on ? 'Online' : 'Offline';
   }
 
   const c = s.child;

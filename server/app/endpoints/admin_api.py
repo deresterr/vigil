@@ -86,13 +86,11 @@ ONLINE_WITHIN_S = 60
 
 
 def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, today: str) -> dict:
-    ago = None
     online = False
     last_local = None
     if row["last_heartbeat_utc"]:
         last = parse_iso_utc(row["last_heartbeat_utc"])
-        ago = int((now_utc - last).total_seconds())
-        online = ago <= ONLINE_WITHIN_S
+        online = (now_utc - last).total_seconds() <= ONLINE_WITHIN_S
         last_local = last.astimezone(tz).strftime("%Y-%m-%d %H:%M")
     active_now = online and bool(row["last_active_utc"]) and \
         (now_utc - parse_iso_utc(row["last_active_utc"])).total_seconds() <= ONLINE_WITHIN_S
@@ -101,7 +99,6 @@ def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, today: str) 
         "name": row["name"],
         "online": online,
         "active_now": active_now,
-        "last_heartbeat_ago_seconds": ago,
         "last_heartbeat_local": last_local,
         "paired_local": parse_iso_utc(row["paired_utc"]).astimezone(tz).strftime("%Y-%m-%d"),
         "minutes_today": (row["seconds_today"] // 60) if row["seconds_date"] == today else 0,
@@ -154,12 +151,11 @@ async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None 
     ).fetchall())
 
     summaries, detail = [], None
-    devices_online = devices_total = 0
+    devices_total = 0
     for child in children:
         devices = [_device_view(d, now_utc, tz, today) for d in
                    db.execute("SELECT * FROM devices WHERE child_id = ? ORDER BY id", (child["id"],))]
         online = sum(d["online"] for d in devices)
-        devices_online += online
         devices_total += len(devices)
         t = child_today(db, child, now_utc, tz)
         summaries.append({
@@ -178,7 +174,6 @@ async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None 
     return {
         "children": summaries,
         "child": detail,
-        "devices_online": devices_online,
         "devices_total": devices_total,
         "alerts_unacked": sum(unacked.values()),
         "pairing_active": active_pairing_expiry(db, now_utc) is not None,

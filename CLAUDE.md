@@ -29,7 +29,8 @@ everywhere the same problem occurs, not only where it was reported.
   `--exit-after`; it prints the CPU use and ui.log.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
 - `docs/decisions.md` — the design decisions D1–D27 the code refers to. `docs/installer.md`, `docs/guardian.md`
-  describe those parts. When a doc and the code disagree, the code wins: fix the doc.
+  describe those parts. `docs/threat-model.md` (+ `.pl.md`) is the full threat model the READMEs and SECURITY
+  sum up; `docs/releasing.md` the CHANGELOG template and how a release is made. When a doc and the code disagree, the code wins: fix the doc.
 
 ## Verify before saying "done"
 - Server: `cd server && pip install -r requirements-dev.txt && ruff check . && pytest -q`
@@ -168,9 +169,16 @@ everywhere the same problem occurs, not only where it was reported.
 - PowerShell: `Write-Step/OK/Warn/Skip` helpers, `$ErrorActionPreference = 'Stop'`.
 - One issue = one branch = one PR, except client changes batched for one VM session (see above).
   Update this file in the same PR when an invariant or gotcha changes.
-- User-visible changes get a line under `## [Unreleased]` in `CHANGELOG.md` in the same PR; at a release the
-  maintainer moves it under the version, and the release notes are written from that section.
-- `README.md` and `README.pl.md` carry the same content; change both. The "How it works" diagram is hand-written
+- User-visible changes get a line under `## [Unreleased]` in `CHANGELOG.md` in the same PR, in its group and
+  written for the parent (`docs/releasing.md`). A version's section is its release notes: the release PR renames
+  `Unreleased` and adds the summary and the update table; `release.yml` builds the notes from the tag's
+  `CHANGELOG.md` with `.github/scripts/release_notes.py` (run it on the release PR) and publishes nothing when the
+  section is missing or out of template. A GitHub release keeps every line break, so the script joins wrapped
+  lines; never paste a section by hand.
+- `README.md` and `README.pl.md` carry the same content; change both — likewise `docs/threat-model.md` and
+  `threat-model.pl.md`. The READMEs are for a parent deciding to try Vigil: short sections, the quick start near
+  the top, details in `docs/` behind a link. Panel screenshots are English in both, the lock screen in the
+  README's language; `docs/images/logo.svg` and `social-preview.svg` use `theme.css` colors. The "How it works" diagram is hand-written
   SVG, `docs/images/how-it-works.svg` and `how-it-works.pl.svg` (Mermaid was scaled to ~9 px text in the README
   column): change both when the architecture changes; keep them 900 px wide with text of 13 px or more.
   `CONTRIBUTING.md` is the human version of this file's rules — keep them in step. Nothing from the maintainer's environment (addresses, host names, paths,

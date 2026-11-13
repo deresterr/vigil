@@ -4,8 +4,10 @@ name: release
 #   - the server image to GHCR: ghcr.io/<owner>/vigil-server:<version> and :latest
 #   - the client package, one file (#76): vigil_setup.exe as an asset of a GitHub release for that tag
 #     (always the same name: .../releases/latest/download/vigil_setup.exe is the newest client)
+#   - the release notes: the version's section of CHANGELOG.md with a footer (.github/scripts/release_notes.py,
+#     template in docs/releasing.md). They replace whatever the release was created with.
 # Tags are pushed from a terminal or created in the GitHub UI (Releases -> Draft a new release ->
-# choose a tag): the workflow then attaches vigil_setup.exe to that release.
+# choose a tag): the workflow then fills in that release.
 on:
   push:
     tags: ["v*"]
@@ -18,7 +20,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Before anything is published: the tag's CHANGELOG.md must have a section for the version, in the template.
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Release notes from CHANGELOG.md
+        run: python3 -I .github/scripts/release_notes.py "${GITHUB_REF_NAME#v}"
+
   server-image:
+    needs: notes
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,6 +63,7 @@ jobs:
           docker push "${image}:latest"
 
   client-package:
+    needs: notes
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -75,6 +87,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Every tag, for the compare link to the previous one.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           name: vigil-client-${{ github.ref_name }}
@@ -85,10 +101,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          notes="Server: \`ghcr.io/${owner}/vigil-server:${TAG#v}\` (in \`server/.env\`: \`VIGIL_IMAGE=\`). Client: \`vigil_setup.exe\` (the whole client in one file; run it on the child's PC)."
+          previous=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          python3 -I .github/scripts/release_notes.py "${TAG#v}" "$previous" > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "Vigil ${TAG}" --notes-file notes.md
             gh release upload "$TAG" dist/vigil_setup.exe --clobber
           else
-            gh release create "$TAG" dist/vigil_setup.exe --title "Vigil ${TAG}" --notes "$notes" --generate-notes
+            gh release create "$TAG" dist/vigil_setup.exe --title "Vigil ${TAG}" --notes-file notes.md
           fi

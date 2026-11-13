@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+  <title id="t">Vigil</title>
+  <!-- The README logo: the social preview's mark (a dial with the used part of the day and a padlock) on a dark
+       tile, so it reads on GitHub's light and dark themes. Colors from server/app/static/theme.css. -->
+  <rect width="256" height="256" rx="56" fill="#1a1a1a"/>
+  <g transform="translate(128 128)">
+    <circle r="84" fill="none" stroke="#313945" stroke-width="16"/>
+    <path d="M 0 -84 A 84 84 0 1 1 -72.7 42" fill="none" stroke="#22d3ee" stroke-width="16" stroke-linecap="round"/>
+    <path d="M -19 -7 V -22 A 19 19 0 0 1 19 -22 V -7" fill="none" stroke="#e8e8e8" stroke-width="8" stroke-linecap="round"/>
+    <rect x="-31" y="-8" width="62" height="48" rx="8" fill="#e8e8e8"/>
+    <circle cx="0" cy="12" r="6" fill="#1a1a1a"/>
+    <rect x="-2.5" y="14" width="5" height="13" rx="2" fill="#1a1a1a"/>
+  </g>
+</svg>

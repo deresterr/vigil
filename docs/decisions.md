@@ -1,7 +1,7 @@
 # Design decisions
 
 The decisions the code refers to as D1–D27, in short. The reasoning behind each is in the issues and pull
-requests named next to it; the threat model in full is in the [README](../README.md#threat-model).
+requests named next to it; the threat model in full is in [`threat-model.md`](threat-model.md).
 
 | # | Decision |
 |---|---|

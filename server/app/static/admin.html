@@ -718,9 +718,11 @@ const JOURNAL = {
   lock_started:       d => d.reason === 'night'
                              ? {cat: 'lock', tone: 'night', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
                              : {cat: 'lock', tone: 'time', icon: 'lock', title: t('Limit czasu wykorzystany — ekran zablokowany')},
+  // The child's pause from the tray, both toggles in one entry (journal.py); under a minute it has no length.
   pause:              d => ({cat: 'lock', tone: 'pause', icon: 'pause',
-                             title: d.to ? t('Pauza · {time}', {time: fmtMinutes(d.minutes)}) : t('Pauza — trwa'),
-                             sub: d.to ? t('{from} – {to}, czas nie był liczony', {from: d.from, to: d.to}) : t('Czas nie jest liczony')}),
+                             title: !d.to ? t('Pauza — trwa')
+                                  : t('Pauza · {time}', {time: d.minutes ? fmtMinutes(d.minutes) : t('poniżej minuty')}),
+                             sub: !d.to ? t('Od {time}', {time: d.from}) : d.to === d.from ? d.from : d.from + '–' + d.to}),
   manual_lock_set:    () => ({cat: 'parent', tone: 'lock', icon: 'lock', title: t('Rodzic włączył blokadę ręczną'), sub: t('Z panelu')}),
   manual_lock_cleared:() => ({cat: 'parent', tone: 'ok', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: t('Z panelu')}),
   manual_unlock:      () => ({cat: 'parent', tone: 'ok', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: VIA({})}),

@@ -15,6 +15,8 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
 - Weekly schedule: the limit field takes at most four digits (the limit is 0–1440 min).
 - A dialog (e.g. "Add computer") or the child menu no longer closes when selecting a field's text with the mouse
   ends outside it; only a click on the dimmed background closes it.
+- Journal: a pause shows only its time span ("16:02–16:14"), without the unclear "time was not counted"; one
+  under a minute reads "Pause · under a minute" instead of "0 min" and "16:02 – 16:02".
 
 ## [0.9.0] - 2026-11-12
 

@@ -15,7 +15,8 @@ function renderSchedule(week, today = null) {
     week.map((d, i) => (i === 5 ? '<div class="sep"></div>' : '') +  // weekend below the line
       `<span class="day${i >= 5 ? ' weekend' : ''}${i === today ? ' today' : ''}" title="${i === today ? t('{day} (dziś)', {day: DAYS_FULL[i]}) : DAYS_FULL[i]}">${DAYS[i]}</span>` +
       // Text, not type="number": Chromium lets "e", ".", "+", "-" through ("12e0" saved 12, "1e3" 1000; #106).
-      `<input type="text" inputmode="numeric" data-kind="min" id="sLim${i}" value="${d.daily_limit}" aria-label="${t('{day}: limit w minutach', {day: DAYS_FULL[i]})}">` +
+      // Four digits: the server takes 0–1440.
+      `<input type="text" inputmode="numeric" maxlength="4" data-kind="min" id="sLim${i}" value="${d.daily_limit}" aria-label="${t('{day}: limit w minutach', {day: DAYS_FULL[i]})}">` +
       // Text, not type="time": with a 12-hour browser locale the narrow column cut "PM" off (21:30 read 09:30).
       `<input type="text" inputmode="numeric" maxlength="5" data-kind="time" placeholder="21:30" id="sFrom${i}" value="${d.night_start}" aria-label="${t('{day}: początek ciszy nocnej (GG:MM)', {day: DAYS_FULL[i]})}">` +
       `<input type="text" inputmode="numeric" maxlength="5" data-kind="time" placeholder="06:30" id="sTo${i}" value="${d.night_end}" aria-label="${t('{day}: koniec ciszy nocnej (GG:MM)', {day: DAYS_FULL[i]})}">`).join('');

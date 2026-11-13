@@ -10,6 +10,8 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
   computers and showed the offline time in minutes only, e.g. "Offline (3421 min)"). Which computer and since
   when is in the Computers card.
 - Journal: durations of a day or more read in days and hours ("2 d 3 h" instead of "51 h 12 min").
+- Weekly schedule (panel and setup wizard): night times are typed as digits, the ":" goes in by itself — a
+  phone's numeric keyboard has none. "2130" gives 21:30, "630" gives 06:30.
 
 ## [0.9.0] - 2026-11-12
 

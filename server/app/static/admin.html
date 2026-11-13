@@ -478,7 +478,7 @@
 
 </main>
 
-<div class="sheet-backdrop" id="sheet" onclick="if (event.target.id === 'sheet') closeSheet()">
+<div class="sheet-backdrop" id="sheet">
   <div class="sheet" role="dialog" aria-labelledby="sheetTitle">
     <div class="grab" aria-hidden="true"></div>
     <h3 id="sheetTitle" data-i18n>Dziecko</h3>
@@ -663,6 +663,10 @@ function pickChild(id) {
 function fmtMinutes(m) {
   if (m === null || m === undefined) return '--';
   if (m < 60) return m + ' min';
+  if (m >= 1440) {  // a day or more (journal: a PC on or away for days): minutes would only be noise
+    const d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
+    return h === 0 ? d + ' d' : d + ' d ' + h + ' h';
+  }
   const h = Math.floor(m / 60);
   const rem = m % 60;
   return rem === 0 ? h + ' h' : h + ' h ' + rem + ' min';
@@ -714,9 +718,11 @@ const JOURNAL = {
   lock_started:       d => d.reason === 'night'
                              ? {cat: 'lock', tone: 'night', icon: 'moon', title: t('Cisza nocna — ekran zablokowany')}
                              : {cat: 'lock', tone: 'time', icon: 'lock', title: t('Limit czasu wykorzystany — ekran zablokowany')},
+  // The child's pause from the tray, both toggles in one entry (journal.py); under a minute it has no length.
   pause:              d => ({cat: 'lock', tone: 'pause', icon: 'pause',
-                             title: d.to ? t('Pauza · {time}', {time: fmtMinutes(d.minutes)}) : t('Pauza — trwa'),
-                             sub: d.to ? t('{from} – {to}, czas nie był liczony', {from: d.from, to: d.to}) : t('Czas nie jest liczony')}),
+                             title: !d.to ? t('Pauza — trwa')
+                                  : t('Pauza · {time}', {time: d.minutes ? fmtMinutes(d.minutes) : t('poniżej minuty')}),
+                             sub: !d.to ? t('Od {time}', {time: d.from}) : d.to === d.from ? d.from : d.from + '–' + d.to}),
   manual_lock_set:    () => ({cat: 'parent', tone: 'lock', icon: 'lock', title: t('Rodzic włączył blokadę ręczną'), sub: t('Z panelu')}),
   manual_lock_cleared:() => ({cat: 'parent', tone: 'ok', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: t('Z panelu')}),
   manual_unlock:      () => ({cat: 'parent', tone: 'ok', icon: 'unlock', title: t('Rodzic zdjął blokadę ręczną'), sub: VIA({})}),
@@ -858,19 +864,14 @@ function renderStatus(s) {
     dot.className = 'dot';
     dot.style.background = 'var(--accent-line)';  // a pairing code is waiting for its PC
     text.textContent = t('Czeka na sparowanie');
-  } else if (!s.devices_total) {
+  } else if (!s.child?.devices.length) {
     dot.className = 'dot offline';
     text.textContent = t('Brak komputerów');
-  } else if (s.devices_total === 1) {
-    // The one PC; its details are at hand when it belongs to the child on screen.
-    const d = s.child?.devices[0];
-    dot.className = 'dot ' + (s.devices_online ? 'online' : 'offline');
-    text.textContent = s.devices_online ? 'Online'
-      : d?.last_heartbeat_ago_seconds != null ? `Offline (${Math.floor(d.last_heartbeat_ago_seconds / 60)} min)`
-      : 'Offline';
   } else {
-    dot.className = 'dot ' + (s.devices_online ? 'online' : 'offline');
-    text.textContent = t('{on} z {all} online', {on: s.devices_online, all: s.devices_total});
+    // The child on screen; which of its PCs and since when is in the Computers card.
+    const on = s.child.devices.some(d => d.online);
+    dot.className = 'dot ' + (on ? 'online' : 'offline');
+    text.textContent = on ? 'Online' : 'Offline';
   }
 
   const c = s.child;
@@ -1230,9 +1231,16 @@ function showModal(title, body) {
 function closeModal() {
   document.getElementById('modal').classList.remove('show');
 }
-document.getElementById('modal').addEventListener('click', e => {
-  if (e.target.id === 'modal') closeModal();
-});
+// A tap on the backdrop closes the modal or the child sheet. A press that starts inside (selecting a field's text
+// with the mouse) and ends over the backdrop gives the backdrop a click too: count only presses that began there.
+function closeOnBackdrop(id, close) {
+  const el = document.getElementById(id);
+  let pressedHere = false;
+  el.addEventListener('pointerdown', e => { pressedHere = e.target === el; });
+  el.addEventListener('click', e => { if (e.target === el && pressedHere) close(); });
+}
+closeOnBackdrop('modal', closeModal);
+closeOnBackdrop('sheet', closeSheet);
 
 async function logout() {
   try { await api('/admin/logout', {method: 'POST'}); } catch {}

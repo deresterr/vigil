@@ -5,6 +5,19 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
 
 ## [Unreleased]
 
+### Panel
+- The status in the header shows only Online or Offline, for the child on screen (it counted every child's
+  computers and showed the offline time in minutes only, e.g. "Offline (3421 min)"). Which computer and since
+  when is in the Computers card.
+- Journal: durations of a day or more read in days and hours ("2 d 3 h" instead of "51 h 12 min").
+- Weekly schedule (panel and setup wizard): night times are typed as digits, the ":" goes in by itself — a
+  phone's numeric keyboard has none. "2130" gives 21:30, "630" gives 06:30.
+- Weekly schedule: the limit field takes at most four digits (the limit is 0–1440 min).
+- A dialog (e.g. "Add computer") or the child menu no longer closes when selecting a field's text with the mouse
+  ends outside it; only a click on the dimmed background closes it.
+- Journal: a pause shows only its time span ("16:02–16:14"), without the unclear "time was not counted"; one
+  under a minute reads "Pause · under a minute" instead of "0 min" and "16:02 – 16:02".
+
 ## [0.9.0] - 2026-11-12
 
 **Updating:** the server image first (`docker compose pull && docker compose up -d`; it updates its database at

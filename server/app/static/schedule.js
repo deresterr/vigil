@@ -15,17 +15,27 @@ function renderSchedule(week, today = null) {
     week.map((d, i) => (i === 5 ? '<div class="sep"></div>' : '') +  // weekend below the line
       `<span class="day${i >= 5 ? ' weekend' : ''}${i === today ? ' today' : ''}" title="${i === today ? t('{day} (dziś)', {day: DAYS_FULL[i]}) : DAYS_FULL[i]}">${DAYS[i]}</span>` +
       // Text, not type="number": Chromium lets "e", ".", "+", "-" through ("12e0" saved 12, "1e3" 1000; #106).
-      `<input type="text" inputmode="numeric" data-kind="min" id="sLim${i}" value="${d.daily_limit}" aria-label="${t('{day}: limit w minutach', {day: DAYS_FULL[i]})}">` +
+      // Four digits: the server takes 0–1440.
+      `<input type="text" inputmode="numeric" maxlength="4" data-kind="min" id="sLim${i}" value="${d.daily_limit}" aria-label="${t('{day}: limit w minutach', {day: DAYS_FULL[i]})}">` +
       // Text, not type="time": with a 12-hour browser locale the narrow column cut "PM" off (21:30 read 09:30).
       `<input type="text" inputmode="numeric" maxlength="5" data-kind="time" placeholder="21:30" id="sFrom${i}" value="${d.night_start}" aria-label="${t('{day}: początek ciszy nocnej (GG:MM)', {day: DAYS_FULL[i]})}">` +
       `<input type="text" inputmode="numeric" maxlength="5" data-kind="time" placeholder="06:30" id="sTo${i}" value="${d.night_end}" aria-label="${t('{day}: koniec ciszy nocnej (GG:MM)', {day: DAYS_FULL[i]})}">`).join('');
 }
 
-// As it is typed: a limit keeps digits only, a time digits and ":"; an edited field loses its error mark.
+// A time as it is typed: digits only, the ":" put in after the hour, since a phone's numeric keyboard (inputmode)
+// has none. A first digit 3–9, or one digit before a typed ":", is a one-digit hour: "630" and "6:30" give 06:30.
+function typedTime(raw) {
+  let d = raw.replace(/\D/g, '');
+  if (/^[3-9]/.test(d) || /^\d:/.test(raw)) d = '0' + d;
+  d = d.slice(0, 4);
+  return d.length > 2 ? d.slice(0, 2) + ':' + d.slice(2) : d;
+}
+
+// As it is typed: a limit keeps digits only, a time goes through typedTime; an edited field loses its error mark.
 document.addEventListener('input', e => {
   const f = e.target;
   if (!f.dataset || !f.dataset.kind || !f.closest('#schedule')) return;
-  const clean = f.value.replace(f.dataset.kind === 'min' ? /\D/g : /[^\d:]/g, '');
+  const clean = f.dataset.kind === 'min' ? f.value.replace(/\D/g, '') : typedTime(f.value);
   if (clean !== f.value) f.value = clean;
   f.classList.remove('invalid');
 });

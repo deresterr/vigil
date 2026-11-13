@@ -20,7 +20,7 @@ body:
     id: group
     attributes:
       label: Threat model group
-      description: If the idea is about getting around Vigil — which group would it belong to (README, Threat model)?
+      description: If the idea is about getting around Vigil — which group would it belong to (docs/threat-model.md)?
       options:
         - Not about getting around Vigil
         - Protects (state on the server, holds against an administrator)

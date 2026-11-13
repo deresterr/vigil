@@ -1,98 +1,118 @@
 # Changelog
 
-User-visible changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
-the release tags. The reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](docs/decisions.md).
+User-visible changes, written for the parent who runs Vigil. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the release tags; each version's
+section is also its release notes, written to the template in [`docs/releasing.md`](docs/releasing.md). The
+reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](docs/decisions.md).
 
 ## [Unreleased]
 
+### Documentation
+- README rewritten for people trying Vigil (English and Polish): a logo, captioned screenshots, a short feature
+  list, the quick start near the top, and the threat model as a table. The full threat model moved to
+  `docs/threat-model.md`.
+- Release notes come straight from this file, in one template ([`docs/releasing.md`](docs/releasing.md)).
+
 ## [0.9.1] - 2026-11-13
 
-**Updating:** only the server image (`docker compose pull && docker compose up -d`); the database does not
-change. The computers can stay on 0.9.0: the client did not change, the 0.9.1 `vigil_setup.exe` differs only in
-its version number.
+Small fixes in the parent panel: the header, typing night times on a phone, and pauses in the Journal.
+
+| | Update |
+|---|---|
+| Server | **Yes.** New image; the database does not change. |
+| Children's PCs | **Not needed.** The client did not change; the 0.9.1 `vigil_setup.exe` differs only in its version number. |
 
 ### Panel
-- The header shows Online or Offline for the child on screen. It counted the computers of every child and showed
-  the offline time in minutes only ("Offline (3421 min)"); which computer and since when is in the Computers card.
-- Weekly schedule (panel and setup wizard): night times are typed as digits and the ":" goes in by itself, as a
-  phone's numeric keyboard has none — "2130" gives 21:30, "630" gives 06:30. The limit field takes at most four
+- The header shows Online or Offline for the child on screen. It used to count the computers of every child and
+  show the offline time in minutes ("Offline (3421 min)"); which computer is offline, and since when, is in the
+  Computers card.
+- Night times in the weekly schedule (panel and setup wizard) are typed as digits and the ":" goes in by itself,
+  as a phone's number keyboard has none: "2130" gives 21:30, "630" gives 06:30. The limit field takes at most four
   digits.
-- A dialog (e.g. "Add computer") or the child menu no longer closes when selecting a field's text with the mouse
-  ends outside it.
-- Journal: a pause shows its time span ("16:02–16:14", "under a minute" for a short one) instead of "time was not
-  counted", and durations of a day or more read in days and hours ("2 d 3 h").
+- A dialog (e.g. "Add computer") or the child menu no longer closes when you select text in a field and let go of
+  the mouse outside it.
+- Journal: a pause shows its time span ("16:02–16:14", or "under a minute") instead of "time was not counted", and
+  durations of a day or more read in days and hours ("2 d 3 h").
 
 ## [0.9.0] - 2026-11-12
 
-**Updating:** the server image first (`docker compose pull && docker compose up -d`; it updates its database at
-start, so back up `data/` before), then the new `vigil_setup.exe` → **Update** on each child's PC. No new
-pairing; a 0.8 client keeps working with the 0.9 server until it is updated.
+A new look for the panel, the lock screen and the installer, a weekly schedule that is easier to fill in, more
+reliable locking at start-up, and the client on .NET 10.
+
+| | Update |
+|---|---|
+| Server | **Yes, first.** The database is updated at start: back up `data/` before. |
+| Children's PCs | **Yes.** Run the new `vigil_setup.exe` → **Update**. No new pairing; a 0.8 client keeps working with the 0.9 server until then. |
+
+**Changed:** a daily limit of 0 now means no limit that day (until now: the whole day locked). To keep a child off
+the PC for a day, use the manual lock.
 
 ### Panel
 - One color scheme for the panel, the setup wizard and the login: a turquoise accent and one muted color per
-  state — unlocked green, night violet, manual lock red, time limit graphite, pause grey. Alerts and deleting
-  stay a strong red. The status card shows an icon in the state's color instead of an emoji.
-- Status tab: today's limit and night time are two tags ("Limit 2 h + 30 min", "21:30–06:30", "Moved to
-  22:30"). Actions are grouped under "Time today" and "Move night time by" (30, 60 or 120 min); the manual lock
-  is a switch.
-- Settings tab: one card per child with its name, computers, "Add computer" and "Delete child". Children are
-  picked and added from the menu at the name in the header.
-- **A daily limit of 0 now means no limit that day** (until now: the whole day locked). To keep a child off the
-  PC for a day, use the manual lock.
-- The weekly table: the limit field takes digits only (it used to save `1e3` as 1000) and a wrong field is
-  marked; "Default week" and "Every day like Monday" fill the table. The setup wizard sets the first child's
-  week day by day in the same table.
+  state (unlocked green, night violet, manual lock red, time limit graphite, pause grey). Alerts and deleting stay
+  a strong red.
+- Status tab: today's limit and night time are two tags ("Limit 2 h + 30 min", "21:30–06:30", "Moved to 22:30").
+  Actions are grouped under "Time today" and "Move night time by" (30, 60 or 120 min); the manual lock is a switch.
+- Settings tab: one card per child with its name, computers, "Add computer" and "Delete child". Children are picked
+  and added from the menu at the name in the header.
+- Weekly schedule: "Default week" and "Every day like Monday" fill the table, the limit field takes digits only (it
+  used to save `1e3` as 1000) and a wrong field is marked. The setup wizard sets the first child's week in the same
+  table.
 - The Journal shows when a computer was shut down, asleep or woken up, also with Fast Startup (the Windows
-  default). Its icons take the color of what an entry is about.
-- Codes are grouped as they are typed and shown: the pairing code as 1234 5678, the TOTP code as 123 456.
-  "Show TOTP code" shows the key too. The wizard explains a wrong TOTP code or an unknown time zone in words.
+  default), and its icons take the color of what an entry is about.
+- Codes are grouped as you type and read them: the pairing code as 1234 5678, the TOTP code as 123 456. "Show TOTP
+  code" shows the key too. The wizard explains a wrong TOTP code or an unknown time zone in words.
 
 ### Lock screen and tray
-- A new look matching the panel: black, a round badge with the state's icon and color, and one line saying
-  what happens next — the night lock says when the computer unlocks, the pause how much time is left today.
-- With display scaling above 100 % the lock screen was larger than the screen and "Shut down" was off the
-  edge; it now covers each monitor exactly. "Shut down" asks on the lock screen itself.
-- Alt+Space no longer opens the lock screen's window menu, and another program can no longer close, move or
-  hide it for more than a moment.
-- A computer that joins Wi-Fi only after logon showed "No connection to your parent's server" for a moment at
-  every start. It now says the computer is not connected to a network and unlocks as soon as it is. A clock
-  running a few seconds ahead of the server no longer flashes the lock at start.
+- A new look matching the panel: black, a round badge with the state's icon and color, and one line saying what
+  happens next — at night when the computer unlocks, during a pause how much time is left today.
+- With display scaling above 100 % the lock screen was larger than the screen and "Shut down" was off the edge; it
+  now covers each monitor exactly. "Shut down" asks on the lock screen itself.
+- Alt+Space no longer opens the lock screen's window menu, and another program can no longer close, move or hide it
+  for more than a moment.
+- A computer that joins Wi-Fi only after logon briefly showed "No connection to your parent's server" at every
+  start. It now says the computer is not connected to a network, and unlocks as soon as it is. A clock a few
+  seconds ahead of the server no longer flashes the lock at start.
 - A computer removed or re-paired in the panel says so on its lock screen. If the Vigil service stops while the
   computer is locked, the lock stays until the service is back.
 - The lock screen's clock shows the server's time, the child sees no technical errors, and the Polish texts no
   longer say "watchdog" or assume a boy.
-- Tray: a turquoise icon, the tooltip says that a click starts a pause, and a day without a limit reads
-  "No limit".
+- Tray: a turquoise icon, a tooltip saying that a click starts a pause, and "No limit" on a day without one.
 
 ### Installer
-- A turquoise accent, clearer Polish texts, the pairing code typed as 1234 5678, and the hint points to
-  Settings → Add computer.
-- Behind a reverse proxy that redirects to HTTPS the installer says which address to use instead of failing
-  with "HTTP 405". Vigil no longer follows redirects or uses the system proxy.
+- A turquoise accent, clearer Polish texts, the pairing code typed as 1234 5678, and a hint pointing to Settings →
+  Add computer.
+- Behind a reverse proxy that redirects to HTTPS, the installer says which address to use instead of failing with
+  "HTTP 405". Vigil no longer follows redirects or uses the system proxy.
 
 ### Server
-- A change saved in the panel while a computer sent its heartbeat could stop the server for 30 seconds
-  ("database is locked" in the log).
-- The container log shows the server itself: start and stop (version, port, database), migrations, warnings,
-  and errors with the request they broke — no line for every request. `NO_COLOR=1` turns the colors off.
+- Saving a change in the panel while a computer sent its heartbeat could stop the server for 30 seconds ("database
+  is locked" in the log).
+- The container log shows the server itself: start and stop (version, port, database), migrations, warnings, and
+  errors with the request they broke — no line for every request. `NO_COLOR=1` turns the colors off.
 - A damaged password hash refuses the login instead of failing with a server error.
 
 ### Security and maintenance
-- The client runs on .NET 10 (supported until November 2028): .NET 8 gets no security fixes after
-  10 November 2026.
+- The client runs on .NET 10, supported until November 2028; .NET 8 gets no security fixes after 10 November 2026.
 - The computer's key and the offline TOTP secret are written with their restricted permissions from the start.
 - The Windows Event Log gets one warning when the server has not answered for 30 seconds and one entry when it
   answers again, instead of a warning for every failed attempt.
 
 ## [0.8.2] - 2026-11-10
 
-### Client
-- "Shut down" on the lock screen works again: it did nothing since 0.8.0. A refused shutdown now shows
-  its reason on the screen.
+Fixes "Shut down" on the lock screen, which did nothing since 0.8.0.
+
+| | Update |
+|---|---|
+| Server | **Not needed.** No changes; pulling `:0.8.2` is optional. |
+| Children's PCs | **Yes.** Run the new `vigil_setup.exe` → **Update**. The pairing and the settings stay. |
+
+### Lock screen
+- "Shut down" works again. If Windows refuses to shut down, the lock screen shows the reason.
 
 ### Documentation
-- README: the "How it works" diagram is a picture readable at the page's width (the Mermaid chart was scaled
-  down to about 9 px text); the third screenshot shows the whole Settings tab, not one card.
+- README: the "How it works" diagram is a picture readable at the page's width, and the third screenshot shows the
+  whole Settings tab.
 
 ## [0.8.1] - 2026-11-10
 

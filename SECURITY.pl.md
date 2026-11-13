@@ -15,7 +15,7 @@ Wspierana jest tylko najnowsza wersja z zakładki **Releases**.
 
 ## Co jest podatnością
 
-Vigil zakłada, że dziecko **może mieć konto administratora** ([Model zagrożeń](README.pl.md#model-zagrożeń)).
+Vigil zakłada, że dziecko **może mieć konto administratora** ([model zagrożeń](docs/threat-model.pl.md)).
 Na samym PC nic nie jest odporne na administratora, więc o tym, czy coś jest błędem, decyduje grupa, do której
 należy mechanizm:
 
@@ -23,15 +23,15 @@ należy mechanizm:
 |---|---|---|
 | **Chroni** (stan na serwerze) | limity, harmonogram, blokada ręczna, parowanie, TOTP, logowanie do panelu | da się to obejść **nawet z PC administratora** — np. zmienić limit, przejąć panel, użyć kodu TOTP dwa razy, sparować komputer bez kodu |
 | **Utrudnia** | podpisane żądania, fail-closed, DACL usługi i procesu UI, polityki rejestru | da się to obejść **bez uprawnień administratora** (proces niepodniesiony, konto standardowe) |
-| **Wykrywa** | alerty w Dzienniku | administrator wyłącza Vigila tak, że w panelu **nie pojawia się alert**, a README nie wymienia tego w „Nie wykrywa” |
+| **Wykrywa** | alerty w Dzienniku | administrator wyłącza Vigila tak, że w panelu **nie pojawia się alert**, a model zagrożeń nie wymienia tego w „Nie wykrywa” |
 
 Podatnością jest też wszystko, co pozwala osobie w tej samej sieci (bez dostępu do PC dziecka) wpłynąć na
 serwer: odczytać sekrety, zmienić ustawienia, podszyć się pod komputer dziecka — inaczej niż przez odczyt albo
 zmianę ruchu po zwykłym HTTP (niżej).
 
-**Nie są podatnością** (opisane w README jako znane ograniczenia): obejście przez administratora mechanizmu
+**Nie są podatnością** (opisane w modelu zagrożeń jako znane ograniczenia): obejście przez administratora mechanizmu
 z grupy „Utrudnia”, odczyt przez administratora sekretów z dysku PC (klucz podpisujący, sekret TOTP do
 odblokowania offline), uruchomienie innego systemu z pendrive'a, trwałe zatrzymanie usługi widoczne w panelu
 jako komputer offline oraz wszystko, co wymaga odczytu albo zmiany ruchu serwera działającego bez TLS — mówi
 on zwykłym HTTP, odpowiedź parowania niesie klucz PC, a logowanie do panelu hasło („Sieć” w
-[modelu zagrożeń](README.pl.md#model-zagrożeń); postaw przed serwerem reverse proxy z TLS).
+[modelu zagrożeń](docs/threat-model.pl.md#sieć); postaw przed serwerem reverse proxy z TLS).

@@ -33,9 +33,9 @@ removes Vigil on purpose. Test the package on a virtual machine; for the lock sc
 ## Rules
 
 - **One issue, one branch, one pull request to `main`.** Keep it focused; no stacked pull requests.
-- **Threat model.** The child may be an administrator (D2). Say in the pull request which group a protective change
-  belongs to — protects (state on the server), impedes (stops a non-elevated process) or detects (an alert in the
-  Journal) — and do not describe friction as protection.
+- **Threat model** ([`docs/threat-model.md`](docs/threat-model.md)). The child may be an administrator (D2). Say in
+  the pull request which group a protective change belongs to — protects (state on the server), impedes (stops a
+  non-elevated process) or detects (an alert in the Journal) — and do not describe friction as protection.
 - **Invariants** listed in [`CLAUDE.md`](CLAUDE.md) (fail-closed, one uvicorn worker, time counted on the server,
   lock priority, Windows Home support, file names and DPAPI entropy) are design decisions: discuss before changing them.
 - **Tests.** New server behaviour gets a test; `ruff check .` and `pytest -q` pass. Client changes must build in CI.
@@ -44,7 +44,9 @@ removes Vigil on purpose. Test the package on a virtual machine; for the lock sc
   the lock screen and the installer keep both in their `Strings.cs`. The server and the service send codes, never sentences.
 - **Database.** Schema changes only as a new entry at the end of `server/app/migrations.py`, with a test.
 - **Docs.** When behaviour changes, update `docs/` (and the README if users see it) in the same pull request, and add
-  a line under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md). Both READMEs carry the same content.
+  a line under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), in its group and written for the parent — the
+  version's section becomes the release notes ([`docs/releasing.md`](docs/releasing.md)). Both READMEs carry the
+  same content, and so do both versions of [`docs/threat-model.md`](docs/threat-model.md).
 
 `CLAUDE.md` is the working notes for AI-assisted development in this repository: layout, invariants and the pitfalls
 that already cost time. Worth reading before a larger change, whoever writes the code.

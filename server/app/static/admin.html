@@ -478,7 +478,7 @@
 
 </main>
 
-<div class="sheet-backdrop" id="sheet" onclick="if (event.target.id === 'sheet') closeSheet()">
+<div class="sheet-backdrop" id="sheet">
   <div class="sheet" role="dialog" aria-labelledby="sheetTitle">
     <div class="grab" aria-hidden="true"></div>
     <h3 id="sheetTitle" data-i18n>Dziecko</h3>
@@ -1229,9 +1229,16 @@ function showModal(title, body) {
 function closeModal() {
   document.getElementById('modal').classList.remove('show');
 }
-document.getElementById('modal').addEventListener('click', e => {
-  if (e.target.id === 'modal') closeModal();
-});
+// A tap on the backdrop closes the modal or the child sheet. A press that starts inside (selecting a field's text
+// with the mouse) and ends over the backdrop gives the backdrop a click too: count only presses that began there.
+function closeOnBackdrop(id, close) {
+  const el = document.getElementById(id);
+  let pressedHere = false;
+  el.addEventListener('pointerdown', e => { pressedHere = e.target === el; });
+  el.addEventListener('click', e => { if (e.target === el && pressedHere) close(); });
+}
+closeOnBackdrop('modal', closeModal);
+closeOnBackdrop('sheet', closeSheet);
 
 async function logout() {
   try { await api('/admin/logout', {method: 'POST'}); } catch {}

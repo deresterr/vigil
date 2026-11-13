@@ -13,6 +13,8 @@ the release tags. The reasoning behind each design decision (D1–D27) is in [`d
 - Weekly schedule (panel and setup wizard): night times are typed as digits, the ":" goes in by itself — a
   phone's numeric keyboard has none. "2130" gives 21:30, "630" gives 06:30.
 - Weekly schedule: the limit field takes at most four digits (the limit is 0–1440 min).
+- A dialog (e.g. "Add computer") or the child menu no longer closes when selecting a field's text with the mouse
+  ends outside it; only a click on the dimmed background closes it.
 
 ## [0.9.0] - 2026-11-12
 

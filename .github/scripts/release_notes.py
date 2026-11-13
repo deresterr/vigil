@@ -79,7 +79,7 @@ def footer(version: str, previous: str | None) -> list[str]:
         "",
         "---",
         "",
-        f"**Server:** `ghcr.io/{owner}/vigil-server:{version}` (also `:latest`) · **Client:** `vigil_setup.exe` "
+        f"**Server:** `ghcr.io/{owner}/vigil-server:{version}` · **Client:** `vigil_setup.exe` "
         f"below, the whole client in one file. New to Vigil? Start with the "
         f"[quick start](https://github.com/{REPO}#quick-start).",
     ]

@@ -3,7 +3,13 @@ from zoneinfo import ZoneInfo
 
 from app.config import week_schedule
 from app.endpoints.totp import _compute_night_extension_until
-from app.lock_logic import compute_lock_reason, current_or_next_night_start, daily_limit, night_window_at
+from app.lock_logic import (
+    compute_lock_reason,
+    current_or_next_night_start,
+    daily_limit,
+    local_to_utc,
+    night_window_at,
+)
 
 TZ = ZoneInfo("Europe/Warsaw")
 CFG = {"days": week_schedule(120, 240, "21:30", "06:30")}
@@ -131,6 +137,50 @@ def test_night_grant_counts_from_that_evenings_start():
     _, until = _compute_night_extension_until(at(2, 0, SAT), TZ, 60, cfg)
     assert until.replace(tzinfo=None) == datetime(2026, 11, 7, 3, 0)
 
+
+
+# === Change of time (#163): Europe/Warsaw, 2026-10-25 03:00 CEST → 02:00 CET, 2027-03-28 02:00 CET → 03:00 CEST ===
+
+
+def test_local_to_utc_across_changes_of_time():
+    assert local_to_utc(datetime(2026, 11, 4, 21, 30), TZ) == datetime(2026, 11, 4, 20, 30, tzinfo=UTC)
+    # 02:30 happens twice in October: the first pass, as the night window's naive comparison.
+    assert local_to_utc(datetime(2026, 10, 25, 2, 30), TZ) == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+    # 02:30 does not happen in March: the clock passes it at the jump, 02:00 CET = 01:00 UTC.
+    assert local_to_utc(datetime(2027, 3, 28, 2, 30), TZ) == datetime(2027, 3, 28, 1, 0, tzinfo=UTC)
+
+
+def test_night_shift_across_autumn_change_lasts_real_minutes():
+    now = datetime(2026, 10, 25, 1, 30, tzinfo=TZ).astimezone(UTC)  # CEST, inside Saturday's night
+    until_utc, until_local = _compute_night_extension_until(now, TZ, 120, CFG)
+    assert until_utc - now == timedelta(minutes=120)  # was 180: 01:30 + 2 h on the wall clock
+    assert until_local.strftime("%H:%M %Z") == "02:30 CET"
+
+
+def test_night_shift_across_spring_change_lasts_real_minutes():
+    now = datetime(2027, 3, 28, 1, 30, tzinfo=TZ).astimezone(UTC)  # CET, inside Saturday's night
+    until_utc, until_local = _compute_night_extension_until(now, TZ, 120, CFG)
+    assert until_utc - now == timedelta(minutes=120)  # was 60
+    assert until_local.strftime("%H:%M %Z") == "04:30 CEST"
+
+
+def test_night_starting_in_the_skipped_hour():
+    """A night from 02:30 on the night the clock jumps from 02:00 to 03:00: it starts at the jump."""
+    cfg = week(sat={"night_start": "02:30", "night_end": "09:00"})
+    sat = date(2027, 3, 27)
+    assert reason(datetime(2027, 3, 28, 1, 59, tzinfo=TZ).astimezone(UTC), cfg) is None
+    assert reason(datetime(2027, 3, 28, 3, 0, tzinfo=TZ).astimezone(UTC), cfg) == "night"
+    # Granted in the evening: an hour from the start of the night, not from a 03:30 that 02:30+01:00 would give.
+    until_utc, until_local = _compute_night_extension_until(at(20, 0, sat), TZ, 60, cfg)
+    assert until_utc == datetime(2027, 3, 28, 2, 0, tzinfo=UTC)
+    assert until_local.strftime("%H:%M %Z") == "04:00 CEST"
+
+
+def test_night_spanning_autumn_change_ends_by_the_wall_clock():
+    second_0230 = datetime(2026, 10, 25, 2, 30, fold=1, tzinfo=TZ).astimezone(UTC)  # CET
+    assert reason(second_0230) == "night"
+    assert reason(datetime(2026, 10, 25, 6, 29, tzinfo=TZ).astimezone(UTC)) == "night"
+    assert reason(datetime(2026, 10, 25, 6, 30, tzinfo=TZ).astimezone(UTC)) is None
 
 def test_limit_zero_means_no_limit():
     """#106: a day with limit 0 has no limit lock, whatever the time used; the night and the manual lock stay."""

@@ -97,6 +97,26 @@ def current_or_next_night_start(cfg: dict, now_local: datetime) -> datetime:
     return next(s for s, e in sorted(_nearby_nights(cfg, now_local)) if e > now_local)
 
 
+def local_to_utc(local: datetime, tz: ZoneInfo) -> datetime:
+    """The moment the wall clock in tz first reaches `local` (naive), as UTC — what night_window_at's naive
+    comparison means. An hour repeated in autumn: its first pass (fold=0). A time skipped in spring (02:30 in
+    Warsaw on the last Sunday of March): the moment of the jump, when the clock passes it.
+    """
+    first = local.replace(tzinfo=tz, fold=0).astimezone(timezone.utc)
+    if first.astimezone(tz).replace(tzinfo=None) == local:
+        return first
+    # Skipped: fold=1 resolves it with the offset after the jump (a moment before it), fold=0 with the offset
+    # before (a moment after it); the jump is the first second in between whose wall clock is not before `local`.
+    lo, hi = local.replace(tzinfo=tz, fold=1).astimezone(timezone.utc), first
+    while hi - lo > timedelta(seconds=1):
+        mid = lo + timedelta(seconds=(hi - lo).total_seconds() // 2)
+        if mid.astimezone(tz).replace(tzinfo=None) >= local:
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
 def child_today(conn: sqlite3.Connection, child: sqlite3.Row, now_utc: datetime, tz: ZoneInfo) -> dict:
     """Today's state of one child: its child_daily row, lock reason and minutes (all its devices)."""
     today = now_utc.astimezone(tz).date()

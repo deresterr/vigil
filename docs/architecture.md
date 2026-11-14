@@ -144,9 +144,12 @@ highlighted and counted on the tab (`alerts_unacked` in `/status`), confirmed vi
 (`events.acked_utc`). The wording (Polish source text, English in `i18n.js`) and the filters live in `admin.html`.
 
 Admin: `/admin` (static SPA) + `/admin/api/*` behind an itsdangerous-signed cookie `vigil_session`
-(24 h, HttpOnly, SameSite=Strict, path `/admin`). Password: argon2id. The cookie carries
-`admin_session_generation`; a logout or a password change bumps it and ends every session (the parent logs in
-on the child's PC, whose browser cookies the child can copy).
+(24 h, HttpOnly, SameSite=Strict, path `/admin`, Secure when the request came over https). Password: argon2id.
+The cookie carries `admin_session_generation`; a logout or a password change bumps it and ends every session (the
+parent logs in on the child's PC, whose browser cookies the child can copy). Wrong passwords are limited per client
+address (5, then a lockout of 1/5/15 min, in memory). Behind a reverse proxy the address and the scheme come from
+its `X-Forwarded-For`/`X-Forwarded-Proto` only when the proxy is listed in `FORWARDED_ALLOW_IPS` (read by uvicorn
+itself; empty in `compose.yaml` = ignored, #162).
 
 ## Watchdog loop (`Worker.cs`)
 

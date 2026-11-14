@@ -161,7 +161,8 @@ z pendrive'a — panel pokazuje wtedy PC jako offline.
 
 > [!IMPORTANT]
 > Serwer mówi zwykłym HTTP, a parowanie i logowanie do panelu wysyłają swoje sekrety niezaszyfrowane. W sieci,
-> której nie ufasz, postaw przed nim reverse proxy z TLS ([Sieć](docs/threat-model.pl.md#sieć)).
+> której nie ufasz, postaw przed nim reverse proxy z TLS i wpisz jego adres w `FORWARDED_ALLOW_IPS` w `.env`
+> ([Sieć](docs/threat-model.pl.md#sieć)).
 
 Każdy mechanizm, grupa po grupie: [`docs/threat-model.pl.md`](docs/threat-model.pl.md). Co jest podatnością:
 [`SECURITY.pl.md`](SECURITY.pl.md).

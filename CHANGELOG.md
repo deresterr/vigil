@@ -13,6 +13,7 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
   panel and with a TOTP code on the lock screen.
 
 ### Documentation
+- README: how to back up and restore the server's `data/`, and what to do after forgetting the panel password.
 - README rewritten for people trying Vigil (English and Polish): a logo, captioned screenshots, a short feature
   list, the quick start near the top, and the threat model as a table. The full threat model moved to
   `docs/threat-model.md`.

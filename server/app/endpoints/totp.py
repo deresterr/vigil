@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from ..auth import Device, authenticate_request
 from ..crypto import match_totp_step
 from ..db import get_child, get_config_value, get_db, log_event, set_config_value, update_child_day
-from ..lock_logic import child_today, current_or_next_night_start, parse_iso_utc
+from ..lock_logic import child_today, current_or_next_night_start, local_to_utc, parse_iso_utc
 from ..models import TotpAttemptRequest
 
 router = APIRouter()
@@ -120,18 +120,18 @@ def _compute_night_extension_until(
 
     Returns: (extension_utc, extension_local_for_display)
     """
-    now_local = now_utc.astimezone(tz)
-
     # Base: the active extension if it is still ahead, otherwise max(now, start of the night); max() keeps a
     # new extension from starting in the past (previous one until 22:30, now 22:35 → from now).
     if current_extension_utc is not None and current_extension_utc > now_utc:
-        base_local = current_extension_utc.astimezone(tz)
+        base_utc = current_extension_utc
     else:
-        night_start_dt = current_or_next_night_start(lock_cfg, now_local).replace(tzinfo=tz)
-        base_local = max(now_local, night_start_dt)
+        night_start = local_to_utc(current_or_next_night_start(lock_cfg, now_utc.astimezone(tz)), tz)
+        base_utc = max(now_utc, night_start)
 
-    extension_local = base_local + timedelta(minutes=minutes_to_grant)
-    return extension_local.astimezone(timezone.utc), extension_local
+    # Minutes of real time, so in UTC: on local datetimes Python adds wall-clock time, and a grant across the
+    # change of time lasted an hour longer in October and an hour shorter in March (#163).
+    extension_utc = base_utc + timedelta(minutes=minutes_to_grant)
+    return extension_utc, extension_utc.astimezone(tz)
 
 
 # === Endpoint ===

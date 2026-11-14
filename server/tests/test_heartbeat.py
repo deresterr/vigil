@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pyotp
@@ -201,3 +201,17 @@ def test_night_lock_tells_when_it_ends(watchdog):
         set_used("2026-11-04", 120)
         hb = watchdog.heartbeat()
         assert hb["lock_reason"] == "limit" and "night_end_local" not in hb["ui_state"]
+
+
+def test_time_counts_real_seconds_across_changes_of_time(watchdog):
+    """Time is the delta between heartbeats in UTC: the hour repeated in October and the hour skipped in March
+    change nothing (#163)."""
+    set_schedule(night_start="23:00", night_end="23:30")  # keep the night away from 02:00–03:00
+    for start, day in ((datetime(2026, 10, 25, 0, 58, tzinfo=UTC), "2026-10-25"),   # 02:58 CEST → 02:02 CET
+                       (datetime(2027, 3, 28, 0, 58, tzinfo=UTC), "2027-03-28")):   # 01:58 CET → 03:02 CEST
+        with time_machine.travel(start, tick=False) as t:
+            watchdog.heartbeat()
+            for _ in range(48):
+                t.shift(5)
+                watchdog.heartbeat()
+        assert state_for(day)["seconds_used"] == 240

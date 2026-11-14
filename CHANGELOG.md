@@ -7,6 +7,11 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
 
 ## [Unreleased]
 
+### Server
+- Moving night time across the night the clocks change (the last Sunday of March and of October) now gives
+  exactly the minutes granted. Before, "+120 min" lasted three hours in October and one in March, both from the
+  panel and with a TOTP code on the lock screen.
+
 ### Documentation
 - README rewritten for people trying Vigil (English and Polish): a logo, captioned screenshots, a short feature
   list, the quick start near the top, and the threat model as a table. The full threat model moved to

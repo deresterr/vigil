@@ -39,6 +39,10 @@ changes it has: "Small fixes in the parent panel: …", "Fixes "Shut down" on th
 After the answer, one short sentence: whether the database changes (and to back it up), whether the PCs need a
 new pairing, whether an older client keeps working with the new server.
 
+The `Children's PCs` answer is also data: the release workflow takes the newest section up to the tag that says
+**Yes.** (`release_notes.py --client-version`) and builds it into the server image, and the panel marks PCs with an
+older client "Update needed". **Optional.** and **Not needed.** do not mark them.
+
 **Groups.** Only the ones with changes, in this order: `Panel`, `Lock screen and tray`, `Installer`, `Server`,
 `Security and maintenance`, `Documentation`. A release with one striking change can open with `### Highlights`
 (two or three items) before the groups; each highlight still appears in its group.

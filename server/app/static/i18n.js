@@ -158,6 +158,7 @@ const I18N_EN = /*I18N_EN*/{
   "Skopiowane": "Copied",
   "Sparowano komputer": "Computer paired",
   "Sparowany {date}": "Paired {date}",
+  "Do aktualizacji": "Update needed",
   "Sparować ponownie „{name}”?\n\nUżyj po reinstalacji Vigila na tym komputerze. Obecna instalacja przestanie się łączyć, gdy kod zostanie użyty.": "Re-pair “{name}”?\n\nUse it after reinstalling Vigil on this computer. The current installation stops connecting once the code is used.",
   "Sparuj ponownie": "Re-pair",
   "Stare hasło": "Current password",

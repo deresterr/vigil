@@ -83,6 +83,7 @@ def test_v08_database_migrates(db_path, caplog):
     assert [r.getMessage() for r in caplog.records] == [
         "Database migrated to schema 2 (devices.delta_carry_ms)",
         "Database migrated to schema 3 (config.heartbeat_grace_seconds removed)",
+        "Database migrated to schema 4 (devices.client_version)",
     ]
 
 
@@ -103,4 +104,23 @@ def test_v082_database_migrates(db_path, caplog):
     assert _query(db_path, "SELECT 1 FROM config WHERE key = 'heartbeat_grace_seconds'") == []
     assert _query(db_path, "SELECT value FROM config WHERE key = 'timezone'") == [("Europe/Warsaw",)]
     assert [r.getMessage() for r in caplog.records] == [
-        "Database migrated to schema 3 (config.heartbeat_grace_seconds removed)"]
+        "Database migrated to schema 3 (config.heartbeat_grace_seconds removed)",
+        "Database migrated to schema 4 (devices.client_version)"]
+
+
+def test_v09_database_migrates(db_path, caplog):
+    """A database of v0.9 (schema 3) gets the column for the version each PC reports (#159), empty until then."""
+    import app.migrations as migrations
+
+    with closing(sqlite3.connect(db_path, isolation_level=None)) as conn:
+        conn.execute("BEGIN")
+        for _name, apply in migrations.MIGRATIONS[:3]:
+            apply(conn)
+        conn.execute("PRAGMA user_version = 3")
+        conn.execute("INSERT INTO children(name, created_utc) VALUES ('Ola', '2026-11-01T00:00:00+00:00')")
+        conn.execute("INSERT INTO devices(child_id, name, signing_key, paired_utc) VALUES (1, 'PC', 'k', 'x')")
+        conn.execute("COMMIT")
+    app.db.init_database()
+    assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
+    assert _query(db_path, "SELECT name, client_version FROM devices") == [("PC", None)]
+    assert [r.getMessage() for r in caplog.records] == ["Database migrated to schema 4 (devices.client_version)"]

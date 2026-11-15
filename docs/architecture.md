@@ -48,7 +48,7 @@ signature like "server unreachable".
 
 | Endpoint | Body | Notes |
 |---|---|---|
-| `POST /v1/heartbeat` | `session_active, user_active, current_time_utc` (+ tamper telemetry, offline TOTP; `uptime_seconds` is still sent for servers up to 0.8.2, which require it) | → `lock_required, lock_reason, minutes_remaining, next_check_seconds, ui_state` (+ `totp_secret`); the server's time in the `X-Server-Time` header |
+| `POST /v1/heartbeat` | `session_active, user_active, current_time_utc` (+ tamper telemetry, offline TOTP, `client_version` from 1.0; `uptime_seconds` is still sent for servers up to 0.8.2, which require it) | → `lock_required, lock_reason, minutes_remaining, next_check_seconds, ui_state` (+ `totp_secret`); the server's time in the `X-Server-Time` header |
 | `POST /v1/goodbye` | `instance_id, reason` (`service_stop`\|`shutdown`) | sent from the service's StopAsync; see Tamper detection |
 | `POST /v1/totp_attempt` | `code`, optional `minutes_to_grant` (default 60) | mode chosen by server from current lock: limit→`extend_limit`, night→`extend_night`, manual→`manual_unlock`; response `mode`, `minutes`, `until_local` (night). every 3rd failure locks for 1 min / 5 min / 15 min (cap); a code's time step can be used once (`totp_last_step`) |
 | `POST /v1/pause_toggle` | `{}` (toggle) or `{"paused": bool}` (target state) | starting a pause is refused while a higher-priority lock is active; a target equal to the current state changes nothing |
@@ -100,6 +100,12 @@ One TOTP secret for all children (one `totp_lockout` row, one `totp_last_step`).
 Schema changes only through `migrations.py` (`PRAGMA user_version` = migrations applied, one transaction
 each; a database newer than the code is refused; migration 1 is the v0.8 schema, D26). Config is read from SQLite on every request, no cache;
 missing keys fall back to `CONFIG_DEFAULTS`.
+
+`devices.client_version` is what the PC's last heartbeat said (NULL: a client up to 0.9). The panel flags a PC
+whose version is older than the newest client release up to this server (`app/versions.py`): `release.yml` takes it
+from `CHANGELOG.md` (the latest section whose "Children's PCs" row says **Yes.**) and bakes it into the image as
+`VIGIL_CLIENT_VERSION` — not the server's own version, as a server-only release would flag every PC. Local and CI
+builds of either side compare nothing.
 
 Other tables: `config` (server-wide key/value incl. secrets: `totp_secret`,
 `admin_session_key`, `parent_password_hash`), `events` (audit log, pruned after `events_retention_days`),

@@ -39,6 +39,8 @@ class HeartbeatRequest(_Wire):
     # Offline TOTP (#9): which secret the watchdog holds, unlocks it did on its own.
     totp_fp: Annotated[str, Field(max_length=64)] | None = None
     offline_grants: Annotated[list[OfflineGrant], Field(max_length=50)] = []
+    # The client's version (#159; build-package.ps1 -Version); clients up to 0.9 send none.
+    client_version: Annotated[str, Field(max_length=64)] | None = None
 
     @model_validator(mode="after")
     def _telemetry_all_or_nothing(self) -> HeartbeatRequest:

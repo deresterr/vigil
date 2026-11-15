@@ -8,12 +8,15 @@ RUN apt-get update \
 
 # The server version in the start line of the log (app/logs.py); the release workflow passes the tag.
 ARG VIGIL_VERSION=dev
+# The newest client release up to this server (app/versions.py, #159); release.yml takes it from CHANGELOG.md.
+ARG VIGIL_CLIENT_VERSION=
 
 # TZ (optional, from .env) only sets the time zone of the log timestamps.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     LISTEN_PORT=8088 \
-    VIGIL_VERSION=${VIGIL_VERSION}
+    VIGIL_VERSION=${VIGIL_VERSION} \
+    VIGIL_CLIENT_VERSION=${VIGIL_CLIENT_VERSION}
 
 WORKDIR /app
 

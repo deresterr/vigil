@@ -51,6 +51,7 @@ from ..db import (
     update_child_day,
 )
 from ..lock_logic import child_today, night_window, night_window_at, parse_iso_utc
+from ..versions import update_needed
 from .journal import ALERT_WHERE
 from .pairing import active_pairing_expiry, clear_pairing_code, create_pairing_code
 from .totp import _compute_night_extension_until
@@ -102,6 +103,8 @@ def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, today: str) 
         "last_heartbeat_local": last_local,
         "paired_local": parse_iso_utc(row["paired_utc"]).astimezone(tz).strftime("%Y-%m-%d"),
         "minutes_today": (row["seconds_today"] // 60) if row["seconds_date"] == today else 0,
+        "client_version": row["client_version"],
+        "update_needed": update_needed(row["client_version"]),
     }
 
 

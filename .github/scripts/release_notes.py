@@ -1,6 +1,7 @@
 """Release notes from CHANGELOG.md, for the release workflow and for checking a release pull request.
 
-    python3 .github/scripts/release_notes.py 0.9.1 [v0.9.0]   -> the notes on stdout
+    python3 .github/scripts/release_notes.py 0.9.1 [v0.9.0]          -> the notes on stdout
+    python3 .github/scripts/release_notes.py --client-version 0.9.1  -> the newest client release up to 0.9.1
 
 Takes the section "## [0.9.1] - <date>", checks it follows the template in docs/releasing.md (a summary, then the
 update table), joins the lines wrapped in the file (a GitHub release keeps every line break, a README does not)
@@ -89,7 +90,24 @@ def footer(version: str, previous: str | None) -> list[str]:
     return lines
 
 
+def client_version(text: str, version: str) -> str:
+    """The newest version up to `version` whose update table says the children's PCs need it ("**Yes.**"): the
+    server image carries it, and the panel flags a PC with an older client (#159). "**Optional.**" and
+    "**Not needed.**" leave the PCs where they are. Empty when no section says Yes."""
+    section(text, version)  # the tag's own section must exist
+    heads = re.finditer(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", text, re.MULTILINE)
+    found = False
+    for head in heads:  # newest first, as CHANGELOG.md is written
+        found = found or head[1] == version
+        if found and any(line.startswith("| Children's PCs | **Yes.**") for line in section(text, head[1])):
+            return head[1]
+    return ""
+
+
 def main() -> None:
+    if len(sys.argv) == 3 and sys.argv[1] == "--client-version":
+        print(client_version(CHANGELOG.read_text(encoding="utf-8"), sys.argv[2].removeprefix("v")))
+        return
     if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
     version = sys.argv[1].removeprefix("v")

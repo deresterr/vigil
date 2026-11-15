@@ -55,8 +55,11 @@ jobs:
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           image="ghcr.io/${owner}/vigil-server"
           version="${GITHUB_REF_NAME#v}"
+          # The newest client release up to this tag: the panel flags PCs with an older one (#159).
+          client=$(python3 -I .github/scripts/release_notes.py --client-version "${version}")
           docker build -t "${image}:${version}" -t "${image}:latest" \
             --build-arg "VIGIL_VERSION=${version}" \
+            --build-arg "VIGIL_CLIENT_VERSION=${client}" \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             --label "org.opencontainers.image.version=${version}" server
           docker push "${image}:${version}"

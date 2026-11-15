@@ -103,7 +103,8 @@ Pairing always happens before anything on the PC changes.
 7. **Protection**: SafeBoot Minimal/Network, the task "Vigil Guardian" (`vigil_setup.exe guardian`, SYSTEM,
    startup + every 5 min), F8 menu off (`bootmenupolicy Standard`), optionally WinRE off (`-DisableWinRE`).
 8. **Child's account**: the per-user policies (`VigilLayout.UserPolicies`) in the child's hive and the
-   Default profile — live, or loaded as an app hive; never through `reg.exe` (it may be blocked).
+   Default profile — live, or the hive file mounted with `RegLoadKey` and unloaded at once; never through
+   `reg.exe` (it may be blocked).
 9. **Permissions**: folder SYSTEM full / Administrators modify / Authenticated Users read+execute,
    secrets SYSTEM full / Administrators read.
 10. **Start** and a check that it runs.

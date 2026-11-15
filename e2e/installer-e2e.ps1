@@ -435,7 +435,8 @@ try {
     # if that account has none yet; it is set here so the run does not depend on the runner image.
     $NewChild = 'vigilkid'
     $code = New-PairingCode @{ device_id = (Get-Device).id }
-    $env:VIGIL_CHILD_PASSWORD = "Kid-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
+    $kidPassword = "Kid-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
+    $env:VIGIL_CHILD_PASSWORD = $kidPassword
     $env:VIGIL_PARENT_PASSWORD = "Parent-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
     try {
         Assert-Setup 'install with a new child account' -Mode install -ServerUrl $ServerUrl -PairingCode $code -CreateChildAccount $NewChild
@@ -460,8 +461,27 @@ try {
     Assert-Setup 'update keeps the child account' -Mode update
     $toml = Get-Content 'C:\ProgramData\Vigil\vigil.toml' -Raw
     Assert-That ($toml -match 'child_sid') 'update kept child_sid'
+    # A sign-in and sign-out leaves the account's hive file as Windows does (usually dirty, its changes in the .LOG
+    # files): the uninstall below must still clear it from the runner's account (VM: 1009 with RegLoadAppKey).
+    $kidSid = $kid.SID.Value
+    $cred = New-Object System.Management.Automation.PSCredential("$env:COMPUTERNAME\$NewChild",
+        (ConvertTo-SecureString $kidPassword -AsPlainText -Force))
+    Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c', 'exit' -Credential $cred `
+        -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait
+    for ($i = 0; $i -lt 60 -and (Test-Path "Registry::HKEY_USERS\$kidSid"); $i++) { Start-Sleep -Seconds 1 }
+    Write-Host "  '$NewChild' signed in and out; its hive loaded now: $(Test-Path "Registry::HKEY_USERS\$kidSid")"
     Assert-Setup 'uninstall (the child account stays)' -Mode uninstall
     Assert-That ($null -ne (Get-LocalUser -Name $NewChild -ErrorAction SilentlyContinue)) "'$NewChild' kept after uninstall"
+    if (-not (Test-Path "Registry::HKEY_USERS\$kidSid")) {
+        # reg.exe here, in the test only; its output is localized, the exit code is not.
+        cmd.exe /c "reg.exe load HKU\vigil_e2e_kid `"$kidProfile\NTUSER.DAT`" >nul 2>&1"
+        Assert-That ($LASTEXITCODE -eq 0) "'$NewChild' hive file mounts (reg load)"
+        cmd.exe /c "reg.exe query HKU\vigil_e2e_kid\Software\Microsoft\Windows\CurrentVersion\Policies\System /v DisableTaskMgr >nul 2>&1"
+        $left = $LASTEXITCODE -eq 0
+        [GC]::Collect()
+        cmd.exe /c "reg.exe unload HKU\vigil_e2e_kid >nul 2>&1"
+        Assert-That (-not $left) "uninstall cleared '$NewChild''s policies in its hive file"
+    }
     Assert-Verify 0 'after uninstall (nothing of Vigil left)'
 
     Write-Section 'The wizard (key script)'

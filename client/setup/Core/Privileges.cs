@@ -18,6 +18,20 @@ internal static class Privileges
             Enable(name);
     }
 
+    /// <summary>SeBackup + SeRestore: mount a user's hive file (RegLoadKey).</summary>
+    /// <returns>false when the token does not hold them (not elevated).</returns>
+    public static bool TryEnableHiveLoading()
+    {
+        try
+        {
+            Enable("SeBackupPrivilege");
+            Enable("SeRestorePrivilege");
+            return true;
+        }
+        catch (SetupException) { return false; }
+        catch (Win32Exception) { return false; }
+    }
+
     private static void Enable(string name)
     {
         if (!Win32.OpenProcessToken(Win32.GetCurrentProcess(), Win32.TOKEN_ADJUST_PRIVILEGES | Win32.TOKEN_QUERY,

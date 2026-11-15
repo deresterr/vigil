@@ -11,7 +11,7 @@ namespace Vigil.Setup.Core;
 
 /// <summary>
 /// -Mode verify: reads the installed state and reports one check per line; changes nothing (a user hive
-/// that is not loaded is opened as a private app hive and closed). Without an installation it checks that
+/// that is not loaded is mounted for the check and unloaded; mounting replays its .LOG files, as a sign-in would). Without an installation it checks that
 /// the uninstall left nothing behind. What it cannot see (the lock overlay, the tray, keyboard blocking)
 /// stays a manual test. A diagnostic for the parent, not a protection.
 /// </summary>

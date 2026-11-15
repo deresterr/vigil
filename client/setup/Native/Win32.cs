@@ -61,10 +61,16 @@ internal static class Win32
     [DllImport("kernel32.dll")]
     public static extern IntPtr GetCurrentProcess();
 
-    /// <summary>Loads a hive file into a private namespace of this process; unloaded when the handle closes.
-    /// No privileges and no global mount name, unlike RegLoadKey / reg.exe load.</summary>
+    public static readonly IntPtr HKEY_USERS = unchecked((IntPtr)(int)0x80000003);
+
+    /// <summary>Mounts a hive file under HKEY_USERS\&lt;subKey&gt; (SeBackup + SeRestore), replaying its .LOG files
+    /// like a sign-in does. Not RegLoadAppKey: an app hive does not replay them and refuses the hive a sign-out left
+    /// dirty with ERROR_BADDB (1009).</summary>
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
-    public static extern int RegLoadAppKeyW(string file, out SafeRegistryHandle key, int samDesired, int options, int reserved);
+    public static extern int RegLoadKeyW(IntPtr key, string subKey, string file);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int RegUnLoadKeyW(IntPtr key, string subKey);
 
     // === Local accounts ===
 

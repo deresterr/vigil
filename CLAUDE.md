@@ -93,8 +93,11 @@ everywhere the same problem occurs, not only where it was reported.
 - PowerShell: variable names are case-insensitive (a local `$want` overwrites a `[hashtable]$Want` parameter).
 - PowerShell 5.1 + `$ErrorActionPreference='Stop'`: `& native.exe 2>&1` turns stderr into a terminating error.
 - One-account setup (D12): per-user policies the installer sets in HKCU hit the parent and the installer too. In
-  both setups it edits the child's hive through the registry API (loaded as an app hive when nobody is signed in),
-  never `reg.exe`.
+  both setups it edits the child's hive through the registry API, never `reg.exe`: live under HKU when the account
+  is signed in, else `NTUSER.DAT` mounted with `RegLoadKey` (SeBackup + SeRestore) under `HKU\Vigil_<pid>_<n>` and
+  unloaded on dispose (a leftover of a killed run is unloaded by the next one: a held file means a temporary
+  profile). Not `RegLoadAppKey`: an app hive does not replay the `.LOG` files, and the hive of an account that has
+  signed in and out is usually dirty — 1009 `ERROR_BADDB` on the VM; the e2e's never-used account hid it.
 - The blank-password test (`LocalAccounts.HasBlankPassword`: `LogonUser` with an empty password; OK or 1327 = no
   password, 1326 = has one) is a failed logon on an account with a password and counts toward the lockout
   threshold: it runs once, at install, never in verify. The parent's first password is set with

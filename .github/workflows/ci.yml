@@ -36,8 +36,11 @@ jobs:
               - '.github/workflows/ci.yml'
             client:
               - 'client/**'
-              # the installer e2e runs the server of the same commit (#104)
+              # the installer e2e runs the server of the same commit (#104), with its requirements on the
+              # Python of its Dockerfile (#168)
               - 'server/app/**'
+              - 'server/requirements.txt'
+              - 'server/Dockerfile'
               - 'build-package.ps1'
               - 'Build.cmd'
               - 'e2e/**'

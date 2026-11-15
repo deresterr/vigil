@@ -91,6 +91,9 @@ everywhere the same problem occurs, not only where it was reported.
 - Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. The maintainer
   merges and creates releases/tags in the GitHub UI (merged branches are deleted automatically); open PRs with
   `gh api` (REST).
+- The server image is multi-arch (#188): `release.yml` builds `linux/amd64` + `linux/arm64` with buildx (arm64 under
+  QEMU) in one push; CI's server job runs on `ubuntu-latest` and `ubuntu-24.04-arm`, so a dependency without an
+  arm64 wheel fails the PR. 32-bit ARM is not built (no wheels; a compiler in the image).
 - GHCR: a `vigil-server` package created outside the release workflow is not writable by it — the manifest push
   ends with `denied`. Fix: package settings → Manage Actions access → this repository with the Write role,
   then re-run the failed job.

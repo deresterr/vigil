@@ -74,7 +74,7 @@
 
 ## Szybki start
 
-Potrzebny jest Linux z Dockerem w tej samej sieci co PC dziecka (albo osiągalny przez VPN) i aplikacja TOTP
+Potrzebny jest Linux z Dockerem (x86-64 albo ARM64, np. Raspberry Pi 4 lub 5) w tej samej sieci co PC dziecka (albo osiągalny przez VPN) i aplikacja TOTP
 w telefonie (Aegis, Google Authenticator, …).
 
 ### 1. Uruchom serwer
@@ -84,7 +84,7 @@ W pustym katalogu utwórz `compose.yaml`:
 ```yaml
 services:
   vigil:
-    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :1.0.0
+    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :1.0.1
     container_name: vigil
     restart: unless-stopped
     ports:
@@ -234,7 +234,7 @@ w menedżerze haseł.
 
 | | Co jest potrzebne |
 |---|---|
-| **Serwer** | Docker na Linuksie. Obraz z wydania jest dla x86-64 (amd64); na innych architekturach zbuduj go z `server/`. Wyjście na UDP 123, żeby sprawdzać jego zegar z NTP (opcjonalnie, Ustawienia). |
+| **Serwer** | Docker na Linuksie, x86-64 (amd64) albo ARM64 (arm64: Raspberry Pi 4 lub 5 z systemem 64-bitowym, mini PC albo VPS na ARM); jeden obraz dla obu. Wyjście na UDP 123, żeby sprawdzać jego zegar z NTP (opcjonalnie, Ustawienia). |
 | **PC dziecka** | Windows 10 albo 11, x64, Home albo Pro. Zalecane: konto standardowe dla dziecka (instalator je zakłada) i konto administratora z hasłem dla rodzica. Wspierane: konto administratora dziecka jest jedynym kontem, a rodzic obsługuje PC z niego. Instalator zakłada konto lokalne; ustawienia rodzinne Microsoft nie są potrzebne. |
 | **Rodzic** | Przeglądarka i aplikacja TOTP w telefonie. |
 

@@ -84,7 +84,7 @@ W pustym katalogu utwórz `compose.yaml`:
 ```yaml
 services:
   vigil:
-    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :1.0.0
+    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :1.0.1
     container_name: vigil
     restart: unless-stopped
     ports:

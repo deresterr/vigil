@@ -7,6 +7,15 @@ reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](doc
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-15
+
+The server image now also runs on ARM64, such as a Raspberry Pi 4 or 5.
+
+| | Update |
+|---|---|
+| Server | **Optional.** Needed only to run the server on ARM64; on x86-64 it is the same server. |
+| Children's PCs | **Not needed.** The client did not change; the 1.0.1 `vigil_setup.exe` differs only in its version number. |
+
 ### Server
 - The server image now also runs on ARM64 — a Raspberry Pi 4 or 5 with a 64-bit system, an ARM mini PC or VPS.
   The same `ghcr.io/deresterr/vigil-server` image picks the right one; nothing changes on x86-64.
@@ -253,7 +262,8 @@ The first public release.
 - Lock screen and installer in English or Polish, following Windows (D21).
 - No upgrade from builds before 0.8 (D23); the server's database starts from the 0.8 schema (D26).
 
-[Unreleased]: https://github.com/deresterr/vigil/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/deresterr/vigil/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/deresterr/vigil/releases/tag/v1.0.1
 [1.0.0]: https://github.com/deresterr/vigil/releases/tag/v1.0.0
 [0.9.1]: https://github.com/deresterr/vigil/releases/tag/v0.9.1
 [0.9.0]: https://github.com/deresterr/vigil/releases/tag/v0.9.0

@@ -67,3 +67,10 @@ the parent.
 On a network you do not trust, put a reverse proxy with TLS in front of the server and give `vigil_setup.exe` its
 `https://` address. Vigil follows no redirects and uses no system proxy, and the certificate must be one Windows
 trusts.
+
+Set `FORWARDED_ALLOW_IPS` in `.env` to the address the proxy connects to Vigil from (the proxy's container address
+or the Docker network's, a LAN address when it runs on another machine; a network such as `172.18.0.0/16` works
+too). Otherwise every request seems to come from the proxy: the panel's login limit, which counts wrong passwords
+per address, becomes one limit for everyone — a child typing wrong passwords locks the parent out as well — and the
+session cookie is not marked Secure. Never `*`: anyone could then send a made-up `X-Forwarded-For` and get round the
+login limit.

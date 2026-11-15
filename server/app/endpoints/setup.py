@@ -13,7 +13,7 @@ from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyotp
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator
 
@@ -78,7 +78,7 @@ async def setup_totp_qr(db: sqlite3.Connection = Depends(get_db)) -> dict:
 
 
 @router.post("/setup/complete")
-async def setup_complete(raw: Annotated[object, Body()] = None,
+async def setup_complete(request: Request, raw: Annotated[object, Body()] = None,
                          db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
     if get_config_value(db, "setup_complete") == "1":
         raise HTTPException(status_code=409, detail="already_configured")
@@ -111,5 +111,5 @@ async def setup_complete(raw: Annotated[object, Body()] = None,
 
     # Logged in at once: the page goes straight to /admin
     response = JSONResponse({"ok": True})
-    set_session_cookie(response, issue_session_cookie(db))
+    set_session_cookie(response, issue_session_cookie(db), request)
     return response

@@ -18,6 +18,8 @@ services:
       - LISTEN_PORT=${VIGIL_PORT:-8088}
       - TZ=${TZ:-UTC}
       - NO_COLOR=${NO_COLOR:-}
+      # Behind a reverse proxy: its address, so uvicorn trusts its X-Forwarded-* headers (.env.example).
+      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:${VIGIL_PORT:-8088}/health"]
       interval: 30s

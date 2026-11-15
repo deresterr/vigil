@@ -8,6 +8,10 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
 ## [Unreleased]
 
 ### Server
+- Behind a reverse proxy: a new `FORWARDED_ALLOW_IPS` setting in `.env` (the proxy's address). Before, the panel's
+  login limit counted wrong passwords for everyone behind the proxy together, so a child locking itself out locked
+  the parent out too; now it counts them per device, and the session cookie is marked Secure over https. Without a
+  proxy nothing changes.
 - Moving night time across the night the clocks change (the last Sunday of March and of October) now gives
   exactly the minutes granted. Before, "+120 min" lasted three hours in October and one in March, both from the
   panel and with a TOTP code on the lock screen.

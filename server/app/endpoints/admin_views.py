@@ -66,7 +66,7 @@ async def admin_login_submit(
     log_event(db, "admin_login_success")
     cookie_value = issue_session_cookie(db)
     response = RedirectResponse(url="/admin", status_code=303)
-    set_session_cookie(response, cookie_value)
+    set_session_cookie(response, cookie_value, request)
     return response
 
 

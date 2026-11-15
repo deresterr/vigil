@@ -65,3 +65,9 @@ pod rodzica.
 W sieci, której nie ufasz, postaw przed serwerem reverse proxy z TLS i podaj w `vigil_setup.exe` jego adres
 `https://`. Vigil nie idzie za przekierowaniami i nie używa proxy systemowego, a certyfikat musi być zaufany przez
 Windows.
+
+Ustaw w `.env` `FORWARDED_ALLOW_IPS` na adres, z którego proxy łączy się z Vigil (adres kontenera proxy albo sieci
+Dockera, adres w LAN, gdy proxy działa na innej maszynie; można też podać sieć, np. `172.18.0.0/16`). Inaczej każde
+żądanie wygląda, jakby przyszło od proxy: limit logowania do panelu, który liczy błędne hasła dla każdego adresu,
+staje się jednym limitem dla wszystkich — dziecko wpisujące złe hasła blokuje także rodzica — a ciasteczko sesji nie
+dostaje flagi Secure. Nigdy `*`: każdy mógłby wtedy wysłać zmyślone `X-Forwarded-For` i obejść limit logowania.

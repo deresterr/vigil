@@ -74,14 +74,16 @@ def session_payload(db: sqlite3.Connection, cookie: str | None) -> dict:
     return payload
 
 
-def set_session_cookie(response, cookie_value: str) -> None:
-    """The session cookie. Not Secure: the server is meant for plain HTTP on the home network or a VPN."""
+def set_session_cookie(response, cookie_value: str, request: Request) -> None:
+    """The session cookie, Secure when the panel was reached over https: the server speaks plain HTTP on the home
+    network or a VPN, and over https only behind a TLS proxy trusted through FORWARDED_ALLOW_IPS (uvicorn then
+    takes the scheme from X-Forwarded-Proto, #162)."""
     response.set_cookie(
         key=SESSION_COOKIE,
         value=cookie_value,
         max_age=SESSION_MAX_AGE_SECONDS,
         httponly=True,
-        secure=False,
+        secure=request.url.scheme == "https",
         samesite="strict",
         path="/admin",
     )

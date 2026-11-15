@@ -160,7 +160,8 @@ the panel shows the PC as offline.
 
 > [!IMPORTANT]
 > The server speaks plain HTTP, and the pairing and the panel login send their secrets unencrypted. On a network
-> you do not trust, put a reverse proxy with TLS in front of it ([Network](docs/threat-model.md#network)).
+> you do not trust, put a reverse proxy with TLS in front of it and set `FORWARDED_ALLOW_IPS` in `.env` to its
+> address ([Network](docs/threat-model.md#network)).
 
 Every mechanism, group by group: [`docs/threat-model.md`](docs/threat-model.md). What counts as a vulnerability:
 [`SECURITY.md`](SECURITY.md).

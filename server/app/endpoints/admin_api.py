@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 
 import pyotp
 import qrcode
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -475,7 +475,8 @@ class PasswordBody(_Body):
 
 
 @router.post("/change_password")
-async def change_password(body: PasswordBody, db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
+async def change_password(body: PasswordBody, request: Request,
+                          db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
     """Every other session ends (a stolen cookie with the old password); this one gets a fresh cookie."""
     if not verify_admin_password(db, body.current):
         log_event(db, "admin_password_change_failed")
@@ -485,5 +486,5 @@ async def change_password(body: PasswordBody, db: sqlite3.Connection = Depends(g
     revoke_sessions(db)
     log_event(db, "admin_password_changed")
     response = JSONResponse({"ok": True})
-    set_session_cookie(response, issue_session_cookie(db))
+    set_session_cookie(response, issue_session_cookie(db), request)
     return response

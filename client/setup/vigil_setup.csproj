@@ -39,6 +39,8 @@
   <ItemGroup>
     <Compile Include="..\shared\VigilLayout.cs" Link="Shared\VigilLayout.cs" />
     <Compile Include="..\shared\FileAcls.cs" Link="Shared\FileAcls.cs" />
+    <Compile Include="..\shared\VigilToml.cs" Link="Shared\VigilToml.cs" />
+    <Compile Include="..\shared\LocalAdmins.cs" Link="Shared\LocalAdmins.cs" />
   </ItemGroup>
 
 </Project>

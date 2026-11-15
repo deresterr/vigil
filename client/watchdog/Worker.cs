@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.NetworkInformation;
+using System.Reflection;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -24,6 +25,11 @@ public sealed class Worker : BackgroundService
     private readonly VigilConfig _config;
     private readonly HeartbeatClient _client;
     private readonly SessionDetector _sessions;
+    private readonly ChildAdminCheck _childAdmin;
+
+    /// <summary>build-package.ps1 -Version, without the "+commit" the SDK appends.</summary>
+    private static readonly string? ClientVersion = typeof(Worker).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0];
     private readonly IUiManager _ui;
     private readonly ILogger<Worker> _logger;
     private readonly TotpSecretStore _totpStore;
@@ -34,14 +40,12 @@ public sealed class Worker : BackgroundService
     // are then verified locally (#9) instead of being forwarded to the server.
     private volatile bool _offlineLocked;
 
-    // Durations on the monotonic clock (#92): with the wall clock, an administrator who set it back after the
-    // last heartbeat and then blocked the server got a negative "time since last success" — no lock (fail-open).
-    private readonly long _startMs = ServerClock.MonotonicMs;
-
     // Tamper telemetry: identity of this process + awake clock at its start (server/app/tamper.py).
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private readonly long _awakeMsAtStart = AwakeClock.NowMs;
     private int _failedAttempts;
+    // Durations on the monotonic clock (#92): with the wall clock, an administrator who set it back after the
+    // last heartbeat and then blocked the server got a negative "time since last success" — no lock (fail-open).
     private long? _lastSuccessMs;  // null: never reached the server since the service started
     // The last heartbeat was refused for this computer's key (removed or re-paired in the panel): the offline
     // lock says so instead of "no connection", so the parent knows to pair it again (#120).
@@ -63,6 +67,7 @@ public sealed class Worker : BackgroundService
         VigilConfig config,
         HeartbeatClient client,
         SessionDetector sessions,
+        ChildAdminCheck childAdmin,
         IUiManager ui,
         TotpSecretStore totpStore,
         OfflineUnlock offline,
@@ -73,6 +78,7 @@ public sealed class Worker : BackgroundService
         _config = config;
         _client = client;
         _sessions = sessions;
+        _childAdmin = childAdmin;
         _ui = ui;
         _totpStore = totpStore;
         _offline = offline;
@@ -182,7 +188,8 @@ public sealed class Worker : BackgroundService
         UserActive = userActive,
         // The PC's own clock on purpose (not ServerClock): the server journals its drift (clock_drift).
         CurrentTimeUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
-        UptimeSeconds = (int)SecondsSince(_startMs),
+        ClientVersion = ClientVersion,
+        ChildAdmin = _childAdmin.Current(),
         InstanceId = _instanceId,
         AwakeMs = AwakeClock.NowMs,
         AwakeMsAtStart = _awakeMsAtStart,

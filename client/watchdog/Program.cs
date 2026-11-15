@@ -28,7 +28,8 @@ byte[] signingKey;
 try
 {
     vigilConfig = VigilConfig.LoadFromFile(configPath);
-    bootstrapLogger.LogInformation("Loaded vigil.toml: server={Server}", vigilConfig.ServerUrl);
+    bootstrapLogger.LogInformation("Loaded vigil.toml: server={Server}, child's account {Child}", vigilConfig.ServerUrl,
+        vigilConfig.ChildSid ?? "(every session)");
     signingKey = DpapiKeyStore.Load(signingPath);
     bootstrapLogger.LogInformation("Signing key loaded ({Bytes} B)", signingKey.Length);
 }
@@ -66,6 +67,7 @@ builder.Services.AddSingleton<ServerClock>();
 builder.Services.AddSingleton(sp => new HeartbeatClient(
     vigilConfig, signingKey, sp.GetRequiredService<ServerClock>(), sp.GetRequiredService<ILogger<HeartbeatClient>>()));
 builder.Services.AddSingleton<SessionDetector>();
+builder.Services.AddSingleton<ChildAdminCheck>();
 
 builder.Services.AddSingleton(new UiManagerOptions { UiExePath = VigilLayout.PathOf(VigilLayout.UiExe) });
 builder.Services.AddSingleton<NamedPipeIpcServer>();

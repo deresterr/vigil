@@ -309,6 +309,8 @@
     ul.devs .nm { margin: 0; font-size: .95rem; }
     ul.devs .st { margin: 2px 0 0; font-size: .84rem; color: var(--text-3); }
     ul.devs .st .upd { color: var(--accent-text); }  /* #159: a newer client exists */
+    ul.devs .adm { display: flex; gap: 6px; align-items: baseline; margin: 4px 0 0; font-size: .84rem;
+                   color: var(--danger-text); }  /* #165: the child's account is an administrator */
     /* Settings → Time zone and clock (#161): key/value rows, the clock's state with a dot */
     .kv { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0;
           border-top: 1px solid var(--divider); font-size: .92rem; }
@@ -766,6 +768,8 @@ const JOURNAL = {
                                   (d.logged_off ? t('Użytkownik został wylogowany') : t('Wylogowanie się nie powiodło'))}),
   tamper_guardian_repaired:  d => ({title: t('Strażnik Vigila znalazł zmianę w instalacji'),
                              sub: (GUARDIAN_CHECKS[d.check] || d.check) + ' · ' + (d.repaired ? t('Naprawione') : t('Naprawa nie powiodła się'))}),
+  tamper_child_admin:        () => ({title: t('Konto dziecka dostało uprawnienia administratora'),
+                             sub: t('Dziecko może teraz obejść Vigil — sprawdź konta w ustawieniach Windows')}),
   tamper_watchdog_silent:    d => ({title: t('Vigil nie odzywał się, choć komputer działał'),
                              sub: t('Ok. {time} — proces mógł zostać wstrzymany', {time: mins(d.awake_gap_seconds)})}),
   totp_lockout:              d => ({title: t('Kilka błędnych kodów na ekranie blokady'),
@@ -1030,7 +1034,10 @@ function fillChildSettings(force) {
     `<li><span class="dd${d.online ? ' on' : ''}"></span><div class="grow"><p class="nm">${esc(d.name)}</p>` +
     `<p class="st">${t('Sparowany {date}', {date: esc(d.paired_local)})}` +
     (d.client_version ? ` · Vigil ${esc(d.client_version)}` : '') +
-    (d.update_needed ? ` · <span class="upd">${t('Do aktualizacji')}</span>` : '') + `</p></div><div class="acts">` +
+    (d.update_needed ? ` · <span class="upd">${t('Do aktualizacji')}</span>` : '') + `</p>` +
+    // #165: shown whenever reported, in the one-account setup too (the child is an administrator by design there).
+    (d.child_admin ? `<p class="adm"><b>!</b><span>${t('Konto dziecka jest administratorem — dziecko może obejść Vigil.')}</span></p>` : '') +
+    `</div><div class="acts">` +
     `<button class="btn-sm" onclick="renameDevice(${d.id})">${t('Zmień nazwę')}</button>` +
     `<button class="btn-sm" onclick="repairDevice(${d.id})">${t('Sparuj ponownie')}</button>` +
     `<button class="btn-sm danger" onclick="unpairDevice(${d.id})">${t('Odłącz')}</button></div></li>`).join('')

@@ -41,6 +41,9 @@ class HeartbeatRequest(_Wire):
     offline_grants: Annotated[list[OfflineGrant], Field(max_length=50)] = []
     # The client's version (#159; build-package.ps1 -Version); clients up to 0.9 send none.
     client_version: Annotated[str, Field(max_length=64)] | None = None
+    # Whether the child's account is in Administrators (#165): with it the child can get round Vigil. Clients up
+    # to 0.9 send none. In the one-account setup it is true by design.
+    child_admin: bool | None = None
 
     @model_validator(mode="after")
     def _telemetry_all_or_nothing(self) -> HeartbeatRequest:

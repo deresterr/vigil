@@ -12,8 +12,8 @@ public sealed record UserAccount(string Sid, string Name, string ProfilePath)
 }
 
 /// <summary>
-/// User accounts with a profile on this PC. The child's account is the only interactive one (D12), so the
-/// installer finds it without asking.
+/// User accounts with a profile on this PC. In the one-account setup the child's account is the only interactive
+/// one, so the installer finds it without asking; in the standard-account setup (D30) vigil.toml names it.
 /// </summary>
 public static class Accounts
 {
@@ -72,13 +72,19 @@ public static class Accounts
     }
 }
 
-/// <summary>The account the per-user policies go to: given by name, or the only interactive one.</summary>
+/// <summary>The account the per-user policies go to: given by name, the installed child's account (vigil.toml),
+/// or the only interactive one.</summary>
 public sealed record ChildAccountChoice(UserAccount? Account, string? Problem)
 {
-    /// <summary>Without asking (verify, parameter mode). A name that does not resolve is a problem.</summary>
+    /// <summary>Without asking (verify, parameter mode, the menu). A name that does not resolve is a problem.</summary>
     public static ChildAccountChoice Resolve(string? userName)
     {
         var accounts = Accounts.Interactive();
+        if (string.IsNullOrEmpty(userName) && Installer.InstalledChildSid() is { } installed)
+        {
+            var own = accounts.FirstOrDefault(a => a.Sid.Equals(installed, StringComparison.OrdinalIgnoreCase));
+            return own is not null ? new(own, null) : new(null, Strings.InstalledChildMissing(installed));
+        }
         if (!string.IsNullOrEmpty(userName))
         {
             var sid = Accounts.SidOf(userName);

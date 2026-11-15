@@ -12,11 +12,18 @@ public sealed record InstallRequest
     public required string ServerUrl { get; init; }
     /// <summary>The key from pairing; null = keep the installed signing.dat (update).</summary>
     public string? SigningKey { get; init; }
-    /// <summary>The account the per-user policies go to; null = the Default profile only.</summary>
+    /// <summary>The account the per-user policies go to; null = the Default profile only (or NewChild).</summary>
     public UserAccount? Child { get; init; }
+    /// <summary>The child's own account to create (D30, #160): it becomes Child, and the account this program runs
+    /// as becomes the parent's.</summary>
+    public NewChildAccount? NewChild { get; init; }
+    /// <summary>A first password for the parent's account, which has none (set as a change by the user).</summary>
+    public string? ParentPassword { get; init; }
     public bool ApplyUserPolicies { get; init; } = true;
     public bool DisableWinRE { get; init; }
 }
+
+public sealed record NewChildAccount(string Name, string? Password);
 
 /// <summary>
 /// install / update / update-config / uninstall. Each step reports a short title for the parent
@@ -92,8 +99,55 @@ public sealed class Installer
             throw;
         }
 
-        try { ReplaceService(req, staged); }
+        try
+        {
+            var (child, childSid) = PrepareAccounts(req);
+            ReplaceService(req with { Child = child }, childSid, staged);
+        }
         finally { DeleteStaged(staged); }
+    }
+
+    /// <summary>
+    /// The child's account and whether only its sessions count (vigil.toml child_sid, D30). A new account
+    /// (the parent's password set first, automatic sign-in off) or a standard one that exists: the
+    /// standard-account setup. The child an administrator: the one-account setup, every session counts — an account
+    /// a child-administrator creates is enforced too. An update keeps what is installed.
+    /// </summary>
+    private (UserAccount? Child, string? ChildSid) PrepareAccounts(InstallRequest req)
+    {
+        if (req.NewChild is null)
+        {
+            if (req.SigningKey is null) return (req.Child, InstalledChildSid());
+            if (req.Child is not { } existing || LocalAccounts.IsAdministrator(existing.Sid)) return (req.Child, null);
+            _r.Section(Strings.StepAccounts);
+            _r.Check(CheckLevel.Pass, Strings.ChildAccountStandard(existing.Name));
+            DisableAutoLogonExcept(existing);
+            return (existing, existing.Sid);
+        }
+
+        _r.Section(Strings.StepAccounts);
+        var parent = LocalAccounts.Current();
+        if (req.ParentPassword is { } password)
+        {
+            LocalAccounts.SetFirstPassword(parent.Name, password);
+            _r.Check(CheckLevel.Pass, Strings.ParentPasswordSet(parent.Name));
+        }
+        var child = LocalAccounts.CreateChild(req.NewChild.Name, req.NewChild.Password);
+        _r.Check(CheckLevel.Pass, Strings.ChildAccountCreated(child.Name, req.NewChild.Password is { Length: > 0 }));
+        DisableAutoLogonExcept(child);
+        return (child, child.Sid);
+    }
+
+    /// <summary>Windows signing in by itself to another account would start the PC in an administrator's session
+    /// nobody counts.</summary>
+    private void DisableAutoLogonExcept(UserAccount child)
+    {
+        var auto = LocalAccounts.AutoLogonUser();
+        if (auto is null) return;
+        var autoSid = Accounts.SidOf(auto);
+        if (autoSid is not null && autoSid.Equals(child.Sid, StringComparison.OrdinalIgnoreCase)) return;
+        LocalAccounts.DisableAutoLogon();
+        _r.Check(CheckLevel.Pass, Strings.AutoLogonDisabled(auto));
     }
 
     private static void DeleteStaged(List<(string Temp, string Target)> staged)
@@ -102,7 +156,7 @@ public sealed class Installer
             try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
-    private void ReplaceService(InstallRequest req, List<(string Temp, string Target)> staged)
+    private void ReplaceService(InstallRequest req, string? childSid, List<(string Temp, string Target)> staged)
     {
         _r.Section(Strings.StepStopping);
         if (ServiceControl.Status() is not null)
@@ -129,7 +183,7 @@ public sealed class Installer
 
         _r.Section(Strings.StepConfig);
         WriteGuardianHash();
-        WriteConfig(req.ServerUrl);
+        WriteConfig(req.ServerUrl, childSid);
         if (req.SigningKey is not null) WriteSigningKey(req.SigningKey);
         else _r.Info(Strings.KeyKept);
 
@@ -159,17 +213,10 @@ public sealed class Installer
     }
 
     /// <summary>The installed server address (vigil.toml), or null.</summary>
-    public static string? InstalledServerUrl()
-    {
-        try
-        {
-            var text = File.ReadAllText(P(VigilLayout.ConfigFile));
-            var m = System.Text.RegularExpressions.Regex.Match(text, "server_url\\s*=\\s*\"([^\"]+)\"");
-            return m.Success ? m.Groups[1].Value : null;
-        }
-        catch (IOException) { return null; }
-        catch (UnauthorizedAccessException) { return null; }
-    }
+    public static string? InstalledServerUrl() => VigilToml.Read(P(VigilLayout.ConfigFile), VigilToml.ServerUrl);
+
+    /// <summary>The installed child's account in the standard-account setup (vigil.toml), or null.</summary>
+    public static string? InstalledChildSid() => VigilToml.Read(P(VigilLayout.ConfigFile), VigilToml.ChildSid);
 
     // === update-config ===
 
@@ -186,7 +233,7 @@ public sealed class Installer
         InstallAcls.Reclaim(VigilLayout.InstallDir);
         try
         {
-            WriteConfig(serverUrl);
+            WriteConfig(serverUrl, InstalledChildSid());
             if (signingKey is not null) WriteSigningKey(signingKey);
         }
         finally
@@ -209,6 +256,7 @@ public sealed class Installer
         // The copy in the folder (the guardian's) cannot delete itself while it runs.
         if (RunningFromInstallDir) throw new SetupException(Strings.RunFromPackage);
         var failsBefore = _r.Fail;
+        var childSid = InstalledChildSid();
         void Step(string title, Action body)
         {
             _r.Section(title);
@@ -250,6 +298,8 @@ public sealed class Installer
             _r.Check(CheckLevel.Pass, Strings.FolderRemoved(VigilLayout.InstallDir));
         });
         _r.Info(Strings.BootMenuNotRestored);
+        // The child's own account and its files stay (D30): the parent removes it in Windows' settings if wanted.
+        if (childSid is not null) _r.Info(Strings.ChildAccountKept(Accounts.NameOf(childSid)));
         return _r.Fail == failsBefore;
     }
 
@@ -306,12 +356,12 @@ public sealed class Installer
         _r.Check(CheckLevel.Pass, Strings.GuardianHashWritten(hash[..16]));
     }
 
-    private void WriteConfig(string serverUrl)
+    private void WriteConfig(string serverUrl, string? childSid)
     {
-        File.WriteAllText(P(VigilLayout.ConfigFile),
-            "# Vigil configuration. No secrets: the signing key is in signing.dat (DPAPI, SYSTEM only).\r\n\r\n" +
-            $"server_url = \"{serverUrl}\"\r\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(P(VigilLayout.ConfigFile), VigilToml.Write(serverUrl, childSid),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         _r.Check(CheckLevel.Pass, Strings.ConfigWritten(serverUrl));
+        _r.Info(childSid is null ? Strings.ConfigEverySession : Strings.ConfigChildOnly(Accounts.NameOf(childSid)));
     }
 
     private void WriteSigningKey(string base64Url)

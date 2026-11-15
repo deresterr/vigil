@@ -34,6 +34,17 @@ internal sealed class IndentedConsole(IAnsiConsole inner) : IAnsiConsole
     // No deadlock with Spectre's progress renderer: it never holds its lock while it writes.
     private readonly object _gate = new();
 
+    /// <summary>Raw VT sequences (Spectre 0.55+: live displays move the cursor through this). What they do to the
+    /// line is not visible here; a live display redraws from a line start, so the next text gets the margin.</summary>
+    public void WriteAnsi(Action<AnsiWriter> action)
+    {
+        lock (_gate)
+        {
+            inner.WriteAnsi(action);
+            _atLineStart = true;
+        }
+    }
+
     public void Write(IRenderable renderable)
     {
         lock (_gate)

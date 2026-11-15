@@ -119,6 +119,42 @@ internal static class Prompts
         }
     }
 
+    /// <summary>A password: each character shown as a dot (an asterisk without Unicode), Backspace and Esc as in
+    /// <see cref="Line"/>. Returned as typed, not trimmed.</summary>
+    public static string Secret(IAnsiConsole c, string prompt)
+    {
+        c.Markup($"[bold]{Theme.Esc(prompt)}[/] ");
+        var dot = c.Profile.Capabilities.Unicode ? "•" : "*";
+        var text = new StringBuilder();
+        while (true)
+        {
+            var key = c.Input.ReadKey(intercept: true);
+            if (key is null) continue;
+            var k = key.Value;
+            if (k.Key == ConsoleKey.Enter)
+            {
+                c.WriteLine();
+                return text.ToString();
+            }
+            if (k.Key == ConsoleKey.Backspace)
+            {
+                if (text.Length == 0) continue;
+                text.Length--;
+                c.Write("\b \b");
+                continue;
+            }
+            if (k.Key == ConsoleKey.Escape)
+            {
+                if (text.Length > 0) c.Write(string.Concat(Enumerable.Repeat("\b \b", text.Length)));
+                text.Clear();
+                continue;
+            }
+            if (char.IsControl(k.KeyChar)) continue;
+            text.Append(k.KeyChar);
+            c.Write(dot, Theme.Accent);
+        }
+    }
+
     /// <summary>A code of up to <paramref name="length"/> digits, shown in groups ("1234 5678" for
     /// <paramref name="group"/> 4). Other keys are ignored; Backspace removes a digit, Esc the whole field.
     /// Returns the digits typed (maybe fewer than <paramref name="length"/>: the caller says so).</summary>

@@ -89,6 +89,41 @@ internal static class Win32
     [DllImport("netapi32.dll")]
     public static extern int NetApiBufferFree(IntPtr buffer);
 
+    // The child's own account (#160)
+    public const uint USER_PRIV_USER = 1;
+    public const uint UF_SCRIPT = 0x0001;
+    public const uint UF_PASSWD_NOTREQD = 0x0020;
+    public const uint UF_DONT_EXPIRE_PASSWD = 0x10000;
+    public const int ERROR_MEMBER_IN_ALIAS = 1378;
+    public const int ERROR_LOGON_FAILURE = 1326;
+    public const int ERROR_ACCOUNT_RESTRICTION = 1327;
+    public const int LOGON32_LOGON_INTERACTIVE = 2;
+    public const int LOGON32_PROVIDER_DEFAULT = 0;
+    public const int HRESULT_ALREADY_EXISTS = unchecked((int)0x800700B7);
+
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int NetUserAdd(string? serverName, int level, ref USER_INFO_1 buffer, out int parmError);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct LOCALGROUP_MEMBERS_INFO_3 { public string lgrmi3_domainandname; }
+
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int NetLocalGroupAddMembers(string? serverName, string groupName, int level,
+        ref LOCALGROUP_MEMBERS_INFO_3 buffer, int totalEntries);
+
+    /// <summary>A change as the user (old password known), not an administrator's reset: DPAPI keeps the
+    /// account's protected data (saved browser passwords, Credential Manager).</summary>
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int NetUserChangePassword(string? domainName, string? userName, string oldPassword, string newPassword);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool LogonUserW(string userName, string? domain, string password, int logonType,
+        int logonProvider, out SafeAccessTokenHandle token);
+
+    /// <summary>The profile (NTUSER.DAT from the Default profile) without a logon.</summary>
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    public static extern int CreateProfile(string sid, string userName, [Out] char[] profilePath, uint size);
+
     // === Console ===
 
     [DllImport("kernel32.dll")]

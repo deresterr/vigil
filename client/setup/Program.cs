@@ -76,18 +76,21 @@ static int RunMode(Cli cli, LogReport log)
         }
         case "install":
         {
+            // The account checked before pairing: a name taken or a missing password must not cost the code.
             var (url, code) = RequireUrlAndCode(cli);
+            var req = Request(cli, url, null, report);
             var key = installer.Pair(url, code);
-            installer.Install(Request(cli, url, key, report));
+            installer.Install(req with { SigningKey = key });
             break;
         }
         case "reinstall":
         {
             // Pairing first: a wrong code leaves the installation as it was.
             var (url, code) = RequireUrlAndCode(cli);
+            var req = Request(cli, url, null, report);
             var key = installer.Pair(url, code);
             installer.Uninstall();
-            installer.Install(Request(cli, url, key, report));
+            installer.Install(req with { SigningKey = key });
             break;
         }
         case "update":
@@ -139,9 +142,28 @@ static string Normalize(string raw)
 static string Code(string raw) => Pairing.NormalizeCode(raw) ?? throw new SetupException(Strings.CodeFormat);
 
 /// <summary>Parameters: the account is resolved, never asked for; several accounts and no -ChildUsername =
-/// the Default profile only.</summary>
+/// the Default profile only. -CreateChildAccount: a new standard account (passwords from the environment).</summary>
 static InstallRequest Request(Cli cli, string url, string? key, IReport report)
 {
+    if (cli.CreateChildAccount is { } name)
+    {
+        if (LocalAccounts.NameProblem(name) is { } problem) throw new SetupException(problem);
+        var parent = LocalAccounts.Current();
+        var parentPassword = LocalAccounts.HasBlankPassword(parent.Name)
+            ? Environment.GetEnvironmentVariable("VIGIL_PARENT_PASSWORD") is { Length: > 0 } p
+                ? p : throw new SetupException(Strings.ParentPasswordNeeded(parent.Name))
+            : null;
+        report.Info(Strings.ChildAccount(name));
+        return new InstallRequest
+        {
+            ServerUrl = url,
+            SigningKey = key,
+            NewChild = new NewChildAccount(name, Environment.GetEnvironmentVariable("VIGIL_CHILD_PASSWORD") is { Length: > 0 } c ? c : null),
+            ParentPassword = parentPassword,
+            ApplyUserPolicies = !cli.NoUserPolicies,
+            DisableWinRE = cli.DisableWinRE,
+        };
+    }
     var child = ChildAccountChoice.Resolve(cli.ChildUserName);
     if (child.Account is null && cli.ChildUserName is not null) throw new SetupException(child.Problem!);
     // Without an account the policies step warns that only the default profile gets them.

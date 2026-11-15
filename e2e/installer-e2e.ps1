@@ -17,6 +17,8 @@
            then another program registered as the service with a delayed start
         -> C:\ProgramData\Vigil deleted with the watchdog stopped (the README's emergency path from WinRE)
         -> vigil_setup uninstall -> nothing left
+        -> install with -CreateChildAccount (D30): a new standard account, only its sessions count; update
+           keeps it, uninstall leaves the account
         -> the wizard (key script): unreachable address, wrong code, install -> verify
         -> the menu (key script): check, uninstall -> nothing left
 
@@ -25,7 +27,8 @@
     tamper_guardian_repaired, and an uninstall reaches the server as a normal service stop (goodbye ->
     tamper_service_stopped), not as a killed watchdog.
 
-    Only for a disposable machine: it installs the service, sets the per-user policies on -ChildUsername
+    Only for a disposable machine: it installs the service, sets the per-user policies on -ChildUsername,
+    creates local accounts, sets a password on its own account if it has none, turns automatic sign-in off
     and changes the boot menu policy.
 
 .PARAMETER ChildUsername
@@ -425,6 +428,41 @@ try {
     Assert-Verify 1 'service registered, folder gone'
     Assert-Setup 'uninstall of what is left' -Mode uninstall
     Assert-Verify 0 'after uninstall (nothing left)'
+
+    Write-Section 'A new standard account for the child (-CreateChildAccount, D30)'
+    # The account the installer creates: local, standard, with a profile, and the only one whose sessions count.
+    # Passwords come from the environment, never an argument. The parent's (the runner's account) is used only
+    # if that account has none yet; it is set here so the run does not depend on the runner image.
+    $NewChild = 'vigilkid'
+    $code = New-PairingCode @{ device_id = (Get-Device).id }
+    $env:VIGIL_CHILD_PASSWORD = "Kid-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
+    $env:VIGIL_PARENT_PASSWORD = "Parent-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
+    try {
+        Assert-Setup 'install with a new child account' -Mode install -ServerUrl $ServerUrl -PairingCode $code -CreateChildAccount $NewChild
+    } finally {
+        Remove-Item Env:VIGIL_CHILD_PASSWORD, Env:VIGIL_PARENT_PASSWORD -ErrorAction SilentlyContinue
+    }
+    $kid = Get-LocalUser -Name $NewChild -ErrorAction SilentlyContinue
+    Assert-That ($null -ne $kid) "the account '$NewChild' exists"
+    $admins = @(Get-LocalGroupMember -SID 'S-1-5-32-544' | ForEach-Object { $_.SID.Value })
+    Assert-That (-not ($admins -contains $kid.SID.Value)) "'$NewChild' is not an administrator"
+    $kidProfile = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($kid.SID.Value)").ProfileImagePath
+    Assert-That (Test-Path (Join-Path $kidProfile 'NTUSER.DAT')) "'$NewChild' has a profile ($kidProfile)"
+    $toml = Get-Content 'C:\ProgramData\Vigil\vigil.toml' -Raw
+    Assert-That ($toml -match "child_sid = `"$($kid.SID.Value)`"") 'vigil.toml names the child''s account'
+    $winlogon = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    Assert-That ($winlogon.AutoAdminLogon -ne '1') 'no automatic sign-in to another account'
+    Wait-Heartbeat 'the PC is online with the new child account'
+    $device = Get-Device
+    Assert-That ($device.child_admin -eq $false) "the heartbeat says the child's account is not an administrator (got '$($device.child_admin)')"
+    Assert-That ($device.client_version -like '0.0.0-*') "the heartbeat carries the client's version (got '$($device.client_version)')"
+    Assert-Verify 0 'installed with a new child account'
+    Assert-Setup 'update keeps the child account' -Mode update
+    $toml = Get-Content 'C:\ProgramData\Vigil\vigil.toml' -Raw
+    Assert-That ($toml -match 'child_sid') 'update kept child_sid'
+    Assert-Setup 'uninstall (the child account stays)' -Mode uninstall
+    Assert-That ($null -ne (Get-LocalUser -Name $NewChild -ErrorAction SilentlyContinue)) "'$NewChild' kept after uninstall"
+    Assert-Verify 0 'after uninstall (nothing of Vigil left)'
 
     Write-Section 'The wizard (key script)'
     $code = New-PairingCode @{ device_id = (Get-Device).id }

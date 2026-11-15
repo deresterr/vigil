@@ -10,7 +10,8 @@ namespace Vigil.Setup.Screens;
 ///
 /// The child's account (D30, #160): one account that is an administrator — the typical PC — gets a choice,
 /// by default a new standard account for the child (then, when the current account has no password, a password
-/// for it: it becomes the parent's); several accounts — the one the child signs in to.
+/// for it: it becomes the parent's); several accounts — the one the child signs in to (a standard one: the
+/// parent's password too, when the current account has none).
 /// </summary>
 internal static class Wizard
 {
@@ -31,8 +32,10 @@ internal static class Wizard
         var offerNewChild = app.ChildUserName is null && accounts.Count == 1 && LocalAccounts.IsAdministrator(accounts[0].Sid);
         var severalAccounts = app.ChildUserName is null && accounts.Count > 1;
         var parent = LocalAccounts.Current();
-        // Asked once, here: every try counts towards the account lockout threshold.
-        var parentNeedsPassword = offerNewChild && LocalAccounts.HasBlankPassword(parent.Name);
+        // Asked at most once: every try counts towards the account lockout threshold.
+        bool? parentBlank = null;
+        bool ParentBlank() => parentBlank ??= LocalAccounts.HasBlankPassword(parent.Name);
+        var parentNeedsPassword = offerNewChild && ParentBlank();
         var autoLogon = LocalAccounts.AutoLogonUser();
 
         // The step count follows the choices (the default first: a new account).
@@ -81,13 +84,21 @@ internal static class Wizard
             }
             else
             {
+                total = severalAccounts ? 4 : 3;
                 child = severalAccounts ? app.AskAccount(Header(3, Strings.UiAccountTitle))
                     : ChildAccountChoice.Resolve(app.ChildUserName).Account;
+                // A standard account that exists: the parent's account needs a password as well (D30).
+                if (child is not null && !LocalAccounts.IsAdministrator(child.Sid) && ParentBlank())
+                {
+                    total++;
+                    parentPassword = AskParentPassword(app, Header(total - 1, Strings.UiParentPasswordTitle), parent.Name,
+                        autoLogon is not null && !autoLogon.Equals(child.Name, StringComparison.OrdinalIgnoreCase) ? autoLogon : null);
+                }
             }
 
             Header(total, Strings.UiSummaryTitle)();
             if (newChild is not null) SummaryNewChild(c, url, newChild.Name, parent.Name, parentPassword is not null, autoLogon);
-            else Summary(c, url, child);
+            else Summary(c, url, child, parent.Name, parentPassword is not null, autoLogon);
             var choice = Prompts.Menu(c, new[]
             {
                 new Choice<int>('1', Strings.UiChoiceInstall, 1),
@@ -250,7 +261,8 @@ internal static class Wizard
         }
     }
 
-    private static void Summary(IAnsiConsole c, string url, UserAccount? child)
+    private static void Summary(IAnsiConsole c, string url, UserAccount? child, string parent, bool newPassword,
+        string? autoLogon)
     {
         // A standard account that exists: the standard-account setup without creating one.
         var standard = child is not null && !LocalAccounts.IsAdministrator(child.Sid);
@@ -265,6 +277,10 @@ internal static class Wizard
         c.MarkupLine($"[bold]{Theme.Esc(Strings.UiSummaryWhat)}[/]");
         if (standard)
         {
+            // Automatic sign-in to the child's own account stays; to any other it is turned off.
+            var autoOff = autoLogon is not null && !autoLogon.Equals(child!.Name, StringComparison.OrdinalIgnoreCase);
+            if (newPassword) Theme.Bullet(c, Strings.UiSummaryParentPassword(parent, autoOff));
+            else if (autoOff) Theme.Bullet(c, Strings.UiSummaryAutoLogonOff);
             Theme.Bullet(c, Strings.UiSummaryServiceChild(child!.Name));
             Theme.Bullet(c, Strings.UiSummaryLockChild(child.Name));
             Theme.Bullet(c, Strings.UiSummaryPoliciesChild(child.Name));

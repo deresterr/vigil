@@ -30,11 +30,13 @@ public static class Strings
           -Mode update        [-ServerUrl <adres>]   pliki z tej paczki, konfiguracja i klucz bez zmian
           -Mode update-config [-ServerUrl <adres>] [-PairingCode <kod>]
           -Mode reinstall     -ServerUrl <adres> -PairingCode <kod>
+                              [-ChildUsername <konto> | -CreateChildAccount <nazwa>]
           -Mode uninstall
           -Mode verify        [-ChildUsername <konto>]   sprawdza, niczego nie zmienia
 
-        -CreateChildAccount: nowe konto standardowe dziecka; hasło dziecka (opcjonalne) w zmiennej
-        VIGIL_CHILD_PASSWORD, hasło Twojego konta — gdy go nie ma — w VIGIL_PARENT_PASSWORD.
+        Konto standardowe dziecka (-CreateChildAccount tworzy nowe, hasło dziecka — opcjonalne — w zmiennej
+        VIGIL_CHILD_PASSWORD; -ChildUsername wskazuje istniejące): liczy się tylko jego czas, a Twoje konto
+        musi mieć hasło — gdy go nie ma, podaj je w VIGIL_PARENT_PASSWORD.
 
         Kod wyjścia: 0 — gotowe, 1 — błąd (verify: co najmniej jeden błąd), 2 — złe parametry.
         """,
@@ -50,11 +52,13 @@ public static class Strings
           -Mode update        [-ServerUrl <address>]   files from this package, configuration and key kept
           -Mode update-config [-ServerUrl <address>] [-PairingCode <code>]
           -Mode reinstall     -ServerUrl <address> -PairingCode <code>
+                              [-ChildUsername <account> | -CreateChildAccount <name>]
           -Mode uninstall
           -Mode verify        [-ChildUsername <account>]   checks, changes nothing
 
-        -CreateChildAccount: a new standard account for the child; the child's password (optional) in the
-        VIGIL_CHILD_PASSWORD variable, your account's password — when it has none — in VIGIL_PARENT_PASSWORD.
+        A standard account for the child (-CreateChildAccount creates one, the child's optional password in
+        the VIGIL_CHILD_PASSWORD variable; -ChildUsername names an existing one): only its time counts, and
+        your account needs a password — when it has none, give it in VIGIL_PARENT_PASSWORD.
 
         Exit code: 0 — done, 1 — failed (verify: at least one failure), 2 — wrong parameters.
         """);

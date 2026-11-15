@@ -78,7 +78,7 @@ static int RunMode(Cli cli, LogReport log)
         {
             // The account checked before pairing: a name taken or a missing password must not cost the code.
             var (url, code) = RequireUrlAndCode(cli);
-            var req = Request(cli, url, null, report);
+            var req = Request(cli, url, null, report, fresh: true);
             var key = installer.Pair(url, code);
             installer.Install(req with { SigningKey = key });
             break;
@@ -87,7 +87,7 @@ static int RunMode(Cli cli, LogReport log)
         {
             // Pairing first: a wrong code leaves the installation as it was.
             var (url, code) = RequireUrlAndCode(cli);
-            var req = Request(cli, url, null, report);
+            var req = Request(cli, url, null, report, fresh: true);
             var key = installer.Pair(url, code);
             installer.Uninstall();
             installer.Install(req with { SigningKey = key });
@@ -97,7 +97,7 @@ static int RunMode(Cli cli, LogReport log)
         {
             var url = cli.ServerUrl is { } u ? Normalize(u) : Installer.InstalledServerUrl()
                 ?? throw new SetupException(Strings.NothingToUpdate);
-            installer.Install(Request(cli, url, null, report));
+            installer.Install(Request(cli, url, null, report, fresh: false));
             break;
         }
         case "update-config":
@@ -142,17 +142,14 @@ static string Normalize(string raw)
 static string Code(string raw) => Pairing.NormalizeCode(raw) ?? throw new SetupException(Strings.CodeFormat);
 
 /// <summary>Parameters: the account is resolved, never asked for; several accounts and no -ChildUsername =
-/// the Default profile only. -CreateChildAccount: a new standard account (passwords from the environment).</summary>
-static InstallRequest Request(Cli cli, string url, string? key, IReport report)
+/// the Default profile only. -CreateChildAccount: a new standard account (passwords from the environment).
+/// A fresh install for a standard account (new or existing) needs a password on the parent's account.</summary>
+static InstallRequest Request(Cli cli, string url, string? key, IReport report, bool fresh)
 {
     if (cli.CreateChildAccount is { } name)
     {
         if (LocalAccounts.NameProblem(name) is { } problem) throw new SetupException(problem);
-        var parent = LocalAccounts.Current();
-        var parentPassword = LocalAccounts.HasBlankPassword(parent.Name)
-            ? Environment.GetEnvironmentVariable("VIGIL_PARENT_PASSWORD") is { Length: > 0 } p
-                ? p : throw new SetupException(Strings.ParentPasswordNeeded(parent.Name))
-            : null;
+        var parentPassword = ParentPasswordIfBlank();
         report.Info(Strings.ChildAccount(name));
         return new InstallRequest
         {
@@ -173,7 +170,19 @@ static InstallRequest Request(Cli cli, string url, string? key, IReport report)
         ServerUrl = url,
         SigningKey = key,
         Child = child.Account,
+        ParentPassword = fresh && child.Account is { } existing && !LocalAccounts.IsAdministrator(existing.Sid)
+            ? ParentPasswordIfBlank() : null,
         ApplyUserPolicies = !cli.NoUserPolicies,
         DisableWinRE = cli.DisableWinRE,
     };
+}
+
+/// <summary>Null when the parent's account (the one this runs as) has a password; otherwise the first one, from
+/// VIGIL_PARENT_PASSWORD (never an argument). Tried once: a failed logon counts toward the lockout.</summary>
+static string? ParentPasswordIfBlank()
+{
+    var parent = LocalAccounts.Current();
+    if (!LocalAccounts.HasBlankPassword(parent.Name)) return null;
+    return Environment.GetEnvironmentVariable("VIGIL_PARENT_PASSWORD") is { Length: > 0 } p
+        ? p : throw new SetupException(Strings.ParentPasswordNeeded(parent.Name));
 }

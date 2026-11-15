@@ -120,22 +120,28 @@ public sealed class Installer
             if (req.SigningKey is null) return (req.Child, InstalledChildSid());
             if (req.Child is not { } existing || LocalAccounts.IsAdministrator(existing.Sid)) return (req.Child, null);
             _r.Section(Strings.StepAccounts);
+            SetParentPassword(req);
             _r.Check(CheckLevel.Pass, Strings.ChildAccountStandard(existing.Name));
             DisableAutoLogonExcept(existing);
             return (existing, existing.Sid);
         }
 
         _r.Section(Strings.StepAccounts);
-        var parent = LocalAccounts.Current();
-        if (req.ParentPassword is { } password)
-        {
-            LocalAccounts.SetFirstPassword(parent.Name, password);
-            _r.Check(CheckLevel.Pass, Strings.ParentPasswordSet(parent.Name));
-        }
+        SetParentPassword(req);
         var child = LocalAccounts.CreateChild(req.NewChild.Name, req.NewChild.Password);
         _r.Check(CheckLevel.Pass, Strings.ChildAccountCreated(child.Name, req.NewChild.Password is { Length: > 0 }));
         DisableAutoLogonExcept(child);
         return (child, child.Sid);
+    }
+
+    /// <summary>The first password of the account this runs as (the parent's), when the caller found it has none:
+    /// without one the child signs in to the parent's administrator account. A change as that user, never a reset.</summary>
+    private void SetParentPassword(InstallRequest req)
+    {
+        if (req.ParentPassword is not { } password) return;
+        var parent = LocalAccounts.Current();
+        LocalAccounts.SetFirstPassword(parent.Name, password);
+        _r.Check(CheckLevel.Pass, Strings.ParentPasswordSet(parent.Name));
     }
 
     /// <summary>Windows signing in by itself to another account would start the PC in an administrator's session

@@ -230,7 +230,7 @@ password manager.
 
 ## Development
 
-The server is Python 3.12 (FastAPI, SQLite), the client .NET 10.
+The server is Python (FastAPI, SQLite), the client .NET 10.
 
 - **Server:** `cd server && cp .env.example .env && docker compose up -d` builds the image locally. Tests:
   `pip install -r requirements-dev.txt && ruff check . && pytest -q`.

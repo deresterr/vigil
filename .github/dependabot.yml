@@ -1,0 +1,38 @@
+# Dependencies after 1.0 (#168): one pull request per ecosystem a month, each with every update it has.
+# A NuGet pull request changes the client, so it waits for the next VM session (CLAUDE.md) and is merged with
+# the client changes of that session; its CI artifact expires after a day (Re-run jobs brings it back).
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /server
+    schedule:
+      interval: monthly
+    groups:
+      server:
+        patterns: ["*"]
+
+  - package-ecosystem: nuget
+    directory: /client
+    schedule:
+      interval: monthly
+    groups:
+      client:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The server image's base (python:X.Y-slim). CI reads the Python version from the Dockerfile, so such a pull
+  # request is tested with the version it brings.
+  - package-ecosystem: docker
+    directory: /server
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]

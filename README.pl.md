@@ -176,6 +176,11 @@ Każdy mechanizm, grupa po grupie: [`docs/threat-model.pl.md`](docs/threat-model
 
 Każde [wydanie](https://github.com/deresterr/vigil/releases) mówi, której z tych dwóch części wymaga.
 
+**Kopia zapasowa.** Wszystko, co trzyma serwer, jest w `data/`. Kopiuj przy zatrzymanym kontenerze, żeby baza była
+kompletna: `docker compose stop && sudo cp -a data data-backup && docker compose start`. Żeby odtworzyć, zatrzymaj
+kontener, połóż kopię z powrotem jako `data/` i uruchom go. Bez serwera PC blokują się po 30 sekundach i odblokowują,
+gdy wróci, więc rób to poza czasem dzieci przy komputerze.
+
 ## Rozwiązywanie problemów
 
 <details>
@@ -201,6 +206,18 @@ Uwolnij PC spoza Windows:
 4. Odinstaluj z menu `vigil_setup.exe`, potem uruchom `vigil_setup.exe -Mode verify`.
 
 Krok po kroku (po angielsku): [`docs/installer.md`](docs/installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally).
+
+</details>
+
+<details>
+<summary><b>Nie pamiętam hasła do panelu</b></summary>
+
+<br>
+
+Nie da się go odzyskać: serwer trzyma tylko jego skrót i nic innego nie otwiera panelu. Zacznij od nowej bazy:
+zatrzymaj kontener, odsuń `data/` na bok, uruchom go i przejdź `/setup` od nowa (nowy kod w aplikacji na telefonie),
+potem na każdym PC uruchom `vigil_setup.exe` → **Sparuj ponownie** z kodem z nowego panelu. Trzymaj hasło
+w menedżerze haseł.
 
 </details>
 

@@ -175,6 +175,11 @@ Every mechanism, group by group: [`docs/threat-model.md`](docs/threat-model.md).
 
 Each [release](https://github.com/deresterr/vigil/releases) says which of the two it needs.
 
+**Backup.** Everything the server keeps is in `data/`. Copy it with the container stopped, so the database is
+complete: `docker compose stop && sudo cp -a data data-backup && docker compose start`. To restore, stop the
+container, put the copy back as `data/` and start it. Without the server the PCs lock after 30 seconds and unlock
+when it is back, so do it outside the children's computer time.
+
 ## Troubleshooting
 
 <details>
@@ -200,6 +205,18 @@ Free the PC from outside Windows:
 4. Uninstall from the `vigil_setup.exe` menu, then run `vigil_setup.exe -Mode verify`.
 
 Step by step: [`docs/installer.md`](docs/installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally).
+
+</details>
+
+<details>
+<summary><b>I forgot the panel password</b></summary>
+
+<br>
+
+It cannot be recovered: the server keeps only its hash, and nothing else opens the panel. Start with a new
+database: stop the container, move `data/` aside, start it and go through `/setup` again (a new code in the phone
+app), then on each PC run `vigil_setup.exe` → **Re-pair** with a code from the new panel. Keep the password in a
+password manager.
 
 </details>
 

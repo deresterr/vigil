@@ -225,7 +225,7 @@ w menedżerze haseł.
 
 | | Co jest potrzebne |
 |---|---|
-| **Serwer** | Docker na Linuksie. Obraz z wydania jest dla x86-64 (amd64); na innych architekturach zbuduj go z `server/`. |
+| **Serwer** | Docker na Linuksie. Obraz z wydania jest dla x86-64 (amd64); na innych architekturach zbuduj go z `server/`. Wyjście na UDP 123, żeby sprawdzać jego zegar z NTP (opcjonalnie, Ustawienia). |
 | **PC dziecka** | Windows 10 albo 11, x64, Home albo Pro. Konto dziecka jest jedynym kontem użytkownika i może mieć uprawnienia administratora; rodzic obsługuje PC z tego samego konta. |
 | **Rodzic** | Przeglądarka i aplikacja TOTP w telefonie. |
 

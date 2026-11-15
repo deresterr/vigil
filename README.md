@@ -224,7 +224,7 @@ password manager.
 
 | | What you need |
 |---|---|
-| **Server** | Docker on Linux. The release image is for x86-64 (amd64); elsewhere build it from `server/`. |
+| **Server** | Docker on Linux. The release image is for x86-64 (amd64); elsewhere build it from `server/`. Outbound UDP 123 to check its clock against NTP (optional, Settings). |
 | **Child's PC** | Windows 10 or 11, x64, Home or Pro. The child's account is the only user account and may be an administrator; the parent maintains the PC from that same account. |
 | **Parent** | A browser and a TOTP app on the phone. |
 

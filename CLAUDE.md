@@ -28,7 +28,7 @@ everywhere the same problem occurs, not only where it was reported.
   `e2e/ui-standalone.ps1` (CI, before it): vigil_ui's test mode for every lock reason must close itself after
   `--exit-after`; it prints the CPU use and ui.log.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/decisions.md` — the design decisions D1–D27 the code refers to. `docs/installer.md`, `docs/guardian.md`
+- `docs/decisions.md` — the design decisions D1–D28 the code refers to. `docs/installer.md`, `docs/guardian.md`
   describe those parts. `docs/threat-model.md` (+ `.pl.md`) is the full threat model the READMEs and SECURITY
   sum up; `docs/releasing.md` the CHANGELOG template and how a release is made. When a doc and the code disagree, the code wins: fix the doc.
 
@@ -146,6 +146,10 @@ everywhere the same problem occurs, not only where it was reported.
   nonce INSERT on a connection of its own waited out SQLite's 30 s busy timeout inside the event loop while a
   panel request held the lock with an uncommitted write — that request could never commit (#123). FastAPI
   resolves `Depends(get_db)` once per request, so a dependency and its endpoint share the connection.
+- Server: writes outside a request (the clock check, #161) take `db.locked_connection()`. A request holds
+  `get_db`'s lock until it ends (`require_admin_session` depends on it), so it starts such work as a task
+  (`clock.check_soon`) — awaiting it would deadlock. Each TestClient runs its own event loop and an `asyncio.Lock`
+  that once waited stays bound to its loop: conftest gives every test a fresh `_db_lock`.
 - DPAPI secrets are written with `FileAcls.WriteSecret` (restricted ACL from creation): a LocalMachine blob with
   our public entropy decrypts in any local process, so a moment with the folder's inherited ACL leaks it.
 

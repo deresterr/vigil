@@ -1,6 +1,7 @@
 // Weekly schedule (D19, #48, #102): the day grid of Settings → Weekly schedule and of the setup wizard.
 // pages.py inlines this after i18n.js, with DEFAULT_WEEK (a new child's week, config.default_schedule) before it.
 // The grid lives in an element with id="schedule"; inputs sLim0..6, sFrom0..6, sTo0..6, Monday first like the API.
+// At the end: the time zone and NTP server fields both pages share (#161).
 
 const DAYS = t('Pn Wt Śr Cz Pt So Nd').split(' ');
 const DAYS_FULL = [...Array(7)].map((_, i) => {  // 2026-11-02 is a Monday
@@ -87,4 +88,22 @@ function scheduleSummary(week) {
     else rows.push({from: i, to: i, text: text(d)});
   });
   return rows.map(r => [r.from === r.to ? DAYS[r.from] : DAYS[r.from] + '–' + DAYS[r.to], r.text]);
+}
+
+
+// === Time zone and NTP server (the wizard and Settings → Time zone and clock, #161) ===
+// Suggestions only: any IANA name the browser knows is accepted, as the server's zoneinfo knows the same names.
+const TIME_ZONES = ['Europe/Warsaw', 'Europe/London', 'Europe/Berlin', 'Europe/Prague', 'Europe/Kyiv',
+                    'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'UTC'];
+function timeZoneList(id) {
+  return `<datalist id="${id}">${TIME_ZONES.map(z => `<option value="${z}">`).join('')}</datalist>`;
+}
+function validTimeZone(tz) {
+  try { new Intl.DateTimeFormat('en', {timeZone: tz}); return !!tz; } catch { return false; }
+}
+// Empty (the check off), a host name, an IPv4 or an IPv6 address — no port (the server checks the same: clock.py).
+function validNtpServer(host) {
+  if (!host) return true;
+  if (host.includes(':')) return /^[0-9A-Fa-f:.]+$/.test(host) && host.split('::').length <= 2;
+  return /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/.test(host);
 }

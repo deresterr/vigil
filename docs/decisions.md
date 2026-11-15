@@ -1,6 +1,6 @@
 # Design decisions
 
-The decisions the code refers to as D1–D27, in short. The reasoning behind each is in the issues and pull
+The decisions the code refers to as D1–D28, in short. The reasoning behind each is in the issues and pull
 requests named next to it; the threat model in full is in [`threat-model.md`](threat-model.md).
 
 | # | Decision |
@@ -32,6 +32,7 @@ requests named next to it; the threat model in full is in [`threat-model.md`](th
 | D25 | Published as the same repository, with its history, issues and pull requests. |
 | D26 | Schema migrations start from the v0.8 schema: no database of an earlier version is migrated (#78). |
 | D27 | Fail-closed whatever the PC's network: no server answer since the service started or woke up (Fast Startup included), or none for 30 s, locks at once, without a grace period after logon. No network at all only changes the lock screen's message, never the decision: the child can switch Wi-Fi off without elevation (#128). |
+| D28 | NTP only checks the server's clock, it never sets or corrects it: setting it from the container needs `CAP_SYS_TIME` and changes the host's clock, and an NTP offset used for decisions would let a forged (unauthenticated) SNTP answer on the LAN move the night and the limit. A clock more than 60 s off is an alert; the time zone and the NTP server are set in the wizard and in Settings (#161). |
 
 ## Open
 

@@ -10,15 +10,15 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from typing import Annotated
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyotp
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from ..admin_auth import issue_session_cookie, set_session_cookie
-from ..config import TOTP_ACCOUNT, TOTP_ISSUER, default_schedule
+from ..clock import check_soon, valid_ntp_server, valid_timezone
+from ..config import CONFIG_DEFAULTS, TOTP_ACCOUNT, TOTP_ISSUER, default_schedule
 from ..crypto import hash_password, match_totp_step
 from ..db import get_config_value, get_db, log_event
 from ..pages import page
@@ -36,18 +36,12 @@ class SetupBody(BaseModel):
     child_name: Annotated[Name, StringConstraints(strip_whitespace=True)]
     password: Annotated[str, Field(min_length=8)]  # as typed: no stripping
     totp_code: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
-    timezone: Annotated[str, StringConstraints(strip_whitespace=True)] = "UTC"
+    timezone: Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(valid_timezone)] = "UTC"
+    # Checks the server's clock only (#161); scripts that leave it out get the default, empty turns it off.
+    ntp_server: Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(valid_ntp_server)] = \
+        CONFIG_DEFAULTS["ntp_server"]
     # Missing = a new child's week, as in POST /admin/api/children (scripts complete the wizard without it, e2e).
     schedule: Week = Field(default_factory=lambda: [DayPlan(**d) for d in default_schedule()])
-
-    @field_validator("timezone")
-    @classmethod
-    def _valid_tz(cls, v: str) -> str:
-        try:
-            ZoneInfo(v)
-        except (ZoneInfoNotFoundError, ValueError) as e:
-            raise ValueError("invalid") from e
-        return v
 
 
 def _field_errors(e: ValidationError) -> dict[str, str]:
@@ -100,6 +94,7 @@ async def setup_complete(request: Request, raw: Annotated[object, Body()] = None
     settings = [
         ("parent_password_hash", hash_password(body.password)),
         ("timezone",             body.timezone),
+        ("ntp_server",           body.ntp_server),
         ("setup_complete",       "1"),
     ]
     for key, value in settings:
@@ -108,6 +103,7 @@ async def setup_complete(request: Request, raw: Annotated[object, Body()] = None
     child_id = insert_child(db, ChildCreate(name=body.child_name, schedule=body.schedule))
 
     log_event(db, "setup_completed", {"child_name": body.child_name}, child_id=child_id)
+    check_soon()  # the NTP server just chosen
 
     # Logged in at once: the page goes straight to /admin
     response = JSONResponse({"ok": True})

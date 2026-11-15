@@ -16,7 +16,7 @@ import json
 import logging
 import sqlite3
 from collections.abc import AsyncGenerator, Generator
-from contextlib import closing, contextmanager
+from contextlib import asynccontextmanager, closing, contextmanager
 from datetime import date, datetime, timezone
 
 from .config import CONFIG_DEFAULTS, DATABASE_PATH
@@ -74,11 +74,18 @@ def get_connection() -> Generator[sqlite3.Connection, None, None]:
 _db_lock = asyncio.Lock()
 
 
-async def get_db() -> AsyncGenerator[sqlite3.Connection, None]:
-    """FastAPI dependency: one request at a time (asyncio.Lock)."""
+@asynccontextmanager
+async def locked_connection() -> AsyncGenerator[sqlite3.Connection, None]:
+    """A connection under the lock, for writes outside a request (the clock check, #161)."""
     async with _db_lock:
         with get_connection() as conn:
             yield conn
+
+
+async def get_db() -> AsyncGenerator[sqlite3.Connection, None]:
+    """FastAPI dependency: one request at a time (asyncio.Lock)."""
+    async with locked_connection() as conn:
+        yield conn
 
 
 # === Query helpers ===

@@ -1,6 +1,6 @@
 # Architecture
 
-How the system works today. The decisions behind it (D1–D27) are in [`decisions.md`](decisions.md), the
+How the system works today. The decisions behind it (D1–D28) are in [`decisions.md`](decisions.md), the
 installer in [`installer.md`](installer.md), the guardian in [`guardian.md`](guardian.md).
 
 ```
@@ -32,7 +32,15 @@ corrected by it (`ServerClock`), so a PC clock that is off — a fresh VM an hou
 being rejected for good: a request rejected for its timestamp is sent once more at once, signed with the time
 the rejection carried (#132; after a service start the offset is 0, and a PC 5 s ahead is common). Unsigned on purpose: a forged time only gets requests rejected.
 The heartbeat's `current_time_utc` stays the PC's own clock: more than 180 s off is journaled as `clock_drift`
-(once per device and local day).
+(once per device and local day), with `server_clock_ok`: whether NTP vouched for the server's clock at the time —
+only then does the panel blame the PC.
+
+Every decision follows the host's clock (`datetime.now`), so a wrong server clock moves the night and the limit
+and makes every TOTP code fail, online and offline. `clock.py` asks the NTP server from config (`ntp_server`,
+default `pool.ntp.org`, empty = off; set in the wizard and in Settings) with one SNTP exchange at start-up, every
+hour and when the setting changes: states `ok` / `off` (more than 60 s, an alert `server_clock_off` and a log
+line) / `no_answer` (a log line) / `disabled`, kept in memory and shown in Settings. It never sets the clock
+(D28).
 
 The watchdog's and `vigil_setup`'s HTTP clients follow no redirects (a 301 turned the POST into a GET behind a
 proxy forcing HTTPS; `vigil_setup` names the target to type instead), use no system proxy, buffer at most 64 KB

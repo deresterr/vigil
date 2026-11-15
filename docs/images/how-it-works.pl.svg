@@ -85,7 +85,7 @@
   <text class="lbl" x="124" y="258" style="fill:#4ade80">kod TOTP wpisany na ekranie blokady, także offline</text>
 
   <!-- Rules -->
-  <text class="note" x="24" y="322">• Brak odpowiedzi serwera przez 30 s: PC się blokuje.</text>
+  <text class="note" x="24" y="322">• Brak odpowiedzi serwera przez 30 s: sesja dziecka się blokuje.</text>
   <text class="note" x="24" y="348">• Kolejność: ręczna › cisza nocna › limit › pauza.</text>
   <text class="note" x="24" y="374">• Każda naprawa i manipulacja: alert w Dzienniku.</text>
 </svg>

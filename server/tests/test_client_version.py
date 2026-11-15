@@ -107,3 +107,10 @@ def test_client_version_of_a_release(tag, client):
 def test_client_version_needs_the_tags_section():
     with pytest.raises(SystemExit):
         release_notes.client_version(CHANGELOG, "1.0.3")
+
+
+def test_a_0_9_heartbeat_is_accepted(client, watchdog):
+    # A 1.x server works with a 0.9 client (D29): it still sends uptime_seconds and none of the 1.0 fields.
+    login(client)
+    watchdog.heartbeat(uptime_seconds=100)
+    assert (device(client)["client_version"], device(client)["child_admin"]) == (None, None)

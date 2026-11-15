@@ -84,7 +84,7 @@
   <text class="lbl" x="124" y="258" style="fill:#4ade80">TOTP code typed on the lock screen, also offline</text>
 
   <!-- Rules -->
-  <text class="note" x="24" y="322">• No answer from the server for 30 s: the PC locks.</text>
+  <text class="note" x="24" y="322">• No answer from the server for 30 s: the child's session locks.</text>
   <text class="note" x="24" y="348">• Lock order: manual › night › daily limit › pause.</text>
   <text class="note" x="24" y="374">• Every repair and tampering: an alert in the Journal.</text>
 </svg>

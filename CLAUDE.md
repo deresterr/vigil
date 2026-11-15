@@ -49,7 +49,7 @@ everywhere the same problem occurs, not only where it was reported.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 - Dependabot (`.github/dependabot.yml`, #168): one grouped pull request a month per ecosystem (pip, NuGet, Actions,
   the Docker base). A NuGet one is a client change: it waits for the next VM session and is merged with it; NuGet
-  majors are ignored (.NET 10 LTS, 10.0.x only). CI takes its Python version from `server/Dockerfile`'s `FROM`, so
+  majors are ignored (.NET 10 LTS, 10.0.x only). CI and the release's tests take their Python version from `server/Dockerfile`'s `FROM`, so
   a base-image bump is tested on the Python it brings — the installer e2e too, which runs the server on Windows
   (the client job also runs for `server/requirements.txt` and `server/Dockerfile`).
 
@@ -77,8 +77,9 @@ everywhere the same problem occurs, not only where it was reported.
   as a requirement); policies only as registry values, which Home honours.
 - **Accounts (D30)**: recommended, the child has a standard account and the parent an administrator one;
   `child_sid` in `vigil.toml` names the child, and only that account's active session is counted, locked and gets
-  vigil_ui (`SessionDetector`) — another account's session never is, also without a server (fail-closed is about
-  the child's session). Supported, one administrator account (D12): no `child_sid`, every active session is the
+  vigil_ui (`SessionDetector`, by the session token's SID — never its user name) — another account's session never
+  is, also without a server (fail-closed is about the child's session); a session whose account cannot be read
+  counts as the child's. Supported, one administrator account (D12): no `child_sid`, every active session is the
   child's, and the parent maintains the PC through it, so per-user policies (HKCU) hit the parent too. The installer
   writes `child_sid` only when the child's account is not an administrator (an account a child-administrator creates
   stays enforced); `update` keeps what is installed.

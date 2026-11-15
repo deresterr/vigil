@@ -180,7 +180,9 @@ Wi-Fi joined, cable in).
 2. `SessionDetector` — the WTS session ≠ 0 in Active state. Not Connected: that is the console at the logon
    screen with nobody signed in. With `child_sid` in `vigil.toml` (the standard-account setup, D30) only a session
    of that account counts: the active session of another account (the parent's, also after fast user switching)
-   is treated as no session — no time, no lock, no vigil_ui, whether the server answers or not. Without it (one
+   is treated as no session — no time, no lock, no vigil_ui, whether the server answers or not. The account is the
+   SID of the session's token (`WTSQueryUserToken`), not its user name; a session whose token cannot be read counts
+   as the child's (fail-closed). Without it (one
    administrator account, D12) every active session is the child's. `ChildAdminCheck` sends `child_admin`: whether
    that account (or, without `child_sid`, the active session's) is in Administrators, by SID, at most once a minute.
 3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, tray state.

@@ -36,9 +36,12 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
+      # The Python of the image being published (#168).
+      - id: py
+        run: echo "version=$(sed -n 's/^FROM python:\([0-9.]*\)-slim.*/\1/p' server/Dockerfile)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ steps.py.outputs.version }}
       - name: Tests before publishing
         working-directory: server
         run: |

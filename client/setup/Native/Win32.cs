@@ -33,9 +33,6 @@ internal static class Win32
 
     // === Registry ===
 
-    public const int KEY_READ = 0x20019;
-    public const int KEY_ALL_ACCESS = 0xF003F;
-
     // === Privileges ===
 
     public const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
@@ -101,7 +98,6 @@ internal static class Win32
     public const uint UF_PASSWD_NOTREQD = 0x0020;
     public const uint UF_DONT_EXPIRE_PASSWD = 0x10000;
     public const int ERROR_MEMBER_IN_ALIAS = 1378;
-    public const int ERROR_LOGON_FAILURE = 1326;
     public const int ERROR_ACCOUNT_RESTRICTION = 1327;
     public const int LOGON32_LOGON_INTERACTIVE = 2;
     public const int LOGON32_PROVIDER_DEFAULT = 0;

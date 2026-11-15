@@ -16,6 +16,7 @@ CONFIG_DEFAULTS: dict[str, str] = {
     # Set by the wizard
     "setup_complete":        "0",
     "timezone":              "UTC",  # the wizard's default too (setup.py)
+    "ntp_server":            "pool.ntp.org",  # checks the server's clock only, empty = off (clock.py, #161)
     # Technical parameters — not in the wizard
     "heartbeat_delta_max":        "15",
     "gap_detection_threshold":    "30",

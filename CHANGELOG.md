@@ -10,6 +10,12 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
 ### Panel
 - Settings show which version of Vigil each computer runs, and "Update needed" when a newer one for the PCs has
   been released. Computers with Vigil up to 0.9 show only "Update needed": they do not report their version.
+- Settings → "Time zone and clock": the time zone can now be changed after the setup wizard, and the card shows
+  whether the server's clock agrees with an NTP server (set in the wizard and there; empty turns the check off).
+  A server clock more than a minute off is an alert in the Journal — it makes TOTP codes fail. Vigil only checks
+  the clock, it never changes it.
+- The Journal blames a computer's clock ("the computer's clock is N min fast") only when NTP confirms the server's
+  clock; otherwise it says the two clocks differ.
 
 ### Server
 - Behind a reverse proxy: a new `FORWARDED_ALLOW_IPS` setting in `.env` (the proxy's address). Before, the panel's

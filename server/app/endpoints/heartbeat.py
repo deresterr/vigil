@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import Device, authenticate_request
+from ..clock import server_clock_confirmed
 from ..db import get_child, get_config_values, get_db, log_event
 from ..lock_logic import child_today, compute_lock_reason, minutes_remaining, night_window_at, parse_iso_utc
 from ..models import GoodbyeRequest, GuardianRepaired, HeartbeatRequest, TamperEvent
@@ -130,7 +131,9 @@ async def heartbeat(
             (device.id, day_start_utc.isoformat()),
         ).fetchone()
         if not logged:
-            log_event(db, "clock_drift", {"drift_seconds": int(drift)}, **ids)
+            # Whose clock is wrong is known only when NTP vouches for the server's (#161): the panel words it.
+            log_event(db, "clock_drift", {"drift_seconds": int(drift), "server_clock_ok": server_clock_confirmed()},
+                      **ids)
 
     # === 5. UI state (only while locked) ===
     # No sentences: vigil_ui words the lock screen in the child's Windows language from lock_reason (i18n, #52).

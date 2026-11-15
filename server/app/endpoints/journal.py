@@ -22,8 +22,8 @@ from ..lock_logic import NO_LIMIT, daily_limit, load_lock_config
 
 router = APIRouter(prefix="/admin/api", dependencies=[Depends(require_admin_session)])
 
-# Alerts: tamper_* plus signs of guessing. Shown until the parent confirms them.
-ALERT_EXTRA_TYPES = ("totp_lockout", "admin_login_locked", "pairing_code_invalidated")
+# Alerts: tamper_* plus signs of guessing and the server's clock off NTP (#161). Shown until the parent confirms them.
+ALERT_EXTRA_TYPES = ("totp_lockout", "admin_login_locked", "pairing_code_invalidated", "server_clock_off")
 ALERT_WHERE = (
     "(event_type LIKE 'tamper\\_%' ESCAPE '\\' OR event_type IN ("
     + ",".join(f"'{t}'" for t in ALERT_EXTRA_TYPES)

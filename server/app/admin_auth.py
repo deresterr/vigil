@@ -107,8 +107,8 @@ async def require_admin_session(
 # === Login throttling ===
 # Per client IP, in memory: single uvicorn worker (see CLAUDE.md) and a restart is not something the
 # child can trigger, so no persistence is needed. Per IP so a child hammering the login from their PC
-# does not lock the parent out on another device. Behind a reverse proxy all clients share one IP,
-# which degrades to a global limit — still safe, just stricter.
+# does not lock the parent out on another device. Behind a reverse proxy the address is the client's only when
+# FORWARDED_ALLOW_IPS names the proxy (#162); otherwise all clients share its address — a global limit.
 _FAILURES_PER_LOCKOUT = 5
 _LOCKOUT_STEPS_SECONDS = (60, 300, 900)
 _FORGET_AFTER_SECONDS = 86400

@@ -30,7 +30,7 @@ import pyotp
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from ..admin_auth import (
     issue_session_cookie,
@@ -39,12 +39,15 @@ from ..admin_auth import (
     set_session_cookie,
     verify_admin_password,
 )
+from ..clock import check_soon, valid_ntp_server, valid_timezone
+from ..clock import snapshot as clock_snapshot
 from ..config import TOTP_ACCOUNT, TOTP_ISSUER, default_schedule
 from ..crypto import hash_password
 from ..db import (
     ensure_child_day,
     get_child,
     get_config_value,
+    get_config_values,
     get_db,
     log_event,
     set_config_value,
@@ -180,6 +183,9 @@ async def status(db: sqlite3.Connection = Depends(get_db), child_id: int | None 
         "devices_total": devices_total,
         "alerts_unacked": sum(unacked.values()),
         "pairing_active": active_pairing_expiry(db, now_utc) is not None,
+        # Settings → "Time zone and clock" (#161).
+        "server": {"timezone": str(tz), "ntp_server": get_config_values(db, ("ntp_server",))["ntp_server"],
+                   "clock": clock_snapshot()},
     }
 
 
@@ -467,6 +473,27 @@ async def regen_totp(db: sqlite3.Connection = Depends(get_db)) -> dict:
         "uri": uri,
         "qr_png_base64": png_qr_base64(uri),
     }
+
+
+# === POST /admin/api/server_settings (#161) ===
+
+
+class ServerSettingsBody(_Body):
+    timezone: Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(valid_timezone)]
+    ntp_server: Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(valid_ntp_server)] = ""
+
+
+@router.post("/server_settings")
+async def server_settings(body: ServerSettingsBody, db: sqlite3.Connection = Depends(get_db)) -> dict:
+    """The time zone (shared by every child: the schedule, the night, the day boundary) and the NTP server that
+    checks the server's clock. A new NTP server is checked at once."""
+    before = get_config_values(db, ("ntp_server",))["ntp_server"]
+    for key, value in (("timezone", body.timezone), ("ntp_server", body.ntp_server)):
+        db.execute("INSERT OR REPLACE INTO config(key, value) VALUES (?, ?)", (key, value))
+    log_event(db, "config_updated", {"timezone": body.timezone, "ntp_server": body.ntp_server})
+    if body.ntp_server != before:
+        check_soon()
+    return {"ok": True}
 
 
 # === POST /admin/api/change_password ===

@@ -309,6 +309,19 @@
     ul.devs .nm { margin: 0; font-size: .95rem; }
     ul.devs .st { margin: 2px 0 0; font-size: .84rem; color: var(--text-3); }
     ul.devs .st .upd { color: var(--accent-text); }  /* #159: a newer client exists */
+    /* Settings → Time zone and clock (#161): key/value rows, the clock's state with a dot */
+    .kv { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0;
+          border-top: 1px solid var(--divider); font-size: .92rem; }
+    .kv:first-of-type { border-top: none; }
+    .kv .k { color: var(--text-2); }
+    .kv .v { text-align: right; overflow-wrap: anywhere; }
+    .clk::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px;
+                   vertical-align: 1px; }
+    .clk-ok { color: var(--ok); } .clk-ok::before { background: var(--ok); }
+    .clk-off { color: var(--danger-text); } .clk-off::before { background: var(--danger); }
+    .clk-no_answer, .clk-pending { color: var(--text-2); }
+    .clk-no_answer::before, .clk-pending::before { background: var(--text-3); }
+    .clk-disabled { color: var(--text-3); } .clk-disabled::before { border: 1px solid var(--text-3); }
     ul.devs .mins { font-size: .9rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
     ul.devs .acts { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding-left: 20px; }
     .btn-sm { min-height: 40px; padding: 0 12px; background: transparent; border: 1px solid var(--border-strong); border-radius: 8px;
@@ -447,6 +460,13 @@
   </div>
 
   <p class="section-label" data-i18n>Wspólne dla wszystkich dzieci</p>
+
+  <div class="card">
+    <h2 data-i18n>Strefa czasowa i zegar</h2>
+    <div class="kv"><span class="k" data-i18n>Strefa czasowa</span><span class="v" id="srvTz">—</span></div>
+    <div class="kv"><span class="k" data-i18n>Zegar serwera</span><span class="v clk" id="srvClock">—</span></div>
+    <button class="btn btn-ghost" onclick="editServerTime()" style="margin-top: 12px; width: 100%;" data-i18n>Zmień</button>
+  </div>
 
   <div class="card">
     <h2 data-i18n>Kod TOTP</h2>
@@ -608,6 +628,7 @@ async function loadStatus() {
     }
     if (journalChild !== 'all' && !s.children.some(c => c.id === journalChild)) journalChild = 'all';
     renderStatus(s);
+    renderServerTime(s.server);
   } catch (e) {
     document.getElementById('watchdogText').textContent = t('Błąd');
     document.getElementById('watchdogDot').className = 'dot offline';
@@ -712,8 +733,10 @@ const JOURNAL = {
                              sub: d.on_since ? t('Włączony od {since} ({time})', {since: d.on_since, time: fmtMinutes(d.minutes)}) : ''}),
   watchdog_offline:   d => ({cat: 'pc', tone: 'muted', icon: 'power', title: t('Brak połączenia z serwerem'),
                              sub: t('Przez ok. {time}', {time: mins(d.awake_gap_seconds)})}),
+  // Blamed on the PC only when NTP vouched for the server's clock at the time (#161).
   clock_drift:        d => ({cat: 'pc', tone: 'muted', icon: 'clock',
-                             title: d.drift_seconds > 0 ? t('Zegar komputera spieszy się o {time}', {time: mins(d.drift_seconds)})
+                             title: !d.server_clock_ok ? t('Zegar komputera i serwera różnią się o {time}', {time: mins(Math.abs(d.drift_seconds))})
+                                  : d.drift_seconds > 0 ? t('Zegar komputera spieszy się o {time}', {time: mins(d.drift_seconds)})
                                                         : t('Zegar komputera spóźnia się o {time}', {time: mins(-d.drift_seconds)}),
                              sub: t('Vigil używa czasu serwera')}),
   lock_started:       d => d.reason === 'night'
@@ -750,6 +773,8 @@ const JOURNAL = {
   admin_login_locked:        d => ({title: t('Wiele nieudanych logowań do panelu'),
                              sub: t('Z adresu {ip} · logowanie wstrzymane na {time}', {ip: d.ip, time: fmtSec(d.seconds || 0)})}),
   pairing_code_invalidated:  () => ({title: t('Kod parowania unieważniony'), sub: t('Po 5 błędnych próbach')}),
+  server_clock_off:          d => ({title: t('Zegar serwera różni się od NTP o {time}', {time: mins(Math.abs(d.offset_seconds))}),
+                             sub: t('Kody TOTP mogą nie działać — ustaw synchronizację czasu (NTP) na serwerze')}),
   device_paired:      () => ({cat: 'pc', tone: 'accent', icon: 'plus', title: t('Sparowano komputer')}),
   device_unpaired:    () => ({cat: 'parent', tone: 'muted', icon: 'minus', title: t('Rodzic odłączył komputer')}),
   child_added:        () => ({cat: 'parent', tone: 'accent', icon: 'plus', title: t('Dodano dziecko')}),
@@ -1224,6 +1249,42 @@ async function regenTotp() {
     totpModal(t('Nowy kod TOTP'), await api('/admin/api/regen_totp', {method: 'POST'}),
               ' <strong>' + t('Stary kod już nie działa.') + '</strong>');
   } catch (e) { fail(e); }
+}
+
+// Settings → Time zone and clock (#161). The clock's state comes from the server's NTP check (clock.py).
+function renderServerTime(srv) {
+  document.getElementById('srvTz').textContent = srv.timezone;
+  const c = srv.clock, el = document.getElementById('srvClock');
+  el.className = 'v clk clk-' + c.state;
+  el.textContent = c.state === 'ok' ? t('Zgodny z NTP')
+    : c.state === 'off' ? t('Różni się o {time}', {time: mins(Math.abs(c.offset_seconds))})
+    : c.state === 'no_answer' ? t('Brak odpowiedzi NTP')
+    : c.state === 'disabled' ? t('Kontrola wyłączona') : t('Sprawdzanie…');
+}
+
+function editServerTime() {
+  const srv = status.server;
+  showModal(t('Strefa czasowa i zegar'),
+    `<div class="form-row"><label for="mTz">${t('Strefa czasowa')}</label>` +
+    `<input type="text" id="mTz" list="mTzList" value="${esc(srv.timezone)}" autocapitalize="off" spellcheck="false"></div>` +
+    timeZoneList('mTzList') +
+    `<p class="muted" style="margin: 6px 0 0;">${t('Wspólna dla wszystkich dzieci: według niej działa harmonogram, cisza nocna i granica dnia. Zmiana przesuwa bieżący dzień — dzisiejsze minuty mogą trafić do innej daty.')}</p>` +
+    `<div class="form-row" style="margin-top: 16px;"><label for="mNtp">${t('Serwer NTP')}</label>` +
+    `<input type="text" id="mNtp" value="${esc(srv.ntp_server)}" autocapitalize="off" spellcheck="false"></div>` +
+    `<p class="muted" style="margin: 6px 0 0;">${t('Tylko do sprawdzania zegara serwera — Vigil niczego nie przestawia. Puste pole wyłącza kontrolę.')}</p>` +
+    `<button class="btn btn-primary" id="mOk" style="margin-top: 14px;">${t('Zapisz')}</button>`);
+  document.getElementById('mOk').onclick = async () => {
+    const timezone = document.getElementById('mTz').value.trim(), ntp_server = document.getElementById('mNtp').value.trim();
+    if (!validTimeZone(timezone)) { notice(t('Nieznana strefa czasowa — wybierz z listy, np. Europe/Warsaw.'), 'error'); return; }
+    if (!validNtpServer(ntp_server)) { notice(t('Serwer NTP: nazwa albo adres IP, bez portu — np. pool.ntp.org.'), 'error'); return; }
+    try {
+      await api('/admin/api/server_settings', {method: 'POST', body: {timezone, ntp_server}});
+      closeModal();
+      notice(t('Zapisano'), 'success');
+      await loadStatus();
+      setTimeout(loadStatus, 4000);  // a new NTP server is checked in the background (up to ~3 s)
+    } catch (e) { fail(e); }
+  };
 }
 
 function showModal(title, body) {

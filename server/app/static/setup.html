@@ -150,17 +150,10 @@
   <div class="step" id="s4">
     <label for="tz" data-i18n>Strefa czasowa</label>
     <input type="text" id="tz" value="UTC" list="tzList">
-    <datalist id="tzList">
-      <option value="Europe/Warsaw">
-      <option value="Europe/London">
-      <option value="Europe/Berlin">
-      <option value="Europe/Prague">
-      <option value="Europe/Kyiv">
-      <option value="America/New_York">
-      <option value="America/Chicago">
-      <option value="America/Los_Angeles">
-      <option value="UTC">
-    </datalist>
+    <span id="tzListHolder"></span>
+    <label for="ntp" data-i18n>Serwer NTP</label>
+    <input type="text" id="ntp" value="pool.ntp.org" autocapitalize="off" spellcheck="false">
+    <p class="hint" data-i18n>Tylko do sprawdzania zegara serwera — gdy się rozjedzie, kody TOTP przestają działać. Vigil niczego nie przestawia. Puste pole wyłącza kontrolę.</p>
     <label data-i18n>Harmonogram tygodnia</label>
     <p class="hint" data-i18n>Limit łącznie na wszystkich komputerach dziecka, 0 = bez limitu. Cisza nocna od wieczoru danego dnia do rana.</p>
     <div class="sched-templates">
@@ -188,6 +181,7 @@
 <!-- schedule -->
 <script>
 applyI18n();
+document.getElementById('tzListHolder').outerHTML = timeZoneList('tzList');
 // The browser's time zone as the default.
 try {
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -238,6 +232,9 @@ function goTo(step) {
     if (!validTimeZone(document.getElementById('tz').value.trim())) {
       showError(t('Nieznana strefa czasowa — wybierz z listy, np. Europe/Warsaw.')); return;
     }
+    if (!validNtpServer(document.getElementById('ntp').value.trim())) {
+      showError(t('Serwer NTP: nazwa albo adres IP, bez portu — np. pool.ntp.org.')); return;
+    }
     buildSummary();
   }
   document.getElementById('s' + currentStep).classList.remove('active');
@@ -247,15 +244,11 @@ function goTo(step) {
   if (step === 3) loadQr();
 }
 
-// The browser knows the IANA names the server's zoneinfo knows (Europe/Warsaw, UTC, …).
-function validTimeZone(tz) {
-  try { new Intl.DateTimeFormat('en', {timeZone: tz}); return !!tz; } catch { return false; }
-}
-
 // What the server can answer (setup.py: {field: code}) in the wizard's words; anything else as its code.
 const SERVER_ERRORS = {
   'totp_code:invalid': t('Kod TOTP jest nieprawidłowy — wróć do kroku 3 i wpisz aktualny kod albo pomiń TOTP.'),
   'timezone:invalid': t('Nieznana strefa czasowa — wybierz z listy, np. Europe/Warsaw.'),
+  'ntp_server:invalid': t('Serwer NTP: nazwa albo adres IP, bez portu — np. pool.ntp.org.'),
   'already_configured': t('Konfiguracja jest już zakończona — przejdź do panelu.'),
 };
 function serverError(detail) {
@@ -306,6 +299,7 @@ function buildSummary() {
     [t('Dziecko'), document.getElementById('childName').value.trim()],
     ['TOTP', totpVerified ? '✓ ' + t('skonfigurowany') : '— ' + t('pominięty (skonfiguruj później)')],
     [t('Strefa czasowa'), document.getElementById('tz').value],
+    [t('Serwer NTP'), document.getElementById('ntp').value.trim() || t('bez kontroli zegara')],
     ...scheduleSummary(readSchedule().week),
   ];
   document.getElementById('summary').innerHTML = rows.map(([k, v]) =>
@@ -326,6 +320,7 @@ function finish() {
     password:             document.getElementById('pass1').value,
     totp_code:            totpCode,
     timezone:             document.getElementById('tz').value.trim(),
+    ntp_server:           document.getElementById('ntp').value.trim(),
     schedule:             readSchedule().week,
   };
 

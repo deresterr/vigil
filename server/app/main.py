@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sqlite3
@@ -14,6 +15,7 @@ from starlette.requests import ClientDisconnect
 
 from . import db as db_module
 from .bootstrap import run_bootstrap
+from .clock import watch_clock
 from .db import get_config_value, get_connection, get_db, init_database
 from .endpoints.admin_api import router as admin_api_router
 from .endpoints.admin_views import router as admin_views_router
@@ -42,7 +44,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     with get_connection() as conn:
         if get_config_value(conn, "setup_complete") != "1":
             logger.warning("Setup not completed: open /setup to finish it")
+    clock_task = asyncio.create_task(watch_clock())
     yield
+    clock_task.cancel()
     logger.info("Vigil stopped")
 
 

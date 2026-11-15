@@ -1,11 +1,13 @@
 """Shared fixtures: fresh SQLite DB per test, one child with one paired device, a signed "watchdog".
 
-Module-level state in the app (login throttle) is reset per test, otherwise values from a previous
-test's DB leak into the next one.
+Module-level state in the app (login throttle, the clock check, the database lock) is reset per test, otherwise
+values from a previous test leak into the next one. The clock check never goes to the network: `ntp` sets what
+the fake NTP server answers (an offset in seconds, None = no answer).
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -17,8 +19,31 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.admin_auth
+import app.clock
 import app.db
 from app.config import week_schedule
+
+
+class FakeNtp:
+    def __init__(self) -> None:
+        self.offset: float | None = 0.0
+        self.asked: list[str] = []
+
+    async def __call__(self, host: str, *_args, **_kwargs) -> float | None:
+        self.asked.append(host)
+        return self.offset
+
+
+@pytest.fixture(autouse=True)
+def ntp(monkeypatch) -> FakeNtp:
+    fake = FakeNtp()
+    monkeypatch.setattr(app.clock, "sntp_offset", fake)
+    # Each TestClient runs its own event loop; an asyncio.Lock that once waited is bound to the loop it waited in.
+    # Only the clock check (a task next to a request) makes it wait in tests.
+    monkeypatch.setattr(app.db, "_db_lock", asyncio.Lock())
+    monkeypatch.setattr(app.clock, "_state", {"state": "pending", "offset_seconds": None, "server": "",
+                                              "checked_utc": None})
+    return fake
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ first, so we can agree on the approach before you write code.
 
 ## Building and testing
 
-**Server** (Python 3.12):
+**Server** (Python, the version in `server/Dockerfile`):
 
 ```bash
 cd server
@@ -40,6 +40,8 @@ removes Vigil on purpose. Test the package on a virtual machine; for the lock sc
 - **Invariants** listed in [`CLAUDE.md`](CLAUDE.md) (fail-closed, one uvicorn worker, time counted on the server,
   lock priority, Windows Home support, the two account setups, file names and DPAPI entropy) are design decisions: discuss before changing them.
 - **Tests.** New server behaviour gets a test; `ruff check .` and `pytest -q` pass. Client changes must build in CI.
+- **Dependencies** are updated by Dependabot: one grouped pull request a month per ecosystem. Client (NuGet)
+  updates are merged together with the next client changes tested on a virtual machine.
 - **Language.** Code, comments, logs and commit messages in English. User-facing text in Polish and English:
   the panel marks the Polish source text (`t('…')`, `data-i18n`) and keeps English in `server/app/static/i18n.js`;
   the lock screen and the installer keep both in their `Strings.cs`. The server and the service send codes, never sentences.

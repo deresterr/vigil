@@ -46,6 +46,9 @@ everywhere the same problem occurs, not only where it was reported.
   the lock, the console wizard) waits for that session. Server-only changes go one issue per PR. No stacked PRs:
   every PR targets `main`.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
+- Dependabot (`.github/dependabot.yml`, #168): one grouped pull request a month per ecosystem (pip, NuGet, Actions,
+  the Docker base). A NuGet one is a client change: it waits for the next VM session and is merged with it. CI
+  takes its Python version from `server/Dockerfile`'s `FROM`, so a base-image bump is tested on the Python it brings.
 
 ## Invariants (changing any of these is a design decision — ask first)
 - **Fail-closed**: no server answer since the service started, or none for 30 s (monotonic clock, which counts

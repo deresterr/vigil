@@ -238,7 +238,7 @@ w menedżerze haseł.
 
 ## Rozwój
 
-Serwer to Python 3.12 (FastAPI, SQLite), klient — .NET 10.
+Serwer to Python (FastAPI, SQLite), klient — .NET 10.
 
 - **Serwer:** `cd server && cp .env.example .env && docker compose up -d` buduje obraz lokalnie. Testy:
   `pip install -r requirements-dev.txt && ruff check . && pytest -q`.

@@ -11,7 +11,17 @@ Helpful details: the version (release tag or commit), what it affects (server, t
 steps to reproduce, and what rights on the child's PC it needs (standard account or administrator).
 
 This is a spare-time project: expect an answer within a few days and a fix in the next release.
-Only the latest version on the **Releases** tab is supported.
+
+## Supported versions
+
+| Version | Supported |
+|---|---|
+| The latest release on the **Releases** tab | Yes |
+| An older 1.x release | No — update; a 1.x server works with every 1.x PC |
+| 0.x | No |
+
+Security fixes in what the release ships — the .NET 10 runtime inside `vigil_setup.exe`, the server image's base —
+come as patch releases.
 
 ## What counts as a vulnerability
 

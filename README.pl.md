@@ -45,9 +45,9 @@
 </table>
 
 > [!NOTE]
-> **Przed wersją 1.0, w codziennym użyciu.** Daj dziecku konto standardowe — instalator je założy — a sam Windows
-> odmówi tego, co wyłączyłoby Vigila. Dziecko z uprawnieniami administratora jest w stanie Vigila obejść: Vigil to
-> utrudnia i pokazuje rodzicowi, ale nie uniemożliwia. Patrz [co Vigil zatrzyma, a czego nie](#co-vigil-zatrzyma-a-czego-nie).
+> Daj dziecku **konto standardowe** — instalator je założy — a sam Windows odmówi tego, co wyłączyłoby Vigila.
+> Dziecko z uprawnieniami administratora jest w stanie Vigila obejść: Vigil to utrudnia i pokazuje rodzicowi, ale
+> nie uniemożliwia. Patrz [co Vigil zatrzyma, a czego nie](#co-vigil-zatrzyma-a-czego-nie).
 
 ## Co potrafi
 
@@ -84,7 +84,7 @@ W pustym katalogu utwórz `compose.yaml`:
 ```yaml
 services:
   vigil:
-    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :0.9.1
+    image: ghcr.io/deresterr/vigil-server:latest   # albo konkretna wersja, np. :1.0.0
     container_name: vigil
     restart: unless-stopped
     ports:
@@ -182,6 +182,8 @@ Każdy mechanizm, grupa po grupie: [`docs/threat-model.pl.md`](docs/threat-model
 | **PC dziecka** | Uruchom nowy `vigil_setup.exe` → **Zaktualizuj do …**. Adres serwera i parowanie zostają. |
 
 Każde [wydanie](https://github.com/deresterr/vigil/releases) mówi, której z tych dwóch części wymaga.
+**Najpierw serwer**, potem PC: serwer 1.x działa z każdym PC z 1.x, więc PC mogą dołączyć, kiedy będzie wygodnie.
+Poprawki dostaje tylko najnowsze wydanie.
 
 **Kopia zapasowa.** Wszystko, co trzyma serwer, jest w `data/`. Kopiuj przy zatrzymanym kontenerze, żeby baza była
 kompletna: `docker compose stop && sudo cp -a data data-backup && docker compose start`. Żeby odtworzyć, zatrzymaj

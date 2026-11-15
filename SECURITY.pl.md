@@ -11,7 +11,17 @@ Przydadzą się: wersja (tag wydania albo commit), czego dotyczy (serwer, usług
 kroki do odtworzenia i jakie uprawnienia na PC dziecka są potrzebne (konto standardowe czy administrator).
 
 To projekt utrzymywany po godzinach: odpowiedź zwykle w ciągu kilku dni, poprawka w kolejnym wydaniu.
-Wspierana jest tylko najnowsza wersja z zakładki **Releases**.
+
+## Wspierane wersje
+
+| Wersja | Wspierana |
+|---|---|
+| Najnowsze wydanie z zakładki **Releases** | Tak |
+| Starsze wydanie 1.x | Nie — zaktualizuj; serwer 1.x działa z każdym PC z 1.x |
+| 0.x | Nie |
+
+Poprawki bezpieczeństwa w tym, co wydanie zawiera — środowisko .NET 10 w `vigil_setup.exe`, obraz bazowy
+serwera — przychodzą jako wydania poprawkowe.
 
 ## Co jest podatnością
 

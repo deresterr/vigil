@@ -7,6 +7,25 @@ reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](doc
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-16
+
+Vigil 1.0: the child can have a standard account of its own — the installer creates it — and Windows itself then
+refuses what would switch Vigil off. Settings also show each computer's version and the server's clock, and from
+now on every 1.x server works with every 1.x computer.
+
+| | Update |
+|---|---|
+| Server | **Yes, first.** New image; the database is updated at start: back up `data/` before. Computers with 0.9 keep working with it. |
+| Children's PCs | **Yes.** Run the new `vigil_setup.exe` → **Update**; the pairing stays. The installation keeps its account setup: for a standard account for the child, uninstall and install again. |
+
+**Changed:** update the server before the computers — Vigil 1.0 on a computer does not work with a server older
+than 0.9.
+
+### Highlights
+- A standard account for the child, created by the installer: only the child's sessions count, and Windows itself
+  refuses stopping the service, replacing its files, reading its key or setting the clock.
+- One promise for 1.x: a 1.x server works with every 1.x computer, and nothing you set up breaks before 2.0.
+
 ### Panel
 - Settings show which version of Vigil each computer runs, and "Update needed" when a newer one for the PCs has
   been released. Computers with Vigil up to 0.9 show only "Update needed": they do not report their version.
@@ -38,7 +57,6 @@ reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](doc
   `VIGIL_PARENT_PASSWORD` environment variables, never on the command line.
 
 ### Server
-- Vigil 1.0 on the PCs needs a 0.9 or newer server: update the server first.
 - Behind a reverse proxy: a new `FORWARDED_ALLOW_IPS` setting in `.env` (the proxy's address). Before, the panel's
   login limit counted wrong passwords for everyone behind the proxy together, so a child locking itself out locked
   the parent out too; now it counts them per device, and the session cookie is marked Secure over https. Without a
@@ -50,8 +68,12 @@ reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](doc
 ### Security and maintenance
 - The service reads its configuration without a third-party library, and the installer's console library is
   updated.
+- The server image runs on Python 3.15. Dependencies are now checked every month, and a security fix in the .NET
+  runtime inside `vigil_setup.exe` or in the server image's base comes as a patch release.
 
 ### Documentation
+- What 1.x keeps compatible — the protocol, the files on the computers, the installer's parameters, the database,
+  `.env` and `compose.yaml` — and which versions are supported (README, `SECURITY.md`).
 - README and the threat model describe both setups — a standard account for the child and one administrator
   account — and what neither stops without physical measures (a firmware password, no booting from USB, Device
   encryption).
@@ -227,7 +249,8 @@ The first public release.
 - Lock screen and installer in English or Polish, following Windows (D21).
 - No upgrade from builds before 0.8 (D23); the server's database starts from the 0.8 schema (D26).
 
-[Unreleased]: https://github.com/deresterr/vigil/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/deresterr/vigil/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/deresterr/vigil/releases/tag/v1.0.0
 [0.9.1]: https://github.com/deresterr/vigil/releases/tag/v0.9.1
 [0.9.0]: https://github.com/deresterr/vigil/releases/tag/v0.9.0
 [0.8.2]: https://github.com/deresterr/vigil/releases/tag/v0.8.2

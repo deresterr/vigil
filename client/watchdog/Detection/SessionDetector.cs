@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
@@ -14,14 +13,16 @@ namespace Vigil.Watchdog.Detection;
 /// Whose session: with a child's account in vigil.toml (the standard-account setup, D30) only its sessions — the
 /// parent's own account is neither counted nor locked. Without (the one-account setup, installs up to 0.9) any
 /// active session is the child's: there an account a child-administrator creates is enforced too.
+///
+/// The account comes from the session's token (WTSQueryUserToken, SYSTEM only), not its user name: a name can be
+/// renamed or reused, a SID cannot. A session whose account cannot be told is the child's (fail-closed): at worst
+/// the parent is counted and locked, never the child left free.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class SessionDetector
 {
     private readonly ILogger<SessionDetector> _logger;
     private readonly string? _childSid;
-    // DOMAIN\user → SID: the lookup goes to LSA, the session's name is cheap to read.
-    private readonly ConcurrentDictionary<string, string?> _sids = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastOther;
 
     public SessionDetector(VigilConfig config, ILogger<SessionDetector> logger)
@@ -40,7 +41,7 @@ public sealed class SessionDetector
         if (_childSid is null) return (true, session);
 
         var sid = UserSidOf(session.Value);
-        if (sid is not null && sid.Equals(_childSid, StringComparison.OrdinalIgnoreCase))
+        if (sid is null || sid.Equals(_childSid, StringComparison.OrdinalIgnoreCase))
         {
             _lastOther = null;
             return (true, session);
@@ -49,7 +50,7 @@ public sealed class SessionDetector
         if (sid != _lastOther)
         {
             _lastOther = sid;
-            _logger.LogInformation("Active session {Session} belongs to another account ({Sid}): not counted", session, sid ?? "?");
+            _logger.LogInformation("Active session {Session} belongs to another account ({Sid}): not counted", session, sid);
         }
         return (false, null);
     }
@@ -98,28 +99,25 @@ public sealed class SessionDetector
         }
     }
 
+    /// <summary>The SID of the session's user, from its token; null when it cannot be read (logged).</summary>
     private string? UserSidOf(uint sessionId)
     {
-        var user = SessionString(sessionId, Win32.WTSUserName);
-        if (string.IsNullOrEmpty(user)) return null;
-        var domain = SessionString(sessionId, Win32.WTSDomainName) ?? "";
-        return _sids.GetOrAdd($"{domain}\\{user}", _ =>
+        if (!Win32.WTSQueryUserToken(sessionId, out var token))
         {
-            try { return ((SecurityIdentifier)new NTAccount(domain, user).Translate(typeof(SecurityIdentifier))).Value; }
-            catch (SystemException ex)
-            {
-                _logger.LogWarning(ex, "No SID for {Domain}\\{User}", domain, user);
-                return null;
-            }
-        });
-    }
-
-    private static string? SessionString(uint sessionId, int infoClass)
-    {
-        if (!Win32.WTSQuerySessionInformation(new IntPtr(Win32.WTS_CURRENT_SERVER_HANDLE), sessionId, infoClass,
-                out var buffer, out _))
+            _logger.LogWarning("WTSQueryUserToken failed for session {Session}, error {Error}: counted as the child's",
+                sessionId, Marshal.GetLastWin32Error());
             return null;
-        try { return Marshal.PtrToStringUni(buffer); }
-        finally { Win32.WTSFreeMemory(buffer); }
+        }
+        try
+        {
+            using var identity = new WindowsIdentity(token);
+            return identity.User?.Value;
+        }
+        catch (SystemException ex)
+        {
+            _logger.LogWarning(ex, "No SID for session {Session}: counted as the child's", sessionId);
+            return null;
+        }
+        finally { Win32.CloseHandle(token); }
     }
 }

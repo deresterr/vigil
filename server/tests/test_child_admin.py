@@ -47,6 +47,19 @@ def test_alert_only_when_no_becomes_yes(client, watchdog):
     assert len(alerts()) == 1
 
 
+def test_rights_taken_away_is_a_journal_entry(client, watchdog):
+    login(client)
+    watchdog.heartbeat(child_admin=True)    # the one-account setup
+    watchdog.heartbeat(child_admin=False)   # the parent made the account a standard one
+    watchdog.heartbeat(child_admin=False)
+    watchdog.heartbeat()                    # not reported: nothing
+    watchdog.heartbeat(child_admin=False)
+    entries = [e for e in client.get("/admin/api/journal?days=1").json()["days"][0]["entries"]
+               if e["type"] == "child_admin_removed"]
+    assert len(entries) == 1
+    assert entries[0]["alert"] is False
+
+
 def test_the_alert_is_an_alert(client, watchdog):
     login(client)
     watchdog.heartbeat(child_admin=False)

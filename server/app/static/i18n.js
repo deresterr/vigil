@@ -162,6 +162,7 @@ const I18N_EN = /*I18N_EN*/{
   "Konto dziecka jest administratorem — dziecko może obejść Vigil.": "The child's account is an administrator — the child can get round Vigil.",
   "Konto dziecka dostało uprawnienia administratora": "The child's account became an administrator",
   "Dziecko może teraz obejść Vigil — sprawdź konta w ustawieniach Windows": "The child can now get round Vigil — check the accounts in Windows settings",
+  "Konto dziecka nie jest już administratorem": "The child's account is no longer an administrator",
   "Sparować ponownie „{name}”?\n\nUżyj po reinstalacji Vigila na tym komputerze. Obecna instalacja przestanie się łączyć, gdy kod zostanie użyty.": "Re-pair “{name}”?\n\nUse it after reinstalling Vigil on this computer. The current installation stops connecting once the code is used.",
   "Sparuj ponownie": "Re-pair",
   "Stare hasło": "Current password",

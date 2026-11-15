@@ -96,9 +96,12 @@ async def heartbeat(
          None if body.child_admin is None else int(body.child_admin), device.id),
     )
     # The child's account became an administrator (#165): from a known "no" only. A first report of "yes" is the
-    # one-account setup, chosen in the installer — Settings shows it, the Journal does not raise an alert.
+    # one-account setup, chosen in the installer — Settings shows it, the Journal does not raise an alert. Losing
+    # the rights again is an ordinary Journal entry, so the parent sees the alert's matter settled.
     if body.child_admin and dev["child_admin"] == 0:
         log_event(db, "tamper_child_admin", {}, **ids)
+    elif body.child_admin is False and dev["child_admin"] == 1:
+        log_event(db, "child_admin_removed", {}, **ids)
     new_seconds_used = state["seconds_used"] + seconds_added
     if seconds_added:
         # Atomic: another device of the same child may have added its seconds meanwhile.

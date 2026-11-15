@@ -111,7 +111,8 @@ missing keys fall back to `CONFIG_DEFAULTS`.
 
 `devices.child_admin` is whether the child's account is in Administrators, as the PC's last heartbeat said (NULL:
 not reported): Settings shows it, and a change from 0 to 1 is the alert `tamper_child_admin` — a first report of 1 is
-the one-account setup, chosen in the installer (#165).
+the one-account setup, chosen in the installer (#165). A change from 1 to 0 is the Journal entry
+`child_admin_removed`.
 
 `devices.client_version` is what the PC's last heartbeat said (NULL: a client up to 0.9). The panel flags a PC
 whose version is older than the newest client release up to this server (`app/versions.py`): `release.yml` takes it

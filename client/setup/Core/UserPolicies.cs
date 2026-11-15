@@ -19,14 +19,16 @@ public sealed class UserHive : IDisposable
     /// <summary>True when the hive is the user's live one (HKEY_USERS\&lt;sid&gt;).</summary>
     public bool IsLive { get; private init; }
 
-    /// <returns>null when neither the live hive nor the file can be opened.</returns>
-    public static UserHive? Open(string? sid, string? hiveFile, bool writable = false)
+    /// <returns>null when neither the live hive nor the file can be opened; <paramref name="error"/> then says why
+    /// (a Win32 error: 2 = no hive file, else RegLoadAppKey's).</returns>
+    public static UserHive? Open(string? sid, string? hiveFile, out int error, bool writable = false)
     {
+        error = 0;
         if (sid is not null && Registry.Users.OpenSubKey(sid, writable) is { } live)
             return new UserHive(live) { IsLive = true };
-        if (hiveFile is null || !File.Exists(hiveFile)) return null;
+        if (hiveFile is null || !File.Exists(hiveFile)) { error = 2; return null; }
         var rc = Win32.RegLoadAppKeyW(hiveFile, out var handle, writable ? Win32.KEY_ALL_ACCESS : Win32.KEY_READ, 0, 0);
-        if (rc != 0) { handle.Dispose(); return null; }
+        if (rc != 0) { handle.Dispose(); error = rc; return null; }
         return new UserHive(RegistryKey.FromHandle(handle));
     }
 

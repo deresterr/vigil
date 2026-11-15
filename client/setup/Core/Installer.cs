@@ -434,8 +434,8 @@ public sealed class Installer
     {
         try
         {
-            using var hive = UserHive.Open(sid, hiveFile, writable: true);
-            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label)); return; }
+            using var hive = UserHive.Open(sid, hiveFile, out var error, writable: true);
+            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label, error)); return; }
             UserPolicies.Apply(hive.Root);
             _r.Check(CheckLevel.Pass, Strings.PoliciesApplied(label, hive.IsLive));
         }
@@ -445,23 +445,24 @@ public sealed class Installer
         }
     }
 
-    /// <summary>Every loaded user hive, the Default profile and every account that is not logged on: whichever
-    /// got the policies, also when an older install was told a different account.</summary>
+    /// <summary>Every account with a profile (its live hive when loaded, else its file — also when it is unloaded in
+    /// between, at a sign-out), every other loaded user hive and the Default profile: whichever got the policies,
+    /// also when an older install was told a different account.</summary>
     private void ClearUserPolicies()
     {
-        var loaded = UserHive.LoadedUserSids();
-        foreach (var sid in loaded) ClearIn(Strings.AccountLabel(Accounts.NameOf(sid)), sid, null);
+        var accounts = Accounts.Interactive();
+        foreach (var acc in accounts) ClearIn(Strings.AccountLabel(acc.Name), acc.Sid, acc.HiveFile);
+        foreach (var sid in UserHive.LoadedUserSids().Where(s => !accounts.Any(a => a.Sid.Equals(s, StringComparison.OrdinalIgnoreCase))))
+            ClearIn(Strings.AccountLabel(Accounts.NameOf(sid)), sid, null);
         ClearIn(Strings.DefaultProfile, null, VigilLayout.DefaultProfileHive);
-        foreach (var acc in Accounts.Interactive().Where(a => !loaded.Contains(a.Sid)))
-            ClearIn(Strings.AccountLabel(acc.Name), null, acc.HiveFile);
     }
 
     private void ClearIn(string label, string? sid, string? hiveFile)
     {
         try
         {
-            using var hive = UserHive.Open(sid, hiveFile, writable: true);
-            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label)); return; }
+            using var hive = UserHive.Open(sid, hiveFile, out var error, writable: true);
+            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label, error)); return; }
             UserPolicies.Clear(hive.Root);
             _r.Check(CheckLevel.Pass, Strings.PoliciesRemoved(label));
         }

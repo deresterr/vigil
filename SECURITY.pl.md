@@ -37,8 +37,8 @@ zmianę ruchu po zwykłym HTTP (niżej).
 
 **Nie są podatnością** (opisane w modelu zagrożeń jako znane ograniczenia): obejście przez administratora mechanizmu
 z grupy „Utrudnia”, odczyt przez administratora sekretów z dysku PC (klucz podpisujący, sekret TOTP do
-odblokowania offline), uruchomienie innego systemu z pendrive'a albo środowiska odzyskiwania Windows, reset
-komputera, korzystanie z odblokowanej sesji rodzica, trwałe zatrzymanie usługi widoczne w panelu
+odblokowania offline), uruchomienie innego systemu z pendrive'a, środowisko odzyskiwania Windows z hasłem
+administratora, reset komputera, korzystanie z odblokowanej sesji rodzica, trwałe zatrzymanie usługi widoczne w panelu
 jako komputer offline oraz wszystko, co wymaga odczytu albo zmiany ruchu serwera działającego bez TLS — mówi
 on zwykłym HTTP, odpowiedź parowania niesie klucz PC, a logowanie do panelu hasło („Sieć” w
 [modelu zagrożeń](docs/threat-model.pl.md#sieć); postaw przed serwerem reverse proxy z TLS).

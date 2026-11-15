@@ -161,8 +161,8 @@ to, co ważne, nadal jest na serwerze, resztę tylko trudno odkręcić, a Ty wid
 | Zatrzymanie usługi, podmiana jej plików, odczyt jej klucza, zamknięcie ekranu blokady, zmiana zegara; blokada bez serwera | **Chroni** — Windows na to nie pozwala | **Utrudnia** — strażnik cofa manipulacje |
 | Zatrzymana, zamrożona albo ponownie uruchomiona usługa, wielokrotnie zamykany ekran blokady, każda naprawa strażnika, konto, które dostało uprawnienia administratora, serie błędnych kodów | **Wykrywa** — alert w Dzienniku | **Wykrywa** |
 
-**Nie wykrywa:** innego systemu uruchomionego z pendrive'a albo środowiska odzyskiwania Windows, zresetowanego
-komputera, usuniętej konfiguracji — panel pokazuje wtedy PC jako offline — ani korzystania przez dziecko z Twojej
+**Nie wykrywa:** innego systemu uruchomionego z pendrive'a, środowiska odzyskiwania Windows z hasłem
+administratora, zresetowanego komputera, usuniętej konfiguracji — panel pokazuje wtedy PC jako offline — ani korzystania przez dziecko z Twojej
 odblokowanej sesji. Przeciw pierwszym: hasło firmware'u, wyłączony rozruch z USB i szyfrowanie urządzenia
 ([fizyczny dostęp](docs/threat-model.pl.md#fizyczny-dostęp)).
 

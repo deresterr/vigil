@@ -52,13 +52,13 @@ W układzie z kontem standardowym to konto administratora rodzica zatrzymuje dzi
 
 ## Fizyczny dostęp
 
-Każdy przy PC może go uruchomić z czegoś innego niż jego Windows. Żaden układ tego nie widzi, konto standardowe
-tego nie zmienia:
-
-- **Inny system z pendrive'a** albo **środowisko odzyskiwania Windows** (Shift + Uruchom ponownie na ekranie
-  logowania) mogą usunąć folder Vigila, tak jak robi to
-  [ścieżka awaryjna](installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally).
-  **Resetowanie komputera** usuwa Vigila razem z każdym zainstalowanym programem.
+- **Środowisko odzyskiwania Windows** (Shift + Uruchom ponownie na ekranie logowania) pyta o hasło administratora
+  przy wierszu polecenia, przywracaniu systemu i resetowaniu komputera. Bez niego działają tylko ustawienia
+  uruchamiania, a Vigil działa też w trybie awaryjnym (bez sieci zostaje zablokowany: nie ma serwera). W układzie
+  z jednym kontem dziecko zna to hasło.
+- **Inny system albo instalator Windows z pendrive'a** o nic nie pyta: może usunąć folder Vigila, tak jak robi to
+  [ścieżka awaryjna](installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally), albo
+  zresetować komputer. Żaden układ tego nie widzi.
 - Przeciw temu: hasło firmware'u (BIOS/UEFI), wyłączony rozruch z USB i **szyfrowanie urządzenia** tam, gdzie PC
   je ma (Windows 10/11 Home na większości nowszego sprzętu; BitLocker w Pro). Zaszyfrowany dysk poza Windowsem
   pyta o klucz odzyskiwania, więc trzymaj go z dala od dziecka — i pod ręką na ścieżkę awaryjną.

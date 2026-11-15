@@ -37,7 +37,7 @@ HTTP traffic (below).
 
 **Not vulnerabilities** (listed in the threat model as known limits): an administrator getting past an "Impedes"
 mechanism, an administrator reading secrets from the PC's disk (the signing key, the TOTP secret for offline
-unlocking), booting another system from a USB stick or Windows Recovery, resetting the PC, using the parent's
+unlocking), booting another system from a USB stick, Windows Recovery with an administrator's password, resetting the PC, using the parent's
 unlocked session, a service stopped for good, which shows in the panel as an
 offline computer, and anything done by reading or altering the traffic of a server run without TLS — it speaks
 plain HTTP, the pairing response carries the PC's key and the panel login its password ("Network" in the

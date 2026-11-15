@@ -160,8 +160,9 @@ file: what matters still lives on the server, the rest is only made hard to undo
 | Stopping the service, replacing its files, reading its key, closing the lock screen, setting the clock; locked without the server | **Protects** — Windows refuses it | **Impedes** — a guardian undoes tampering |
 | A stopped, frozen or restarted service, a lock screen closed repeatedly, every repair by the guardian, an account that became an administrator, runs of wrong codes | **Detects** — an alert in the Journal | **Detects** |
 
-**Not detected:** another system booted from a USB stick or Windows Recovery, a reset PC, a deleted configuration
-— the panel shows the PC as offline — and the child using your session while it is unlocked. Against the first
+**Not detected:** another system booted from a USB stick, Windows Recovery with an administrator's password, a
+reset PC, a deleted configuration — the panel shows the PC as offline — and the child using your session while it
+is unlocked. Against the first
 ones: a firmware password, no booting from USB and Device encryption ([physical access](docs/threat-model.md#physical-access)).
 
 > [!IMPORTANT]

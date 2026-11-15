@@ -311,7 +311,9 @@ public static class Strings
     public static string NoChildAccountForVerify(string? problem) => T(
         $"Nie ustalono konta dziecka ({problem}) — sprawdzam tylko profil domyślny",
         $"Child's account not determined ({problem}) — checking the Default profile only");
-    public static string HiveUnreadable(string label) => T($"{label}: nie da się odczytać rejestru", $"{label}: registry cannot be read");
+    public static string HiveUnreadable(string label, int error) => T(
+        $"{label}: nie da się odczytać rejestru (kod {error}: {new System.ComponentModel.Win32Exception(error).Message})",
+        $"{label}: registry cannot be read (code {error}: {new System.ComponentModel.Win32Exception(error).Message})");
     public static string PoliciesSet(string label, int count) => T($"{label}: zasady ustawione ({count} wartości)", $"{label}: policies set ({count} values)");
     public static string PoliciesRemoved(string label) => T($"{label}: zasady usunięte", $"{label}: policies removed");
 

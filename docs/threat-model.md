@@ -52,12 +52,12 @@ In the standard-account setup the parent's administrator account is what keeps t
 
 ## Physical access
 
-Anyone at the PC can start it from something else than its Windows. Neither setup sees that, and a standard
-account does not change it:
-
-- **Another system from a USB stick** or **Windows Recovery** (Shift + Restart on the sign-in screen) can delete
-  Vigil's folder, as the [emergency path](installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally)
-  does. **Reset this PC** removes Vigil with every installed program.
+- **Windows Recovery** (Shift + Restart on the sign-in screen) asks for an administrator's password for its
+  command prompt, System Restore and Reset this PC. Without it only Startup Settings work, and Vigil runs in Safe
+  Mode too (without networking it stays locked: no server). In the one-account setup the child knows that password.
+- **Another system or Windows Setup from a USB stick** asks for nothing: it can delete Vigil's folder, as the
+  [emergency path](installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally) does, or
+  reset the PC. Neither setup sees that.
 - Against that: a firmware (BIOS/UEFI) password, booting from USB off, and **Device encryption** where the PC has
   it (Windows 10/11 Home on most newer hardware; BitLocker on Pro). An encrypted disk asks for its recovery key
   outside Windows, so keep that key away from the child — and at hand for the emergency path.

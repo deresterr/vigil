@@ -238,9 +238,9 @@ public sealed class Verify
     private void CheckUserPolicies(string label, string? sid, string? hiveFile, bool removed)
     {
         List<PolicyValue> rows;
-        using (var hive = UserHive.Open(sid, hiveFile))
+        using (var hive = UserHive.Open(sid, hiveFile, out var error))
         {
-            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label)); return; }
+            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label, error)); return; }
             rows = UserPolicies.Read(hive.Root);
         }
         var bad = removed

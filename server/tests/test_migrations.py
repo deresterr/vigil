@@ -84,6 +84,7 @@ def test_v08_database_migrates(db_path, caplog):
         "Database migrated to schema 2 (devices.delta_carry_ms)",
         "Database migrated to schema 3 (config.heartbeat_grace_seconds removed)",
         "Database migrated to schema 4 (devices.client_version)",
+        "Database migrated to schema 5 (devices.child_admin)",
     ]
 
 
@@ -105,7 +106,8 @@ def test_v082_database_migrates(db_path, caplog):
     assert _query(db_path, "SELECT value FROM config WHERE key = 'timezone'") == [("Europe/Warsaw",)]
     assert [r.getMessage() for r in caplog.records] == [
         "Database migrated to schema 3 (config.heartbeat_grace_seconds removed)",
-        "Database migrated to schema 4 (devices.client_version)"]
+        "Database migrated to schema 4 (devices.client_version)",
+        "Database migrated to schema 5 (devices.child_admin)"]
 
 
 def test_v09_database_migrates(db_path, caplog):
@@ -122,5 +124,6 @@ def test_v09_database_migrates(db_path, caplog):
         conn.execute("COMMIT")
     app.db.init_database()
     assert _query(db_path, "PRAGMA user_version") == [(LATEST_VERSION,)]
-    assert _query(db_path, "SELECT name, client_version FROM devices") == [("PC", None)]
-    assert [r.getMessage() for r in caplog.records] == ["Database migrated to schema 4 (devices.client_version)"]
+    assert _query(db_path, "SELECT name, client_version, child_admin FROM devices") == [("PC", None, None)]
+    assert [r.getMessage() for r in caplog.records] == ["Database migrated to schema 4 (devices.client_version)",
+                                                        "Database migrated to schema 5 (devices.child_admin)"]

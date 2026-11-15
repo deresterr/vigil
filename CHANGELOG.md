@@ -14,6 +14,9 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
   whether the server's clock agrees with an NTP server (set in the wizard and there; empty turns the check off).
   A server clock more than a minute off is an alert in the Journal — it makes TOTP codes fail. Vigil only checks
   the clock, it never changes it.
+- Settings say when the child's account on a computer is an administrator (the child can then get round Vigil),
+  and the Journal raises an alert when an account that was a standard one becomes an administrator. Computers
+  report it from Vigil 1.0.
 - The Journal blames a computer's clock ("the computer's clock is N min fast") only when NTP confirms the server's
   clock; otherwise it says the two clocks differ.
 

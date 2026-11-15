@@ -108,6 +108,7 @@ def _device_view(row: sqlite3.Row, now_utc: datetime, tz: ZoneInfo, today: str) 
         "minutes_today": (row["seconds_today"] // 60) if row["seconds_date"] == today else 0,
         "client_version": row["client_version"],
         "update_needed": update_needed(row["client_version"]),
+        "child_admin": None if row["child_admin"] is None else bool(row["child_admin"]),
     }
 
 

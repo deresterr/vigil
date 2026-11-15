@@ -44,6 +44,7 @@ Alert w Dzienniku, do potwierdzenia przez rodzica, gdy:
 - usługa zamarła albo została wstrzymana przy działającym komputerze,
 - ekran blokady był wielokrotnie zamykany,
 - strażnik coś naprawił (wyłączoną usługę, podmieniony plik, …),
+- konto dziecka, dotąd standardowe, dostało uprawnienia administratora (Ustawienia pokazują też, kiedy nim jest),
 - ktoś wpisał serię błędnych kodów TOTP, wielokrotnie nie zalogował się do panelu albo zgadywał kod parowania,
   aż został unieważniony.
 

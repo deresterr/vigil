@@ -46,6 +46,7 @@ An alert in the Journal, for the parent to confirm, when:
 - the service froze or was suspended while the computer was running,
 - the lock screen was closed repeatedly,
 - the guardian repaired something (a disabled service, a replaced file, …),
+- the child's account, a standard one so far, became an administrator (Settings also shows it whenever it is one),
 - someone typed a run of wrong TOTP codes, failed to log in to the panel repeatedly, or guessed at a pairing code
   until it was invalidated.
 

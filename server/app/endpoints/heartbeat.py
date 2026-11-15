@@ -70,8 +70,8 @@ async def heartbeat(
     now_local = now_utc.astimezone(tz)
     child = get_child(db, device.child_id)
     ids = {"child_id": device.child_id, "device_id": device.id}
-    dev = db.execute("SELECT last_heartbeat_utc, last_active_utc, delta_carry_ms FROM devices WHERE id = ?",
-                     (device.id,)).fetchone()
+    dev = db.execute("SELECT last_heartbeat_utc, last_active_utc, delta_carry_ms, child_admin FROM devices "
+                     "WHERE id = ?", (device.id,)).fetchone()
 
     # Pre-lock check: while the child is locked no time accrues (invariant).
     today = child_today(db, child, now_utc, tz)
@@ -90,10 +90,15 @@ async def heartbeat(
     db.execute(
         "UPDATE devices SET last_heartbeat_utc = ?, last_active_utc = COALESCE(?, last_active_utc), "
         "seconds_today = CASE WHEN seconds_date = ? THEN seconds_today + ? ELSE ? END, seconds_date = ?, "
-        "delta_carry_ms = ?, client_version = ? WHERE id = ?",
+        "delta_carry_ms = ?, client_version = ?, child_admin = ? WHERE id = ?",
         (now_utc.isoformat(), now_utc.isoformat() if active else None, today_local.isoformat(), seconds_added,
-         seconds_added, today_local.isoformat(), carry_ms, body.client_version, device.id),
+         seconds_added, today_local.isoformat(), carry_ms, body.client_version,
+         None if body.child_admin is None else int(body.child_admin), device.id),
     )
+    # The child's account became an administrator (#165): from a known "no" only. A first report of "yes" is the
+    # one-account setup, chosen in the installer — Settings shows it, the Journal does not raise an alert.
+    if body.child_admin and dev["child_admin"] == 0:
+        log_event(db, "tamper_child_admin", {}, **ids)
     new_seconds_used = state["seconds_used"] + seconds_added
     if seconds_added:
         # Atomic: another device of the same child may have added its seconds meanwhile.

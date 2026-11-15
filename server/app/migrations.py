@@ -113,11 +113,18 @@ def _m004_client_version(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE devices ADD COLUMN client_version TEXT")
 
 
+def _m005_child_admin(conn: sqlite3.Connection) -> None:
+    """Whether the child's account is an administrator, as the PC's last heartbeat said (#165): 1/0, NULL = not
+    reported (clients up to 0.9)."""
+    conn.execute("ALTER TABLE devices ADD COLUMN child_admin INTEGER")
+
+
 MIGRATIONS: list[tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("baseline v0.8", _m001_baseline),
     ("devices.delta_carry_ms", _m002_delta_carry),
     ("config.heartbeat_grace_seconds removed", _m003_online_window),
     ("devices.client_version", _m004_client_version),
+    ("devices.child_admin", _m005_child_admin),
 ]
 
 LATEST_VERSION = len(MIGRATIONS)

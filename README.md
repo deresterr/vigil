@@ -74,7 +74,7 @@
 
 ## Quick start
 
-You need a Linux machine with Docker on the same network as the child's PC (or reachable over a VPN), and a TOTP
+You need a Linux machine with Docker (x86-64 or ARM64, e.g. a Raspberry Pi 4 or 5) on the same network as the child's PC (or reachable over a VPN), and a TOTP
 app on your phone (Aegis, Google Authenticator, …).
 
 ### 1. Start the server
@@ -233,7 +233,7 @@ password manager.
 
 | | What you need |
 |---|---|
-| **Server** | Docker on Linux. The release image is for x86-64 (amd64); elsewhere build it from `server/`. Outbound UDP 123 to check its clock against NTP (optional, Settings). |
+| **Server** | Docker on Linux, x86-64 (amd64) or ARM64 (arm64: a Raspberry Pi 4 or 5 with a 64-bit system, an ARM mini PC or VPS); one image for both. Outbound UDP 123 to check its clock against NTP (optional, Settings). |
 | **Child's PC** | Windows 10 or 11, x64, Home or Pro. Recommended: a standard account for the child (the installer creates one) and an administrator account with a password for the parent. Supported: the child's administrator account is the only one, and the parent maintains the PC from it. The installer creates a local account; Microsoft family settings are not needed. |
 | **Parent** | A browser and a TOTP app on the phone. |
 

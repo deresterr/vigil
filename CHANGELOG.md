@@ -7,6 +7,10 @@ reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](doc
 
 ## [Unreleased]
 
+### Server
+- The server image now also runs on ARM64 — a Raspberry Pi 4 or 5 with a 64-bit system, an ARM mini PC or VPS.
+  The same `ghcr.io/deresterr/vigil-server` image picks the right one; nothing changes on x86-64.
+
 ## [1.0.0] - 2026-11-15
 
 Vigil 1.0: the child can have a standard account of its own — the installer creates it — and Windows itself then

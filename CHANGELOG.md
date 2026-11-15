@@ -7,7 +7,7 @@ reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](doc
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-11-16
+## [1.0.0] - 2026-11-15
 
 Vigil 1.0: the child can have a standard account of its own — the installer creates it — and Windows itself then
 refuses what would switch Vigil off. Settings also show each computer's version and the server's clock, and from

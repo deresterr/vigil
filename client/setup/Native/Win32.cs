@@ -61,10 +61,16 @@ internal static class Win32
     [DllImport("kernel32.dll")]
     public static extern IntPtr GetCurrentProcess();
 
-    /// <summary>Loads a hive file into a private namespace of this process; unloaded when the handle closes.
-    /// No privileges and no global mount name, unlike RegLoadKey / reg.exe load.</summary>
+    public static readonly IntPtr HKEY_USERS = unchecked((IntPtr)(int)0x80000003);
+
+    /// <summary>Mounts a hive file under HKEY_USERS\&lt;subKey&gt; (SeBackup + SeRestore), replaying its .LOG files
+    /// like a sign-in does. Not RegLoadAppKey: an app hive does not replay them and refuses the hive a sign-out left
+    /// dirty with ERROR_BADDB (1009).</summary>
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
-    public static extern int RegLoadAppKeyW(string file, out SafeRegistryHandle key, int samDesired, int options, int reserved);
+    public static extern int RegLoadKeyW(IntPtr key, string subKey, string file);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int RegUnLoadKeyW(IntPtr key, string subKey);
 
     // === Local accounts ===
 
@@ -88,6 +94,41 @@ internal static class Win32
 
     [DllImport("netapi32.dll")]
     public static extern int NetApiBufferFree(IntPtr buffer);
+
+    // The child's own account (#160)
+    public const uint USER_PRIV_USER = 1;
+    public const uint UF_SCRIPT = 0x0001;
+    public const uint UF_PASSWD_NOTREQD = 0x0020;
+    public const uint UF_DONT_EXPIRE_PASSWD = 0x10000;
+    public const int ERROR_MEMBER_IN_ALIAS = 1378;
+    public const int ERROR_LOGON_FAILURE = 1326;
+    public const int ERROR_ACCOUNT_RESTRICTION = 1327;
+    public const int LOGON32_LOGON_INTERACTIVE = 2;
+    public const int LOGON32_PROVIDER_DEFAULT = 0;
+    public const int HRESULT_ALREADY_EXISTS = unchecked((int)0x800700B7);
+
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int NetUserAdd(string? serverName, int level, ref USER_INFO_1 buffer, out int parmError);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct LOCALGROUP_MEMBERS_INFO_3 { public string lgrmi3_domainandname; }
+
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int NetLocalGroupAddMembers(string? serverName, string groupName, int level,
+        ref LOCALGROUP_MEMBERS_INFO_3 buffer, int totalEntries);
+
+    /// <summary>A change as the user (old password known), not an administrator's reset: DPAPI keeps the
+    /// account's protected data (saved browser passwords, Credential Manager).</summary>
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int NetUserChangePassword(string? domainName, string? userName, string oldPassword, string newPassword);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool LogonUserW(string userName, string? domain, string password, int logonType,
+        int logonProvider, out SafeAccessTokenHandle token);
+
+    /// <summary>The profile (NTUSER.DAT from the Default profile) without a logon.</summary>
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    public static extern int CreateProfile(string sid, string userName, [Out] char[] profilePath, uint size);
 
     // === Console ===
 

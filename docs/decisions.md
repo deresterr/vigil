@@ -1,6 +1,6 @@
 # Design decisions
 
-The decisions the code refers to as D1–D28, in short. The reasoning behind each is in the issues and pull
+The decisions the code refers to as D1–D30, in short. The reasoning behind each is in the issues and pull
 requests named next to it; the threat model in full is in [`threat-model.md`](threat-model.md).
 
 | # | Decision |
@@ -16,7 +16,7 @@ requests named next to it; the threat model in full is in [`threat-model.md`](th
 | D9 | Superseded by D21. |
 | D10 | MIT licence; commits from the GitHub noreply address. |
 | D11 | Windows 10/11 x64, **Home and Pro**: no Pro-only features (gpedit, AppLocker, secpol); policies only as registry values, which Home honours. |
-| D12 | The child's account is the only interactive account on the PC and is an administrator; the parent maintains the PC through it, so per-user policies hit the parent too. The installer finds that account itself. |
+| D12 | Superseded by D30, which keeps it as the one-account setup: the child's account is the only interactive account on the PC and is an administrator; the parent maintains the PC through it, so per-user policies hit the parent too. The installer finds that account itself. |
 | D13 | The repository is published only once the security work (M1), the client (M2), the multi-child server (M3) and the installer are done. |
 | D14 | `vigil_ui` is resident: the watchdog starts it and keeps it alive; a lock is a message over the pipe (#35). |
 | D15 | The guardian stays as friction, slimmed down; every repair is an alert in the Journal (#36). |
@@ -33,6 +33,8 @@ requests named next to it; the threat model in full is in [`threat-model.md`](th
 | D26 | Schema migrations start from the v0.8 schema: no database of an earlier version is migrated (#78). |
 | D27 | Fail-closed whatever the PC's network: no server answer since the service started or woke up (Fast Startup included), or none for 30 s, locks at once, without a grace period after logon. No network at all only changes the lock screen's message, never the decision: the child can switch Wi-Fi off without elevation (#128). |
 | D28 | NTP only checks the server's clock, it never sets or corrects it: setting it from the container needs `CAP_SYS_TIME` and changes the host's clock, and an NTP offset used for decisions would let a forged (unauthenticated) SNTP answer on the LAN move the night and the limit. A clock more than 60 s off is an alert; the time zone and the NTP server are set in the wizard and in Settings (#161). |
+| D29 | Reserved for what 1.0 makes a contract (#169). |
+| D30 | Two setups (#160). **Recommended**: the child has a standard account of its own and the parent an administrator one. `vigil.toml` names the child's account (`child_sid`); only its sessions are counted and locked and get the lock screen, another account's session is neither, also without a server. What Windows refuses a standard user — stopping the service, replacing files, the guardian task, reading the secrets, setting the clock — then protects instead of impeding. **Supported**: one administrator account (D12), no `child_sid`, every session is the child's. The installer creates the child's account (local, standard, its profile at once), first makes the parent's account have a password (a change as that user, never a reset: a reset cuts it off its DPAPI data) and turns automatic sign-in to another account off; an existing standard account is used as it is. `child_sid` is written only when the child's account is not an administrator, so an account a child-administrator creates stays enforced. Switching = uninstall + install; uninstall never deletes an account. |
 
 ## Open
 

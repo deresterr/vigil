@@ -45,8 +45,9 @@
 </table>
 
 > [!NOTE]
-> **Before 1.0, in daily use.** A child with administrator rights can get around Vigil: it makes that harder and
-> shows it to the parent, but does not make it impossible. See [what Vigil can and cannot stop](#what-vigil-can-and-cannot-stop).
+> **Before 1.0, in daily use.** Give the child a standard account — the installer creates one — and Windows itself
+> refuses what would switch Vigil off. A child with administrator rights can get around Vigil: it makes that harder
+> and shows it to the parent, but does not make it impossible. See [what Vigil can and cannot stop](#what-vigil-can-and-cannot-stop).
 
 ## Features
 
@@ -67,7 +68,8 @@
 **On the PC**
 
 - One file, `vigil_setup.exe`, to install, check, update, re-pair and uninstall
-- Windows 10 and 11, Home or Pro; the child's account may be an administrator
+- Windows 10 and 11, Home or Pro; the child on a standard account (the installer creates one) or on the PC's
+  only, administrator, account
 - English or Polish, following the browser's and Windows' language
 
 ## Quick start
@@ -108,8 +110,10 @@ the week: a limit and night time for each day. You can change the week later in 
    [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe) and run it.
    It asks for administrator rights; SmartScreen may first show "Windows protected your PC" (More info → Run
    anyway).
-3. Type the server address and the pairing code. The installer finds the child's account itself and changes
-   nothing before you confirm the summary.
+3. Type the server address and the pairing code. On a PC with one administrator account the installer offers to
+   create a standard account for the child (recommended): yours stays the administrator and needs a password,
+   which the installer sets if it has none. Nothing changes before you confirm the summary.
+4. Sign out, and let the child sign in to their own account. Only its time counts.
 
 Run `vigil_setup.exe` again at any time for the status and a menu: check, update, change the server address,
 re-pair, uninstall. Parameters for scripts: [`docs/installer.md`](docs/installer.md).
@@ -145,18 +149,21 @@ Protocol, time accounting and file paths: [`docs/architecture.md`](docs/architec
 
 ## What Vigil can and cannot stop
 
-Most families give the child an administrator account, so Vigil assumes one. An administrator can disable any
-service and read any file, so nothing on the PC itself is tamper-proof. What matters lives on the server, the rest
-is made hard to undo, and the parent sees the attempts.
+Give the child a **standard account** of its own and keep an administrator account with a password for yourself:
+Windows then refuses the child what would switch Vigil off, and only the child's sessions count. Vigil also works
+with one administrator account the child and you share, but an administrator can disable any service and read any
+file: what matters still lives on the server, the rest is only made hard to undo, and you see the attempts.
 
-| | What it means | For example |
+| | Standard account | One administrator account |
 |---|---|---|
-| **Protects** | Yes — the state is on the server | limits, night time, the lock and the time counter; one-time pairing codes; TOTP codes that work once |
-| **Impedes** | No — stops programs without administrator rights and casual attempts | signed requests, locked without the server, a service that a plain command cannot stop, a guardian that undoes tampering, a lock screen over every monitor |
-| **Detects** | An alert in the Journal for the parent to confirm | a stopped, frozen or restarted service, a lock screen closed repeatedly, every repair by the guardian, runs of wrong codes |
+| Limits, night time, the lock and the time counter; one-time pairing codes; TOTP codes that work once | **Protects** — the state is on the server | **Protects** |
+| Stopping the service, replacing its files, reading its key, closing the lock screen, setting the clock; locked without the server | **Protects** — Windows refuses it | **Impedes** — a guardian undoes tampering |
+| A stopped, frozen or restarted service, a lock screen closed repeatedly, every repair by the guardian, an account that became an administrator, runs of wrong codes | **Detects** — an alert in the Journal | **Detects** |
 
-**Not detected:** a service stopped for good, a deleted configuration or another system booted from a USB stick —
-the panel shows the PC as offline.
+**Not detected:** another system booted from a USB stick, Windows Recovery with an administrator's password, a
+reset PC, a deleted configuration — the panel shows the PC as offline — and the child using your session while it
+is unlocked. Against the first
+ones: a firmware password, no booting from USB and Device encryption ([physical access](docs/threat-model.md#physical-access)).
 
 > [!IMPORTANT]
 > The server speaks plain HTTP, and the pairing and the panel login send their secrets unencrypted. On a network
@@ -225,7 +232,7 @@ password manager.
 | | What you need |
 |---|---|
 | **Server** | Docker on Linux. The release image is for x86-64 (amd64); elsewhere build it from `server/`. Outbound UDP 123 to check its clock against NTP (optional, Settings). |
-| **Child's PC** | Windows 10 or 11, x64, Home or Pro. The child's account is the only user account and may be an administrator; the parent maintains the PC from that same account. |
+| **Child's PC** | Windows 10 or 11, x64, Home or Pro. Recommended: a standard account for the child (the installer creates one) and an administrator account with a password for the parent. Supported: the child's administrator account is the only one, and the parent maintains the PC from it. The installer creates a local account; Microsoft family settings are not needed. |
 | **Parent** | A browser and a TOTP app on the phone. |
 
 ## Development

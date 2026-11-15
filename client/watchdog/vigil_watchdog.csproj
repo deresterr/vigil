@@ -28,8 +28,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.15" />
-    <!-- vigil.toml -->
-    <PackageReference Include="Tomlyn" Version="0.17.0" />
     <!-- DPAPI (signing.dat, totp.dat) -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
     <!-- EventLogReader: the guardian's findings (Guardian/GuardianReporter.cs) -->
@@ -41,6 +39,8 @@
     <!-- Installation layout shared with vigil_setup (D22): paths, entropy, service, policies, ACLs -->
     <Compile Include="..\shared\VigilLayout.cs" Link="Shared\VigilLayout.cs" />
     <Compile Include="..\shared\FileAcls.cs" Link="Shared\FileAcls.cs" />
+    <Compile Include="..\shared\VigilToml.cs" Link="Shared\VigilToml.cs" />
+    <Compile Include="..\shared\LocalAdmins.cs" Link="Shared\LocalAdmins.cs" />
   </ItemGroup>
 
 </Project>

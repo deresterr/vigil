@@ -104,6 +104,19 @@ public static partial class Win32
     [LibraryImport("wtsapi32.dll", SetLastError = true)]
     public static partial void WTSFreeMemory(IntPtr pMemory);
 
+    // WTS_INFO_CLASS: the session's user (#160).
+    public const int WTSUserName = 5;
+    public const int WTSDomainName = 7;
+
+    [LibraryImport("wtsapi32.dll", EntryPoint = "WTSQuerySessionInformationW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool WTSQuerySessionInformation(
+        IntPtr hServer,
+        uint sessionId,
+        int infoClass,
+        out IntPtr ppBuffer,
+        out uint pBytesReturned);
+
     [LibraryImport("wtsapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool WTSQueryUserToken(uint sessionId, out IntPtr Token);

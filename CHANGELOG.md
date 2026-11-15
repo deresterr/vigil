@@ -3,7 +3,7 @@
 User-visible changes, written for the parent who runs Vigil. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the release tags; each version's
 section is also its release notes, written to the template in [`docs/releasing.md`](docs/releasing.md). The
-reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](docs/decisions.md).
+reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](docs/decisions.md).
 
 ## [Unreleased]
 
@@ -20,7 +20,25 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
 - The Journal blames a computer's clock ("the computer's clock is N min fast") only when NTP confirms the server's
   clock; otherwise it says the two clocks differ.
 
+### Lock screen and tray
+- With a standard account for the child, the lock screen and the tray icon appear only in the child's session.
+  Your own account is never locked or charged, also when the server is down.
+
+### Installer
+- On a PC with one administrator account the installer now offers to create a standard account for the child
+  (recommended). Windows then refuses the child what would switch Vigil off — stopping the service, replacing its
+  files, reading its key, setting the clock — and only the child's sessions count. Your account stays the
+  administrator: if it has no password, the installer has you set one, and it turns automatic sign-in off. A
+  standard account that already exists can be chosen instead; keeping one administrator account still works.
+- An installation from 0.9 keeps working as before after **Update**; to move it to a standard account for the
+  child, uninstall and install again. Uninstalling never deletes an account.
+- "Check the installation" also checks the child's account: that it exists, is not an administrator, and that
+  Windows does not sign in to another account by itself.
+- For scripts: `-CreateChildAccount <name>`, with the passwords in the `VIGIL_CHILD_PASSWORD` and
+  `VIGIL_PARENT_PASSWORD` environment variables, never on the command line.
+
 ### Server
+- Vigil 1.0 on the PCs needs a 0.9 or newer server: update the server first.
 - Behind a reverse proxy: a new `FORWARDED_ALLOW_IPS` setting in `.env` (the proxy's address). Before, the panel's
   login limit counted wrong passwords for everyone behind the proxy together, so a child locking itself out locked
   the parent out too; now it counts them per device, and the session cookie is marked Secure over https. Without a
@@ -29,7 +47,14 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
   exactly the minutes granted. Before, "+120 min" lasted three hours in October and one in March, both from the
   panel and with a TOTP code on the lock screen.
 
+### Security and maintenance
+- The service reads its configuration without a third-party library, and the installer's console library is
+  updated.
+
 ### Documentation
+- README and the threat model describe both setups — a standard account for the child and one administrator
+  account — and what neither stops without physical measures (a firmware password, no booting from USB, Device
+  encryption).
 - README: how to back up and restore the server's `data/`, and what to do after forgetting the panel password.
 - README rewritten for people trying Vigil (English and Polish): a logo, captioned screenshots, a short feature
   list, the quick start near the top, and the threat model as a table. The full threat model moved to

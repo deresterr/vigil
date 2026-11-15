@@ -31,8 +31,19 @@ run writes a log to `%TEMP%\vigil_setup_<time>.log` (its path is on screen) — 
 ### Wizard
 
 Server address (checked against `/health`, asked again until it answers) → pairing code (8 digits; the
-panel: Settings → Add computer) → the child's account (only when there are several) →
-summary → install → a short verify table → the menu. **Nothing changes on the PC before "Install" on the
+panel: Settings → Add computer) → the child's account → summary → install → a short verify table → the menu.
+
+The child's account (D30) depends on what the PC has:
+
+- **One account, an administrator** (the usual PC): a choice, by default **Create an account for the child** —
+  name and an optional password for a new local standard account; the current account becomes the parent's.
+  If it has no password, the next screen sets one (required, typed twice). **Keep one account** shows what the
+  child can get round with an administrator account and asks to confirm.
+- **Several accounts**: the one the child signs in to. A standard one is the same setup as a new account (the
+  parent's password asked for if the current account has none); an administrator one is the one-account setup.
+- `-ChildUsername` given: that account, no question.
+
+ **Nothing changes on the PC before "Install" on the
 summary**: the code goes to the server only then, and a wrong or expired one asks again with the system untouched.
 
 ### Menu
@@ -52,49 +63,66 @@ Arrow keys and Enter, or the item's digit; works in a legacy console too (digits
 ## Parameter mode
 
 ```
--Mode install       -ServerUrl <address> -PairingCode <code> [-ChildUsername <account>] [-DisableWinRE] [-NoUserPolicies]
+-Mode install       -ServerUrl <address> -PairingCode <code> [-ChildUsername <account> | -CreateChildAccount <name>]
+                    [-DisableWinRE] [-NoUserPolicies]
 -Mode update        [-ServerUrl <address>]            files from this package; vigil.toml, signing.dat, totp.dat kept
 -Mode update-config [-ServerUrl <address>] [-PairingCode <code>]
--Mode reinstall     -ServerUrl <address> -PairingCode <code>
+-Mode reinstall     -ServerUrl <address> -PairingCode <code> [-ChildUsername <account> | -CreateChildAccount <name>]
 -Mode uninstall
 -Mode verify        [-ChildUsername <account>]        changes nothing
 ```
 
 The address may be given without a scheme or port (`192.168.1.5` → `http://192.168.1.5:8088`). The child's
-account: the only interactive account with a profile (D12); with several, `-ChildUsername`, otherwise the
-per-user policies go to the Default profile only. Pairing always happens before anything on the PC changes.
+account: `-CreateChildAccount` creates a new standard one (its password, optional, in `VIGIL_CHILD_PASSWORD`);
+otherwise `-ChildUsername`, the installed one, or the only interactive account with a profile — with several
+and none named, the per-user policies go to the Default profile only. A standard child's account needs a
+password on the account the installer runs as (the parent's); when it has none, `VIGIL_PARENT_PASSWORD` gives
+it, otherwise the install stops before pairing. Passwords never go in an argument (the process list, CI logs).
+Pairing always happens before anything on the PC changes.
 
 ## What an install does
 
 1. **Unpacking**: every file of the package to `<name>.new` next to its target in `C:\ProgramData\Vigil`,
    checked against its SHA-256 — before anything is stopped, so a failure here (antivirus, disk space)
    leaves the installation as it was.
-2. **Stopping**: the service stopped as SYSTEM through a one-off task (a normal stop: the watchdog says
+2. **Accounts** (a standard child's account only, not on `update`): the parent's first password (a change
+   as that user with `NetUserChangePassword`, never a reset, which would cut the account off its DPAPI data —
+   saved browser passwords, Credential Manager), the new account (`NetUserAdd`, Users by SID, its profile with
+   `CreateProfile` so its hive exists before the first sign-in), automatic sign-in to another account turned
+   off (`Winlogon\AutoAdminLogon`: Windows would start in the parent's session, which nobody counts).
+3. **Stopping**: the service stopped as SYSTEM through a one-off task (a normal stop: the watchdog says
    goodbye) and deleted; vigil_ui killed; the guardian task ended and deleted (it runs the copy of
    `vigil_setup.exe` being replaced).
-3. **Files** moved into place: `vigil_watchdog.exe`, `vigil_ui.exe` and its native WPF libraries
+4. **Files** moved into place: `vigil_watchdog.exe`, `vigil_ui.exe` and its native WPF libraries
    (`VigilLayout.UiNativeLibraries`, D24), `vigil_setup.exe` (without the payload), `backup\vigil_watchdog.exe`.
-4. **Configuration**: `guardian.dat` (SHA-256 of the watchdog, DPAPI), `vigil.toml` (server address only),
+5. **Configuration**: `guardian.dat` (SHA-256 of the watchdog, DPAPI), `vigil.toml` (server address; the child's
+   SID as `child_sid` when the child's account is not an administrator — `update` keeps what is there),
    `signing.dat` (the key, DPAPI with entropy) — kept on `update`, like `totp.dat`.
-5. **Service** `vigil_watchdog`: automatic, quoted path, recovery restart ×3 after 60 s (also on a non-zero
+6. **Service** `vigil_watchdog`: automatic, quoted path, recovery restart ×3 after 60 s (also on a non-zero
    exit), DACL: administrators query/start only.
-6. **Protection**: SafeBoot Minimal/Network, the task "Vigil Guardian" (`vigil_setup.exe guardian`, SYSTEM,
+7. **Protection**: SafeBoot Minimal/Network, the task "Vigil Guardian" (`vigil_setup.exe guardian`, SYSTEM,
    startup + every 5 min), F8 menu off (`bootmenupolicy Standard`), optionally WinRE off (`-DisableWinRE`).
-7. **Child's account**: the per-user policies (`VigilLayout.UserPolicies`) in the child's hive and the
-   Default profile — live, or loaded as an app hive; never through `reg.exe` (D12: it may be blocked).
-8. **Permissions**: folder SYSTEM full / Administrators modify / Authenticated Users read+execute,
+8. **Child's account**: the per-user policies (`VigilLayout.UserPolicies`) in the child's hive and the
+   Default profile — live, or the hive file mounted with `RegLoadKey` and unloaded at once; never through
+   `reg.exe` (it may be blocked).
+9. **Permissions**: folder SYSTEM full / Administrators modify / Authenticated Users read+execute,
    secrets SYSTEM full / Administrators read.
-9. **Start** and a check that it runs.
+10. **Start** and a check that it runs.
 
 **Uninstall** reverses it best effort — every step runs even when one fails, also on a half-removed
-installation — and removes the Event Log sources. The F8 policy is left at Windows' default.
+installation — and removes the Event Log sources. The F8 policy is left at Windows' default. Accounts are
+never deleted: the child's can be removed in Windows' settings. Moving an installation to the other setup is
+uninstall + install.
 
 ## Verify
 
 Reads only language-independent sources (registry, APIs, task XML, CSV columns by position, exit codes).
 Installed: service (state, start, path, recovery, DACL), files (complete, no leftovers, backup and
 `guardian.dat` match, binaries = this package, secrets decrypt, ACLs), tasks and boot (guardian task, no
-temporary tasks, SafeBoot, F8), the child's policies, runtime (vigil_ui in the session, the server answers,
+temporary tasks, SafeBoot, F8), accounts (`child_sid`: the account exists, is not an administrator, no
+automatic sign-in to another account; without it a note that every session counts — whether the parent's
+account has a password is checked only at install, since every test is a failed logon towards the lockout
+threshold), the child's policies, runtime (vigil_ui in the session, the server answers,
 watchdog warnings in the last 15 minutes). Not installed: nothing left (service, folder, tasks, SafeBoot,
 processes, policies, Event Log sources).
 
@@ -103,7 +131,9 @@ processes, policies, Event Log sources).
 The lock is fail-closed, and the parent unlocks offline with the TOTP code (D4). If the PC itself must be
 freed from outside Windows:
 
-1. Boot Windows Recovery (WinRE: Shift + Restart, or three failed boots) → Troubleshoot → Command Prompt.
+1. Boot Windows Recovery (WinRE: Shift + Restart, or three failed boots) → Troubleshoot → Command Prompt. It
+   asks for an administrator's password (in the standard-account setup, the parent's) and, on an encrypted
+   disk, for the recovery key.
 2. Find the Windows drive (in WinRE it is often `D:`): `dir D:\ProgramData`.
 3. `rmdir /s /q D:\ProgramData\Vigil` — without its files the watchdog and the guardian cannot start, and
    without the watchdog there is no lock.
@@ -117,6 +147,8 @@ Threat model: nothing new — an administrator can do the same from Windows; the
 commit: install → `update` → the one-file package (installed files = `build\parts`, the installed copy and a
 payload-less one refuse to update) →
 broken installs → re-pair → uninstall → install →
-six guardian repairs reported to the journal → the emergency path above → uninstall, then the wizard and
+six guardian repairs reported to the journal → the emergency path above → uninstall → install with
+`-CreateChildAccount` (account, profile, `child_sid`, the heartbeat's `child_admin`) → update → uninstall (the
+account stays), then the wizard and
 the menu through a key script (`-Keys <file>`, not in the usage). What CI cannot see — Windows 10/11 Home,
-Polish Windows, the child's session, the console look — is tested on a VM.
+Polish Windows, the child's session, the parent's session beside it, the console look — is tested on a VM.

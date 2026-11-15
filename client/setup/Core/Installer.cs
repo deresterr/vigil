@@ -12,11 +12,18 @@ public sealed record InstallRequest
     public required string ServerUrl { get; init; }
     /// <summary>The key from pairing; null = keep the installed signing.dat (update).</summary>
     public string? SigningKey { get; init; }
-    /// <summary>The account the per-user policies go to; null = the Default profile only.</summary>
+    /// <summary>The account the per-user policies go to; null = the Default profile only (or NewChild).</summary>
     public UserAccount? Child { get; init; }
+    /// <summary>The child's own account to create (D30, #160): it becomes Child, and the account this program runs
+    /// as becomes the parent's.</summary>
+    public NewChildAccount? NewChild { get; init; }
+    /// <summary>A first password for the parent's account, which has none (set as a change by the user).</summary>
+    public string? ParentPassword { get; init; }
     public bool ApplyUserPolicies { get; init; } = true;
     public bool DisableWinRE { get; init; }
 }
+
+public sealed record NewChildAccount(string Name, string? Password);
 
 /// <summary>
 /// install / update / update-config / uninstall. Each step reports a short title for the parent
@@ -92,8 +99,61 @@ public sealed class Installer
             throw;
         }
 
-        try { ReplaceService(req, staged); }
+        try
+        {
+            var (child, childSid) = PrepareAccounts(req);
+            ReplaceService(req with { Child = child }, childSid, staged);
+        }
         finally { DeleteStaged(staged); }
+    }
+
+    /// <summary>
+    /// The child's account and whether only its sessions count (vigil.toml child_sid, D30). A new account
+    /// (the parent's password set first, automatic sign-in off) or a standard one that exists: the
+    /// standard-account setup. The child an administrator: the one-account setup, every session counts — an account
+    /// a child-administrator creates is enforced too. An update keeps what is installed.
+    /// </summary>
+    private (UserAccount? Child, string? ChildSid) PrepareAccounts(InstallRequest req)
+    {
+        if (req.NewChild is null)
+        {
+            if (req.SigningKey is null) return (req.Child, InstalledChildSid());
+            if (req.Child is not { } existing || LocalAccounts.IsAdministrator(existing.Sid)) return (req.Child, null);
+            _r.Section(Strings.StepAccounts);
+            SetParentPassword(req);
+            _r.Check(CheckLevel.Pass, Strings.ChildAccountStandard(existing.Name));
+            DisableAutoLogonExcept(existing);
+            return (existing, existing.Sid);
+        }
+
+        _r.Section(Strings.StepAccounts);
+        SetParentPassword(req);
+        var child = LocalAccounts.CreateChild(req.NewChild.Name, req.NewChild.Password);
+        _r.Check(CheckLevel.Pass, Strings.ChildAccountCreated(child.Name, req.NewChild.Password is { Length: > 0 }));
+        DisableAutoLogonExcept(child);
+        return (child, child.Sid);
+    }
+
+    /// <summary>The first password of the account this runs as (the parent's), when the caller found it has none:
+    /// without one the child signs in to the parent's administrator account. A change as that user, never a reset.</summary>
+    private void SetParentPassword(InstallRequest req)
+    {
+        if (req.ParentPassword is not { } password) return;
+        var parent = LocalAccounts.Current();
+        LocalAccounts.SetFirstPassword(parent.Name, password);
+        _r.Check(CheckLevel.Pass, Strings.ParentPasswordSet(parent.Name));
+    }
+
+    /// <summary>Windows signing in by itself to another account would start the PC in an administrator's session
+    /// nobody counts.</summary>
+    private void DisableAutoLogonExcept(UserAccount child)
+    {
+        var auto = LocalAccounts.AutoLogonUser();
+        if (auto is null) return;
+        var autoSid = Accounts.SidOf(auto);
+        if (autoSid is not null && autoSid.Equals(child.Sid, StringComparison.OrdinalIgnoreCase)) return;
+        LocalAccounts.DisableAutoLogon();
+        _r.Check(CheckLevel.Pass, Strings.AutoLogonDisabled(auto));
     }
 
     private static void DeleteStaged(List<(string Temp, string Target)> staged)
@@ -102,7 +162,7 @@ public sealed class Installer
             try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
-    private void ReplaceService(InstallRequest req, List<(string Temp, string Target)> staged)
+    private void ReplaceService(InstallRequest req, string? childSid, List<(string Temp, string Target)> staged)
     {
         _r.Section(Strings.StepStopping);
         if (ServiceControl.Status() is not null)
@@ -129,7 +189,7 @@ public sealed class Installer
 
         _r.Section(Strings.StepConfig);
         WriteGuardianHash();
-        WriteConfig(req.ServerUrl);
+        WriteConfig(req.ServerUrl, childSid);
         if (req.SigningKey is not null) WriteSigningKey(req.SigningKey);
         else _r.Info(Strings.KeyKept);
 
@@ -159,17 +219,10 @@ public sealed class Installer
     }
 
     /// <summary>The installed server address (vigil.toml), or null.</summary>
-    public static string? InstalledServerUrl()
-    {
-        try
-        {
-            var text = File.ReadAllText(P(VigilLayout.ConfigFile));
-            var m = System.Text.RegularExpressions.Regex.Match(text, "server_url\\s*=\\s*\"([^\"]+)\"");
-            return m.Success ? m.Groups[1].Value : null;
-        }
-        catch (IOException) { return null; }
-        catch (UnauthorizedAccessException) { return null; }
-    }
+    public static string? InstalledServerUrl() => VigilToml.Read(P(VigilLayout.ConfigFile), VigilToml.ServerUrl);
+
+    /// <summary>The installed child's account in the standard-account setup (vigil.toml), or null.</summary>
+    public static string? InstalledChildSid() => VigilToml.Read(P(VigilLayout.ConfigFile), VigilToml.ChildSid);
 
     // === update-config ===
 
@@ -186,7 +239,7 @@ public sealed class Installer
         InstallAcls.Reclaim(VigilLayout.InstallDir);
         try
         {
-            WriteConfig(serverUrl);
+            WriteConfig(serverUrl, InstalledChildSid());
             if (signingKey is not null) WriteSigningKey(signingKey);
         }
         finally
@@ -209,6 +262,7 @@ public sealed class Installer
         // The copy in the folder (the guardian's) cannot delete itself while it runs.
         if (RunningFromInstallDir) throw new SetupException(Strings.RunFromPackage);
         var failsBefore = _r.Fail;
+        var childSid = InstalledChildSid();
         void Step(string title, Action body)
         {
             _r.Section(title);
@@ -250,6 +304,8 @@ public sealed class Installer
             _r.Check(CheckLevel.Pass, Strings.FolderRemoved(VigilLayout.InstallDir));
         });
         _r.Info(Strings.BootMenuNotRestored);
+        // The child's own account and its files stay (D30): the parent removes it in Windows' settings if wanted.
+        if (childSid is not null) _r.Info(Strings.ChildAccountKept(Accounts.NameOf(childSid)));
         return _r.Fail == failsBefore;
     }
 
@@ -306,12 +362,12 @@ public sealed class Installer
         _r.Check(CheckLevel.Pass, Strings.GuardianHashWritten(hash[..16]));
     }
 
-    private void WriteConfig(string serverUrl)
+    private void WriteConfig(string serverUrl, string? childSid)
     {
-        File.WriteAllText(P(VigilLayout.ConfigFile),
-            "# Vigil configuration. No secrets: the signing key is in signing.dat (DPAPI, SYSTEM only).\r\n\r\n" +
-            $"server_url = \"{serverUrl}\"\r\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(P(VigilLayout.ConfigFile), VigilToml.Write(serverUrl, childSid),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         _r.Check(CheckLevel.Pass, Strings.ConfigWritten(serverUrl));
+        _r.Info(childSid is null ? Strings.ConfigEverySession : Strings.ConfigChildOnly(Accounts.NameOf(childSid)));
     }
 
     private void WriteSigningKey(string base64Url)
@@ -378,8 +434,8 @@ public sealed class Installer
     {
         try
         {
-            using var hive = UserHive.Open(sid, hiveFile, writable: true);
-            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label)); return; }
+            using var hive = UserHive.Open(sid, hiveFile, out var error, writable: true);
+            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label, error)); return; }
             UserPolicies.Apply(hive.Root);
             _r.Check(CheckLevel.Pass, Strings.PoliciesApplied(label, hive.IsLive));
         }
@@ -389,23 +445,24 @@ public sealed class Installer
         }
     }
 
-    /// <summary>Every loaded user hive, the Default profile and every account that is not logged on: whichever
-    /// got the policies, also when an older install was told a different account.</summary>
+    /// <summary>Every account with a profile (its live hive when loaded, else its file — also when it is unloaded in
+    /// between, at a sign-out), every other loaded user hive and the Default profile: whichever got the policies,
+    /// also when an older install was told a different account.</summary>
     private void ClearUserPolicies()
     {
-        var loaded = UserHive.LoadedUserSids();
-        foreach (var sid in loaded) ClearIn(Strings.AccountLabel(Accounts.NameOf(sid)), sid, null);
+        var accounts = Accounts.Interactive();
+        foreach (var acc in accounts) ClearIn(Strings.AccountLabel(acc.Name), acc.Sid, acc.HiveFile);
+        foreach (var sid in UserHive.LoadedUserSids().Where(s => !accounts.Any(a => a.Sid.Equals(s, StringComparison.OrdinalIgnoreCase))))
+            ClearIn(Strings.AccountLabel(Accounts.NameOf(sid)), sid, null);
         ClearIn(Strings.DefaultProfile, null, VigilLayout.DefaultProfileHive);
-        foreach (var acc in Accounts.Interactive().Where(a => !loaded.Contains(a.Sid)))
-            ClearIn(Strings.AccountLabel(acc.Name), null, acc.HiveFile);
     }
 
     private void ClearIn(string label, string? sid, string? hiveFile)
     {
         try
         {
-            using var hive = UserHive.Open(sid, hiveFile, writable: true);
-            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label)); return; }
+            using var hive = UserHive.Open(sid, hiveFile, out var error, writable: true);
+            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label, error)); return; }
             UserPolicies.Clear(hive.Root);
             _r.Check(CheckLevel.Pass, Strings.PoliciesRemoved(label));
         }

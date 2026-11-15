@@ -4,8 +4,8 @@ namespace Vigil.Setup;
 
 /// <summary>
 /// Every text vigil_setup shows (i18n, D21): Polish when Windows' display language is Polish, English
-/// otherwise. The installer runs elevated in the child's account (D12), so it speaks the language of the
-/// lock screen. Technical names (DPAPI, SDDL, file names) stay as they are in both.
+/// otherwise. The installer runs on the child's PC (in the parent's account, or the one account the child shares,
+/// D30), so it speaks the language of the lock screen. Technical names (DPAPI, SDDL, file names) stay as they are in both.
 /// </summary>
 public static class Strings
 {
@@ -24,13 +24,19 @@ public static class Strings
         Bez parametrów: kreator instalacji albo, gdy Vigil już jest zainstalowany, stan i menu.
 
         Parametry (skrypty, CI, wsparcie):
-          -Mode install       -ServerUrl <adres> -PairingCode <kod> [-ChildUsername <konto>]
+          -Mode install       -ServerUrl <adres> -PairingCode <kod>
+                              [-ChildUsername <konto> | -CreateChildAccount <nazwa>]
                               [-DisableWinRE] [-NoUserPolicies]
           -Mode update        [-ServerUrl <adres>]   pliki z tej paczki, konfiguracja i klucz bez zmian
           -Mode update-config [-ServerUrl <adres>] [-PairingCode <kod>]
           -Mode reinstall     -ServerUrl <adres> -PairingCode <kod>
+                              [-ChildUsername <konto> | -CreateChildAccount <nazwa>]
           -Mode uninstall
           -Mode verify        [-ChildUsername <konto>]   sprawdza, niczego nie zmienia
+
+        Konto standardowe dziecka (-CreateChildAccount tworzy nowe, hasło dziecka — opcjonalne — w zmiennej
+        VIGIL_CHILD_PASSWORD; -ChildUsername wskazuje istniejące): liczy się tylko jego czas, a Twoje konto
+        musi mieć hasło — gdy go nie ma, podaj je w VIGIL_PARENT_PASSWORD.
 
         Kod wyjścia: 0 — gotowe, 1 — błąd (verify: co najmniej jeden błąd), 2 — złe parametry.
         """,
@@ -40,13 +46,19 @@ public static class Strings
         Without parameters: the setup wizard or, when Vigil is installed, its status and a menu.
 
         Parameters (scripts, CI, support):
-          -Mode install       -ServerUrl <address> -PairingCode <code> [-ChildUsername <account>]
+          -Mode install       -ServerUrl <address> -PairingCode <code>
+                              [-ChildUsername <account> | -CreateChildAccount <name>]
                               [-DisableWinRE] [-NoUserPolicies]
           -Mode update        [-ServerUrl <address>]   files from this package, configuration and key kept
           -Mode update-config [-ServerUrl <address>] [-PairingCode <code>]
           -Mode reinstall     -ServerUrl <address> -PairingCode <code>
+                              [-ChildUsername <account> | -CreateChildAccount <name>]
           -Mode uninstall
           -Mode verify        [-ChildUsername <account>]   checks, changes nothing
+
+        A standard account for the child (-CreateChildAccount creates one, the child's optional password in
+        the VIGIL_CHILD_PASSWORD variable; -ChildUsername names an existing one): only its time counts, and
+        your account needs a password — when it has none, give it in VIGIL_PARENT_PASSWORD.
 
         Exit code: 0 — done, 1 — failed (verify: at least one failure), 2 — wrong parameters.
         """);
@@ -299,7 +311,9 @@ public static class Strings
     public static string NoChildAccountForVerify(string? problem) => T(
         $"Nie ustalono konta dziecka ({problem}) — sprawdzam tylko profil domyślny",
         $"Child's account not determined ({problem}) — checking the Default profile only");
-    public static string HiveUnreadable(string label) => T($"{label}: nie da się odczytać rejestru", $"{label}: registry cannot be read");
+    public static string HiveUnreadable(string label, int error) => T(
+        $"{label}: nie da się odczytać rejestru (kod {error}: {new System.ComponentModel.Win32Exception(error).Message})",
+        $"{label}: registry cannot be read (code {error}: {new System.ComponentModel.Win32Exception(error).Message})");
     public static string PoliciesSet(string label, int count) => T($"{label}: zasady ustawione ({count} wartości)", $"{label}: policies set ({count} values)");
     public static string PoliciesRemoved(string label) => T($"{label}: zasady usunięte", $"{label}: policies removed");
 
@@ -437,4 +451,152 @@ public static class Strings
         "Katalog: SYSTEM full, Admin modify, AuthUsers r+x; sekrety: SYSTEM full, Admin read",
         "Folder: SYSTEM full, Admin modify, AuthUsers r+x; secrets: SYSTEM full, Admin read");
     public static string FolderRemoved(string dir) => T($"{dir} usunięty", $"{dir} removed");
+
+    // === The child's own account (D30, #160) ===
+
+    // Installer steps and verify
+    public static string StepAccounts => T("Konta", "Accounts");
+    public static string SectionAccounts => T("Konta", "Accounts");
+    public static string ParentPasswordSet(string name) => T($"Ustawiono hasło konta {name}", $"Password of the {name} account set");
+    public static string ChildAccountCreated(string name, bool withPassword) => T(
+        $"Utworzono konto {name} (standardowe{(withPassword ? ", z hasłem" : ", bez hasła")})",
+        $"Account {name} created (standard{(withPassword ? ", with a password" : ", no password")})");
+    public static string ChildAccountStandard(string name) => T(
+        $"Konto dziecka {name} jest standardowe: liczone będą tylko jego sesje",
+        $"The child's account {name} is a standard one: only its sessions will be counted");
+    public static string AutoLogonDisabled(string user) => T(
+        $"Wyłączono automatyczne logowanie (było na konto {user})", $"Automatic sign-in turned off (it went to {user})");
+    public static string ConfigEverySession => T(
+        "Liczona każda sesja (jedno konto)", "Every session counted (one account)");
+    public static string ConfigChildOnly(string name) => T(
+        $"Liczone tylko sesje konta {name}", $"Only the sessions of {name} counted");
+    public static string ChildAccountKept(string name) => T(
+        $"Konto {name} zostaje razem z plikami dziecka — usuniesz je w Ustawieniach Windows → Konta, jeśli chcesz",
+        $"The {name} account stays with the child's files — remove it in Windows Settings → Accounts if you want");
+    public static string InstalledChildMissing(string sid) => T(
+        $"Nie ma konta dziecka z vigil.toml ({sid}) — zainstaluj Vigil ponownie",
+        $"The child's account from vigil.toml ({sid}) is gone — install Vigil again");
+    public static string AccountNameInvalid => T(
+        "Nazwa konta: do 20 znaków, bez \" / \\ [ ] : ; | = , + * ? < > @.",
+        "Account name: up to 20 characters, without \" / \\ [ ] : ; | = , + * ? < > @.");
+    public static string AccountNameTaken(string name) => T(
+        $"Konto {name} już istnieje — wybierz inną nazwę.", $"The account {name} already exists — choose another name.");
+    public static string AccountCreateFailed(string name, int code) => T(
+        $"Nie udało się utworzyć konta {name} (kod {code})", $"Could not create the account {name} (code {code})");
+    public static string ProfileCreateFailed(string name, int hr) => T(
+        $"Nie udało się utworzyć profilu konta {name} (0x{hr:X8})", $"Could not create the profile of {name} (0x{hr:X8})");
+    public static string PasswordSetFailed(string user, int code) => T(
+        code == 2245 ? $"Hasło konta {user} nie spełnia zasad haseł tego komputera (długość, złożoność)"
+                     : $"Nie udało się ustawić hasła konta {user} (kod {code})",
+        code == 2245 ? $"The password of {user} does not meet this computer's password rules (length, complexity)"
+                     : $"Could not set the password of {user} (code {code})");
+    public static string ParentPasswordNeeded(string user) => T(
+        $"Konto {user} nie ma hasła, a z kontem dziecka zostaje kontem rodzica: podaj hasło w VIGIL_PARENT_PASSWORD.",
+        $"The {user} account has no password and becomes the parent's: give one in VIGIL_PARENT_PASSWORD.");
+    public static string ChildAccountBothGiven => T(
+        "Podaj -ChildUsername albo -CreateChildAccount, nie oba.", "Give -ChildUsername or -CreateChildAccount, not both.");
+    public static string CreateChildOnlyInstall => T(
+        "-CreateChildAccount działa tylko z -Mode install i reinstall.", "-CreateChildAccount works only with -Mode install and reinstall.");
+    public static string VerifyOneAccount => T(
+        "Jedno konto: liczona jest każda sesja, dziecko może mieć uprawnienia administratora",
+        "One account: every session is counted, the child may be an administrator");
+    public static string VerifyChildOnly(string name) => T(
+        $"Konto dziecka {name}: liczone są tylko jego sesje", $"The child's account {name}: only its sessions are counted");
+    public static string VerifyChildStandard(string name) => T(
+        $"Konto {name} nie ma uprawnień administratora", $"The {name} account is not an administrator");
+    public static string VerifyAutoLogon(string? user) => T(
+        user is null ? "Brak automatycznego logowania na inne konto" : $"Windows loguje się automatycznie na konto {user} — wyłącz to",
+        user is null ? "No automatic sign-in to another account" : $"Windows signs in to {user} by itself — turn that off");
+    public static string ChildNotLoggedOn => T(
+        "Dziecko nie jest zalogowane — vigil_ui nie musi działać", "The child is not signed in — vigil_ui need not run");
+
+    // Wizard: one account that is an administrator
+    public static string UiOneAdminAccount(string name) => T(
+        $"Na tym komputerze jest jedno konto — {name} — i ma uprawnienia administratora.",
+        $"This computer has one account — {name} — and it is an administrator.");
+    public static string UiAdminCanBypass => T(
+        "Dziecko z uprawnieniami administratora jest w stanie Vigila obejść: zatrzymać usługę albo odczytać jego klucze. Vigil to utrudnia i pokazuje Ci w panelu, ale nie uniemożliwia.",
+        "A child who is an administrator can get round Vigil: stop the service or read its keys. Vigil makes that harder and shows it to you in the panel, but does not make it impossible.");
+    public static string UiRecommendNewChild => T("Zalecane: osobne konto dla dziecka", "Recommended: a separate account for the child");
+    public static string UiNewChildPoint1 => T(
+        "Utworzę konto standardowe, bez uprawnień administratora. Vigil będzie pilnował tylko jego — tego Windows nie pozwoli dziecku wyłączyć.",
+        "I create a standard account, without administrator rights. Vigil watches only that one — Windows will not let the child turn it off.");
+    public static string UiNewChildPoint2(string parent) => T(
+        $"Konto {parent} zostanie Twoim kontem administratora: bez blokady i bez liczenia czasu. Musi mieć hasło.",
+        $"The {parent} account becomes your administrator account: no lock, no time counted. It needs a password.");
+    public static string UiNewChildPoint3 => T(
+        "Nowe konto zaczyna z pustym profilem: gry zainstalowane dla całego komputera działają, ale zapisy i logowanie w launcherach trzeba przenieść albo powtórzyć.",
+        "The new account starts with an empty profile: games installed for the whole computer work, but saves and launcher sign-ins have to be moved or done again.");
+    public static string UiChoiceNewChild => T("Utwórz konto dla dziecka (zalecane)", "Create an account for the child (recommended)");
+    public static string UiChoiceOneAccount => T("Zostań przy jednym koncie", "Keep one account");
+    public static string UiOneAccountTitle => T("Jedno konto", "One account");
+    public static string UiOneAccountIntro(string name) => T(
+        $"Vigil zostanie zainstalowany na koncie {name}, z którego korzysta dziecko. Ograniczenia:",
+        $"Vigil is installed on the {name} account, which the child uses. The limits:");
+    public static string UiOneAccountLimit1 => T(
+        "Dziecko z uprawnieniami administratora może zatrzymać Vigila, podmienić jego pliki albo odczytać klucze. Panel pokaże większość takich prób, ale ich nie zablokuje.",
+        "A child who is an administrator can stop Vigil, replace its files or read its keys. The panel shows most such attempts but does not block them.");
+    public static string UiOneAccountLimit2 => T(
+        "Menedżer zadań, zmiana hasła, skróty ułatwień dostępu i gesty touchpada zostaną wyłączone także dla Ciebie — to jedno konto.",
+        "Task Manager, password change, accessibility shortcuts and touchpad gestures are turned off for you too — it is one account.");
+    public static string UiOneAccountLimit3 => T(
+        "Gdy sam korzystasz z tego konta, Twój czas liczy się dziecku.", "When you use this account yourself, your time counts as the child's.");
+    public static string UiOneAccountLater => T(
+        "Osobne konto dla dziecka można utworzyć później tylko przez ponowną instalację.",
+        "A separate account for the child can be created later only by installing again.");
+    public static string UiChoiceUnderstand => T("Rozumiem — jedno konto", "I understand — one account");
+    public static string UiChoiceBack => T("Wróć", "Back");
+
+    // Wizard: the new account and the parent's password
+    public static string UiNewChildTitle => T("Konto dla dziecka", "Account for the child");
+    public static string UiNewChildHelp => T(
+        "Nazwa pojawi się na ekranie logowania Windows. Hasło jest opcjonalne — puste pole: dziecko loguje się bez hasła.",
+        "The name appears on the Windows sign-in screen. The password is optional — leave it empty and the child signs in without one.");
+    public static string UiNewChildHint => T(
+        "Konto lokalne, standardowe. Dziecko nie zmieni hasła samo; Ty zmienisz je ze swojego konta (Ustawienia Windows → Konta).",
+        "A local standard account. The child cannot change the password; you can, from your account (Windows Settings → Accounts).");
+    public static string UiEmptyNameBack => T("Puste pole nazwy i Enter — powrót.", "An empty name and Enter — back.");
+    public static string UiNewChildName => T("Nazwa konta:", "Account name:");
+    public static string UiNewChildPassword => T("Hasło (opcjonalne):", "Password (optional):");
+    public static string UiRepeatPassword => T("Powtórz hasło:", "Repeat the password:");
+    public static string UiPasswordsDiffer => T("Hasła się różnią — wpisz je jeszcze raz.", "The passwords differ — type them again.");
+    public static string UiParentPasswordTitle => T("Hasło Twojego konta", "Your account's password");
+    public static string UiParentPasswordHelp(string parent) => T(
+        $"Konto {parent} będzie Twoim kontem administratora, a nie ma hasła. Bez hasła dziecko zaloguje się na nie jednym kliknięciem i wyłączy Vigila — dlatego hasło jest wymagane.",
+        $"The {parent} account becomes your administrator account and has no password. Without one the child signs in to it with a click and turns Vigil off — so a password is required.");
+    public static string UiNewPassword => T("Nowe hasło:", "New password:");
+    public static string UiParentPasswordKeep => T(
+        "Zapisz je i nie podawaj dziecku. To zwykła zmiana hasła: zapisane hasła w przeglądarce i inne dane konta zostają.",
+        "Keep it somewhere and do not tell the child. It is a normal password change: saved browser passwords and the account's other data stay.");
+    public static string UiParentPasswordLater => T(
+        "Hasło zostanie ustawione dopiero po wybraniu „Zainstaluj”.", "The password is set only once you choose “Install”.");
+    public static string UiParentPasswordRequired => T("Hasło jest wymagane.", "A password is required.");
+    public static string UiAutoLogonWillBeOff(string user) => T(
+        $"Komputer loguje się automatycznie na konto {user} — to zostanie wyłączone, przy starcie Windows pokaże wybór konta.",
+        $"The computer signs in to {user} by itself — that is turned off; at start Windows shows the choice of accounts.");
+
+    // Wizard: summary and result
+    public static string UiSummaryYourAccount => T("Twoje konto", "Your account");
+    public static string UiSummaryNewStandard => T("nowe, standardowe", "new, standard");
+    public static string UiSummaryStandard => T("standardowe", "standard");
+    public static string UiSummaryAdmin(bool newPassword) => T(
+        newPassword ? "administrator, nowe hasło" : "administrator", newPassword ? "administrator, new password" : "administrator");
+    public static string UiSummaryCreate(string child) => T(
+        $"Utworzę konto {child} (standardowe, bez uprawnień administratora).", $"I create the {child} account (standard, no administrator rights).");
+    public static string UiSummaryParentPassword(string parent, bool autoLogon) => T(
+        $"Ustawię hasło konta {parent}{(autoLogon ? " i wyłączę automatyczne logowanie" : "")}.",
+        $"I set the password of {parent}{(autoLogon ? " and turn automatic sign-in off" : "")}.");
+    public static string UiSummaryAutoLogonOff => T("Wyłączę automatyczne logowanie.", "I turn automatic sign-in off.");
+    public static string UiSummaryServiceChild(string child) => T(
+        $"Vigil zostanie zainstalowany jako usługa systemowa i będzie liczyć czas tylko na koncie {child}.",
+        $"Vigil is installed as a system service and counts time only on the {child} account.");
+    public static string UiSummaryLockChild(string child) => T(
+        $"Gdy skończy się limit albo zacznie cisza nocna, konto {child} pokaże ekran blokady. Twoje konto nie jest blokowane ani liczone.",
+        $"When the limit runs out or night time starts, the {child} account shows the lock screen. Your account is neither locked nor counted.");
+    public static string UiSummaryPoliciesChild(string child) => T(
+        $"Na koncie {child} zostaną wyłączone: Menedżer zadań, zmiana hasła, skróty ułatwień dostępu i gesty touchpada. Twojego konta to nie dotyczy.",
+        $"On the {child} account Task Manager, password change, accessibility shortcuts and touchpad gestures are turned off. Your account is not affected.");
+    public static string UiSwitchToChild(string child) => T(
+        $"Przełącz użytkownika na {child}, żeby zobaczyć Vigila tak, jak zobaczy go dziecko.",
+        $"Switch user to {child} to see Vigil as the child will.");
 }

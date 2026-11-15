@@ -11,7 +11,7 @@ namespace Vigil.Setup.Core;
 
 /// <summary>
 /// -Mode verify: reads the installed state and reports one check per line; changes nothing (a user hive
-/// that is not loaded is opened as a private app hive and closed). Without an installation it checks that
+/// that is not loaded is mounted for the check and unloaded; mounting replays its .LOG files, as a sign-in would). Without an installation it checks that
 /// the uninstall left nothing behind. What it cannot see (the lock overlay, the tray, keyboard blocking)
 /// stays a manual test. A diagnostic for the parent, not a protection.
 /// </summary>
@@ -47,6 +47,7 @@ public sealed class Verify
         Section(Strings.SectionService(VigilLayout.ServiceName), CheckService);
         Section(Strings.SectionFiles(VigilLayout.InstallDir), CheckFiles);
         Section(Strings.SectionTasks, CheckTasks);
+        Section(Strings.SectionAccounts, CheckAccounts);
         Section(Strings.SectionPolicies, CheckPolicies);
         Section(Strings.SectionRuntime, CheckRuntime);
     }
@@ -198,6 +199,26 @@ public sealed class Verify
 
     private static string SafeBootMode(string key) => key.Split('\\')[^2];
 
+    /// <summary>The setup of accounts (D30): in the standard-account one, the child's own account exists, is not an
+    /// administrator, and Windows does not sign in to another account by itself. The parent's password is not
+    /// checked: every try counts towards the account lockout threshold (LocalAccounts.HasBlankPassword).</summary>
+    private void CheckAccounts()
+    {
+        var sid = Installer.InstalledChildSid();
+        if (sid is null)
+        {
+            _r.Info(Strings.VerifyOneAccount);
+            return;
+        }
+        var child = Accounts.Interactive().FirstOrDefault(a => a.Sid.Equals(sid, StringComparison.OrdinalIgnoreCase));
+        _r.Check(child is not null, child is not null ? Strings.VerifyChildOnly(child.Name) : Strings.InstalledChildMissing(sid));
+        if (child is null) return;
+        _r.Check(!LocalAccounts.IsAdministrator(sid), Strings.VerifyChildStandard(child.Name), CheckLevel.Warn);
+        var auto = LocalAccounts.AutoLogonUser();
+        var autoOk = auto is null || Accounts.SidOf(auto)?.Equals(sid, StringComparison.OrdinalIgnoreCase) == true;
+        _r.Check(autoOk, Strings.VerifyAutoLogon(autoOk ? null : auto), CheckLevel.Warn);
+    }
+
     private void CheckPolicies()
     {
         var child = ChildAccountChoice.Resolve(_childUserName);
@@ -217,9 +238,9 @@ public sealed class Verify
     private void CheckUserPolicies(string label, string? sid, string? hiveFile, bool removed)
     {
         List<PolicyValue> rows;
-        using (var hive = UserHive.Open(sid, hiveFile))
+        using (var hive = UserHive.Open(sid, hiveFile, out var error))
         {
-            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label)); return; }
+            if (hive is null) { _r.Check(CheckLevel.Warn, Strings.HiveUnreadable(label, error)); return; }
             rows = UserPolicies.Read(hive.Root);
         }
         var bad = removed
@@ -233,11 +254,17 @@ public sealed class Verify
 
     private void CheckRuntime()
     {
-        // Someone is logged on (explorer runs) ⇒ the watchdog must have started vigil_ui in that session.
-        if (Process.GetProcessesByName("explorer").Length > 0)
+        // The child is logged on ⇒ the watchdog must have started vigil_ui in its session. One-account setup:
+        // anyone (explorer runs). Standard-account setup: the child's hive is loaded — the parent running this
+        // check from their own account has no vigil_ui, and should not.
+        var childSid = Installer.InstalledChildSid();
+        var childOn = childSid is null
+            ? Process.GetProcessesByName("explorer").Length > 0
+            : UserHive.LoadedUserSids().Contains(childSid, StringComparer.OrdinalIgnoreCase);
+        if (childOn)
             _r.Check(Process.GetProcessesByName("vigil_ui").Length > 0, Strings.UiRunning);
         else
-            _r.Info(Strings.NobodyLoggedOn);
+            _r.Info(childSid is null ? Strings.NobodyLoggedOn : Strings.ChildNotLoggedOn);
 
         if (_serverUrl is not null)
             _r.Check(ServerReachable(_serverUrl), Strings.ServerResponds(_serverUrl));

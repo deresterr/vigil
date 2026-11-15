@@ -33,12 +33,14 @@
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.15" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.15" />
     <!-- The wizard and the menu (D22). MIT. -->
-    <PackageReference Include="Spectre.Console" Version="0.49.1" />
+    <PackageReference Include="Spectre.Console" Version="0.57.2" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\shared\VigilLayout.cs" Link="Shared\VigilLayout.cs" />
     <Compile Include="..\shared\FileAcls.cs" Link="Shared\FileAcls.cs" />
+    <Compile Include="..\shared\VigilToml.cs" Link="Shared\VigilToml.cs" />
+    <Compile Include="..\shared\LocalAdmins.cs" Link="Shared\LocalAdmins.cs" />
   </ItemGroup>
 
 </Project>

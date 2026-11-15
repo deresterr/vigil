@@ -16,9 +16,16 @@ public sealed class HeartbeatRequest
     [JsonPropertyName("current_time_utc")]
     public required string CurrentTimeUtc { get; init; }
 
-    /// <summary>Not read by the server since 0.9.0; servers up to 0.8.2 require it.</summary>
-    [JsonPropertyName("uptime_seconds")]
-    public required int UptimeSeconds { get; init; }
+    // uptime_seconds went in 1.0 (#166): only servers up to 0.8.2 required it — update the server first.
+
+    /// <summary>This client's version (#159, #166): Settings show it and "Update needed".</summary>
+    [JsonPropertyName("client_version")]
+    public string? ClientVersion { get; init; }
+
+    /// <summary>Whether the child's account is an administrator (#165, Detection/ChildAdminCheck.cs); null until
+    /// known.</summary>
+    [JsonPropertyName("child_admin")]
+    public bool? ChildAdmin { get; init; }
 
     // Tamper telemetry (server/app/tamper.py)
     [JsonPropertyName("instance_id")]

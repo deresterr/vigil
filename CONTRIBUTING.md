@@ -9,7 +9,7 @@ first, so we can agree on the approach before you write code.
   [`SECURITY.md`](SECURITY.md).
 - Bugs and ideas: [open an issue](https://github.com/deresterr/vigil/issues/new/choose) with the form.
   For a bug the most useful details are the version, the Windows edition and language, whether the child's account
-  is an administrator, and the installer log (`%TEMP%\vigil_setup_<time>.log`, its path is on screen).
+  is a standard one or an administrator, and the installer log (`%TEMP%\vigil_setup_<time>.log`, its path is on screen).
 - Before you attach a log or a screenshot, remove server addresses, computer names and children's names.
 
 ## Building and testing
@@ -33,11 +33,12 @@ removes Vigil on purpose. Test the package on a virtual machine; for the lock sc
 ## Rules
 
 - **One issue, one branch, one pull request to `main`.** Keep it focused; no stacked pull requests.
-- **Threat model** ([`docs/threat-model.md`](docs/threat-model.md)). The child may be an administrator (D2). Say in
-  the pull request which group a protective change belongs to — protects (state on the server), impedes (stops a
+- **Threat model** ([`docs/threat-model.md`](docs/threat-model.md)). The child may be an administrator (D2), or on a
+  standard account of its own (D30). Say in the pull request which group a protective change belongs to, in each
+  setup — protects (state on the server, or refused to a standard account by Windows), impedes (stops a
   non-elevated process) or detects (an alert in the Journal) — and do not describe friction as protection.
 - **Invariants** listed in [`CLAUDE.md`](CLAUDE.md) (fail-closed, one uvicorn worker, time counted on the server,
-  lock priority, Windows Home support, file names and DPAPI entropy) are design decisions: discuss before changing them.
+  lock priority, Windows Home support, the two account setups, file names and DPAPI entropy) are design decisions: discuss before changing them.
 - **Tests.** New server behaviour gets a test; `ruff check .` and `pytest -q` pass. Client changes must build in CI.
 - **Language.** Code, comments, logs and commit messages in English. User-facing text in Polish and English:
   the panel marks the Polish source text (`t('…')`, `data-i18n`) and keeps English in `server/app/static/i18n.js`;

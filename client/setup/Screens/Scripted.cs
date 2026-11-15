@@ -51,6 +51,8 @@ internal sealed class ScriptedConsole : IAnsiConsole
     public RenderPipeline Pipeline => _inner.Pipeline;
     public void Clear(bool home) => _inner.WriteLine();
     public void Write(IRenderable renderable) => _inner.Write(renderable);
+    // No ANSI here: nothing to send.
+    public void WriteAnsi(Action<AnsiWriter> action) => _inner.WriteAnsi(action);
 }
 
 internal sealed class NoCursor : IAnsiConsoleCursor

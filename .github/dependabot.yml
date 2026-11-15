@@ -11,10 +11,14 @@ updates:
       server:
         patterns: ["*"]
 
+  # .NET 10 is LTS: its 10.0.x patches only. Moving to the next LTS (.NET 12) is a change of its own.
   - package-ecosystem: nuget
     directory: /client
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       client:
         patterns: ["*"]

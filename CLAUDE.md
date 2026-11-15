@@ -36,7 +36,8 @@ everywhere the same problem occurs, not only where it was reported.
 ## Verify before saying "done"
 - Server: `cd server && pip install -r requirements-dev.txt && ruff check . && pytest -q`
 - Client: cannot build on Linux; CI (`.github/workflows/ci.yml`, windows-latest) compiles it
-  (path-filtered on PRs; every push to main builds everything; a running build is never cancelled, a queued one gives way to a newer push). The client job also runs
+  (path-filtered on PRs; every push to main builds everything; on main a running build is never cancelled, a queued one gives way to a newer
+  push; on a PR a new push cancels the running build). The client job also runs
   for `server/app/**`: its installer e2e drives the server's API (#104 — a wizard change broke it on main only).
   Push the branch and read the CI result instead of guessing. CI uploads `dist/` of a PR as an artifact (kept
   one day; Re-run jobs brings it back) — that package is what runtime tests on a Windows VM use.
@@ -47,8 +48,10 @@ everywhere the same problem occurs, not only where it was reported.
   every PR targets `main`.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 - Dependabot (`.github/dependabot.yml`, #168): one grouped pull request a month per ecosystem (pip, NuGet, Actions,
-  the Docker base). A NuGet one is a client change: it waits for the next VM session and is merged with it. CI
-  takes its Python version from `server/Dockerfile`'s `FROM`, so a base-image bump is tested on the Python it brings.
+  the Docker base). A NuGet one is a client change: it waits for the next VM session and is merged with it; NuGet
+  majors are ignored (.NET 10 LTS, 10.0.x only). CI takes its Python version from `server/Dockerfile`'s `FROM`, so
+  a base-image bump is tested on the Python it brings — the installer e2e too, which runs the server on Windows
+  (the client job also runs for `server/requirements.txt` and `server/Dockerfile`).
 
 ## Invariants (changing any of these is a design decision — ask first)
 - **Fail-closed**: no server answer since the service started, or none for 30 s (monotonic clock, which counts

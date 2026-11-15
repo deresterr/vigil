@@ -29,9 +29,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.15" />
-    <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.15" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="11.0.0" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="11.0.0" />
     <!-- The wizard and the menu (D22). MIT. -->
     <PackageReference Include="Spectre.Console" Version="0.57.2" />
   </ItemGroup>

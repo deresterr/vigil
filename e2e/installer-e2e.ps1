@@ -434,6 +434,7 @@ try {
     # Passwords come from the environment, never an argument. The parent's (the runner's account) is used only
     # if that account has none yet; it is set here so the run does not depend on the runner image.
     $NewChild = 'vigilkid'
+    $kidStart = Get-Date
     $code = New-PairingCode @{ device_id = (Get-Device).id }
     $kidPassword = "Kid-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
     $env:VIGIL_CHILD_PASSWORD = $kidPassword
@@ -454,6 +455,13 @@ try {
     $winlogon = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
     Assert-That ($winlogon.AutoAdminLogon -ne '1') 'no automatic sign-in to another account'
     Wait-Heartbeat 'the PC is online with the new child account'
+    # Whose session is active comes from its token; a session it cannot tell counts as the child's (fail-closed)
+    # and is a warning. The runner's own console session, if it has one, is another account's.
+    Write-Host "  console session: $((Get-CimInstance Win32_ComputerSystem).UserName)"
+    $unknown = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'Application'; ProviderName = 'Vigil Watchdog'; Level = 2, 3; StartTime = $kidStart
+        } -ErrorAction SilentlyContinue | Where-Object { $_.Message -like "*counted as the child's*" }).Count
+    Assert-That ($unknown -eq 0) "the active session's account read from its token (got $unknown warnings)"
     $device = Get-Device
     Assert-That ($device.child_admin -eq $false) "the heartbeat says the child's account is not an administrator (got '$($device.child_admin)')"
     Assert-That ($device.client_version -like '0.0.0-*') "the heartbeat carries the client's version (got '$($device.client_version)')"

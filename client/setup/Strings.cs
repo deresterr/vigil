@@ -4,8 +4,8 @@ namespace Vigil.Setup;
 
 /// <summary>
 /// Every text vigil_setup shows (i18n, D21): Polish when Windows' display language is Polish, English
-/// otherwise. The installer runs elevated in the child's account (D12), so it speaks the language of the
-/// lock screen. Technical names (DPAPI, SDDL, file names) stay as they are in both.
+/// otherwise. The installer runs on the child's PC (in the parent's account, or the one account the child shares,
+/// D30), so it speaks the language of the lock screen. Technical names (DPAPI, SDDL, file names) stay as they are in both.
 /// </summary>
 public static class Strings
 {

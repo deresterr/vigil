@@ -2,39 +2,66 @@
 
 [English](threat-model.md) · **Polski**
 
-Vigil zakłada, że dziecko **może mieć konto administratora**, bo tak korzysta z komputera większość rodzin.
-Administrator może uruchomić kod jako SYSTEM, odczytać każdy plik i wyłączyć każdą usługę, więc na samym PC nic
-nie jest odporne na manipulację. Dlatego wszystko, co ważne, Vigil trzyma na serwerze, resztę utrudnia odkręcić,
-a o każdej próbie mówi rodzicowi.
+Vigil działa w jednym z dwóch układów, wybieranym przy instalacji:
+
+- **Zalecany: dziecko ma własne konto standardowe**, a rodzic konto administratora z hasłem, którego dziecko nie
+  zna. Liczone i blokowane są tylko sesje dziecka. Sam Windows odmawia użytkownikowi standardowemu tego, co
+  wyłączyłoby Vigila: zatrzymania usługi, podmiany jej plików, odczytu sekretów, zmiany zegara. Konto dziecka może
+  założyć instalator.
+- **Wspierany: jedno konto administratora**, wspólne dla dziecka i rodzica. Administrator może uruchomić kod jako
+  SYSTEM, odczytać każdy plik i wyłączyć każdą usługę, więc na samym PC nic nie jest odporne na manipulację:
+  to, co ważne, jest na serwerze, resztę trudno odkręcić, a rodzic widzi próby.
 
 Każdy mechanizm należy do jednej z trzech grup:
 
 | Grupa | Co to znaczy |
 |---|---|
-| **Chroni** | Działa także przeciw administratorowi, bo stan jest na serwerze. |
+| **Chroni** | Działa przeciw dziecku: stan jest na serwerze albo Windows odmawia kontu dziecka. |
 | **Utrudnia** | Zatrzymuje program bez uprawnień administratora i przypadkowe próby. Administrator to obejdzie. |
 | **Wykrywa** | Pojawia się jako alert w Dzienniku, do potwierdzenia przez rodzica. |
 
 Co w tym modelu jest podatnością: [`SECURITY.pl.md`](../SECURITY.pl.md).
 
-## Chroni
+## Według układu
 
-- Limity, cisza nocna, blokada ręczna i licznik czasu są na serwerze. Z PC nie da się ich zmienić, można najwyżej
-  podsunąć fałszywe dane (patrz [Nie wykrywa](#nie-wykrywa)).
-- PC paruje się jednorazowym kodem z panelu. Każde parowanie wydaje nowy klucz, a poprzedni PC traci dostęp.
-- Kod TOTP działa tylko raz. Po błędnych kodach odblokowanie wstrzymuje się na kilka minut.
-- Liczba prób logowania do panelu rodzica jest ograniczona.
+| Mechanizm | Konto standardowe | Jedno konto administratora |
+|---|---|---|
+| Limity, cisza nocna, blokada ręczna i licznik czasu są na serwerze. Z PC nie da się ich zmienić, można najwyżej podsunąć fałszywe dane | **Chroni** | **Chroni** |
+| Parowanie jednorazowym kodem; każde parowanie wydaje nowy klucz, a poprzedni PC traci dostęp | **Chroni** | **Chroni** |
+| Kod TOTP działa raz; po błędnych kodach odblokowanie wstrzymuje się na kilka minut. Liczba prób logowania do panelu jest ograniczona | **Chroni** | **Chroni** |
+| Usługi nie da się zatrzymać, wyłączyć ani usunąć; jej plików nie da się podmienić; zadania strażnika nie da się zmienić | **Chroni** — wymaga uprawnień administratora | **Utrudnia** — zwykłe polecenie zawodzi, resztę strażnik cofa co 5 minut, każda naprawa to alert |
+| Żądania są podpisane kluczem, który odczyta tylko SYSTEM i administrator; tak samo sekret TOTP do odblokowania offline | **Chroni** | **Utrudnia** — administrator odczyta oba |
+| Brak połączenia z serwerem oznacza blokadę (fail-closed) | **Chroni** — dziecko nie zatrzyma usługi ani nie podrobi odpowiedzi | **Utrudnia** |
+| Użytkownik nie zamknie procesu ekranu blokady; wielokrotne zamykanie wylogowuje sesję | **Chroni** | **Utrudnia** |
+| Zmiana zegara (usługa z niego nie korzysta, serwer zapisuje różnicę w Dzienniku) | **Chroni** — wymaga uprawnień administratora | **Utrudnia** |
+| Ekran blokady zakrywa wszystkie monitory i blokuje skróty (Win, Alt+Tab, Alt+F4); Menedżer zadań i zmiana hasła są wyłączone na koncie dziecka | **Utrudnia** | **Utrudnia** — także dla rodzica, bo to to samo konto |
+| Usługa działa też w trybie awaryjnym; menu F8 jest wyłączone | **Chroni** — konfiguracja rozruchu wymaga uprawnień administratora | **Utrudnia** |
 
-## Utrudnia
+Konto standardowe trzyma tak długo, jak Windows: aktualizuj go, żeby żadna znana luka nie dała użytkownikowi
+standardowemu uprawnień administratora.
 
-- Żądania do serwera są podpisane kluczem z pliku dostępnego tylko dla SYSTEM i administratorów.
-- Brak połączenia z serwerem oznacza blokadę (fail-closed).
-- Administrator nie zatrzyma usługi zwykłym poleceniem. Zadanie strażnika co 5 minut cofa wyłączenie usługi,
-  podmianę jej pliku i inne zmiany w instalacji. Usługa działa też w trybie awaryjnym.
-- Ekran blokady zakrywa wszystkie monitory i blokuje skróty (Win, Alt+Tab, Alt+F4). Menedżer zadań i zmiana hasła
-  konta są wyłączone — także dla rodzica, bo to to samo konto.
-- Ekranu blokady nie da się zamknąć bez uprawnień administratora. Wielokrotne zamykanie wylogowuje użytkownika.
-- Odblokowanie kodem TOTP działa offline. Sekret do tego jest na dysku PC i administrator może go odczytać.
+## Konto rodzica
+
+W układzie z kontem standardowym to konto administratora rodzica zatrzymuje dziecko:
+
+- Każde konto administratora na PC potrzebuje hasła, którego dziecko nie zna. Instalator każe ustawić je kontu,
+  z którego jest uruchomiony, jeśli go nie ma; inne konta administratora sprawdź sam.
+- Automatyczne logowanie jest wyłączane: inaczej Windows startowałby w sesji rodzica, której nikt nie liczy.
+- Sesja rodzica nigdy nie jest liczona ani blokowana, także bez serwera. Wyloguj się albo zablokuj ją (Win+L),
+  zanim odejdziesz od PC: odblokowana sesja rodzica to PC bez limitów.
+
+## Fizyczny dostęp
+
+Każdy przy PC może go uruchomić z czegoś innego niż jego Windows. Żaden układ tego nie widzi, konto standardowe
+tego nie zmienia:
+
+- **Inny system z pendrive'a** albo **środowisko odzyskiwania Windows** (Shift + Uruchom ponownie na ekranie
+  logowania) mogą usunąć folder Vigila, tak jak robi to
+  [ścieżka awaryjna](installer.md#emergency-windows-does-not-start-or-vigil-cannot-be-removed-normally).
+  **Resetowanie komputera** usuwa Vigila razem z każdym zainstalowanym programem.
+- Przeciw temu: hasło firmware'u (BIOS/UEFI), wyłączony rozruch z USB i **szyfrowanie urządzenia** tam, gdzie PC
+  je ma (Windows 10/11 Home na większości nowszego sprzętu; BitLocker w Pro). Zaszyfrowany dysk poza Windowsem
+  pyta o klucz odzyskiwania, więc trzymaj go z dala od dziecka — i pod ręką na ścieżkę awaryjną.
 
 ## Wykrywa
 
@@ -52,10 +79,11 @@ Alert w Dzienniku, do potwierdzenia przez rodzica, gdy:
 
 | Co się dzieje | Co widzi rodzic |
 |---|---|
-| Usługa zatrzymana na stałe | PC offline w panelu |
+| Usługa zatrzymana na stałe (administrator) | PC offline w panelu |
 | Usunięta albo uszkodzona konfiguracja na PC (`vigil.toml`, `signing.dat`) — usługa nie startuje | PC offline w panelu |
-| Inny system uruchomiony z pendrive'a | PC offline w panelu |
+| Inny system uruchomiony z pendrive'a albo zresetowany komputer | PC offline w panelu |
 | Administrator odczytuje klucz z dysku i wysyła sfałszowane żądania | Nic |
+| Dziecko korzysta z odblokowanej sesji rodzica | Nic: ta sesja nie jest liczona |
 
 ## Sieć
 

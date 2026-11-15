@@ -1,6 +1,6 @@
 # Architecture
 
-How the system works today. The decisions behind it (D1–D28) are in [`decisions.md`](decisions.md), the
+How the system works today. The decisions behind it (D1–D30) are in [`decisions.md`](decisions.md), the
 installer in [`installer.md`](installer.md), the guardian in [`guardian.md`](guardian.md).
 
 ```
@@ -176,8 +176,12 @@ server says so — 30 s while nobody is logged on). A logon (the SCM's session-c
 next tick at once, and so does a new IP address after a failed heartbeat (`NetworkChange.NetworkAddressChanged`:
 Wi-Fi joined, cable in).
 1. `UiManager.EnsureRunningAsync` — vigil_ui running and connected in the active session (below).
-2. `SessionDetector` — any WTS session ≠ 0 in Active state. Not Connected: that is the console at the logon
-   screen with nobody signed in.
+2. `SessionDetector` — the WTS session ≠ 0 in Active state. Not Connected: that is the console at the logon
+   screen with nobody signed in. With `child_sid` in `vigil.toml` (the standard-account setup, D30) only a session
+   of that account counts: the active session of another account (the parent's, also after fast user switching)
+   is treated as no session — no time, no lock, no vigil_ui, whether the server answers or not. Without it (one
+   administrator account, D12) every active session is the child's. `ChildAdminCheck` sends `child_admin`: whether
+   that account (or, without `child_sid`, the active session's) is in Administrators, by SID, at most once a minute.
 3. Heartbeat → `EnsureLockedAsync` / `DismissAsync`, tray state.
 4. No valid response since the service started, or none for > 30 s ⇒ lock with reason `server_unreachable`
    (local message), unless an offline grant is active (see Offline unlock). Also on request timeouts and
@@ -189,7 +193,7 @@ Wi-Fi joined, cable in).
    says the PC needs pairing again; `network_down` when this PC has no network at all (the connect found no
    route — `NetworkUnreachable`/`NetworkDown` — or a name did not resolve with no interface up; the child can
    switch the network off without elevation, so it is never a reason to unlock).
-   Durations (grace, uptime, the kill window of vigil_ui) are measured on `Environment.TickCount64`, never on the
+   Durations (grace, the kill window of vigil_ui) are measured on `Environment.TickCount64`, never on the
    wall clock: an administrator who set the clock back after the last heartbeat would otherwise get a negative
    "time since last success" and no lock.
    Logs: a failed heartbeat is one Information line, outside the Event Log; `OutageLog` writes a warning there
@@ -226,7 +230,7 @@ Shutting down is confirmed on the overlay. Colors: `client/ui/Palette.cs`, the p
 (`theme.css`) on a black screen.
 Ctrl+Alt+Del cannot be blocked; the installer's per-user policies close what it offers: `DisableTaskMgr`
 (Task Manager over the overlay) and `DisableChangePassword` (the shared account's password), plus
-accessibility hotkeys and touchpad gestures off. Nothing else (D12: they hit the parent too). The overlay is
+accessibility hotkeys and touchpad gestures off. Nothing else (in the one-account setup they hit the parent too, D12). The overlay is
 an ordinary topmost window on `WinSta0\Default`, not a separate secure desktop (WPF needs the DWM, which a
 desktop of its own does not have): friction, like the rest of the overlay.
 
@@ -258,7 +262,7 @@ read `totp.dat`.
 
 ```
 C:\ProgramData\Vigil\   vigil_watchdog.exe, vigil_ui.exe + its native WPF DLLs, vigil_setup.exe (the guardian),
-                        vigil.toml (server_url only), signing.dat, totp.dat, guardian.dat,
+                        vigil.toml (server_url; child_sid in the standard-account setup), signing.dat, totp.dat, guardian.dat,
                         backup\vigil_watchdog.exe
                         ACL: SYSTEM full, Administrators modify, Authenticated Users read+execute (inherited)
 Service        vigil_watchdog ("Vigil Watchdog"), auto start, restart ×3, restricted DACL

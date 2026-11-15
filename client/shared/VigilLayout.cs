@@ -109,8 +109,9 @@ public static class VigilLayout
 
     /// <summary>
     /// Set on install, checked by verify, reset on uninstall. Only what closes a way out of the lock screen
-    /// (D17). The parent maintains the PC through the same account (D12), so each of these hits the parent
-    /// too; against an elevated child they are friction only. Key is relative to the hive root.
+    /// (D17). In the one-account setup the parent maintains the PC through the same account (D12, D30), so each
+    /// of these hits the parent too; against an elevated child they are friction only. Key is relative to the
+    /// hive root.
     /// </summary>
     public static readonly UserPolicy[] UserPolicies =
     {

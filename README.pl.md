@@ -45,8 +45,9 @@
 </table>
 
 > [!NOTE]
-> **Przed wersją 1.0, w codziennym użyciu.** Dziecko z uprawnieniami administratora jest w stanie Vigila obejść:
-> Vigil to utrudnia i pokazuje rodzicowi, ale nie uniemożliwia. Patrz [co Vigil zatrzyma, a czego nie](#co-vigil-zatrzyma-a-czego-nie).
+> **Przed wersją 1.0, w codziennym użyciu.** Daj dziecku konto standardowe — instalator je założy — a sam Windows
+> odmówi tego, co wyłączyłoby Vigila. Dziecko z uprawnieniami administratora jest w stanie Vigila obejść: Vigil to
+> utrudnia i pokazuje rodzicowi, ale nie uniemożliwia. Patrz [co Vigil zatrzyma, a czego nie](#co-vigil-zatrzyma-a-czego-nie).
 
 ## Co potrafi
 
@@ -67,7 +68,8 @@
 **Na komputerze**
 
 - Jeden plik, `vigil_setup.exe`, do instalacji, sprawdzenia, aktualizacji, ponownego parowania i odinstalowania
-- Windows 10 i 11, Home albo Pro; konto dziecka może mieć uprawnienia administratora
+- Windows 10 i 11, Home albo Pro; dziecko na koncie standardowym (instalator je zakłada) albo na jedynym koncie
+  PC, z uprawnieniami administratora
 - Po polsku albo angielsku, według języka przeglądarki i Windows
 
 ## Szybki start
@@ -108,8 +110,10 @@ i tydzień: limit i ciszę nocną na każdy dzień. Tydzień zmienisz potem w **
    [`vigil_setup.exe`](https://github.com/deresterr/vigil/releases/latest/download/vigil_setup.exe) i uruchom go.
    Prosi o uprawnienia administratora; SmartScreen może najpierw pokazać „System Windows ochronił ten komputer”
    (Więcej informacji → Uruchom mimo to).
-3. Wpisz adres serwera i kod parowania. Instalator sam znajduje konto dziecka i niczego nie zmienia, zanim nie
-   potwierdzisz podsumowania.
+3. Wpisz adres serwera i kod parowania. Na PC z jednym kontem administratora instalator proponuje założenie
+   dziecku konta standardowego (zalecane): Twoje zostaje administratorem i potrzebuje hasła, które instalator
+   ustawi, jeśli go nie ma. Nic się nie zmienia, zanim nie potwierdzisz podsumowania.
+4. Wyloguj się i pozwól dziecku zalogować się na jego konto. Liczy się tylko jego czas.
 
 Uruchom `vigil_setup.exe` jeszcze raz w dowolnym momencie, żeby zobaczyć stan i menu: sprawdzenie, aktualizacja,
 zmiana adresu serwera, ponowne parowanie, odinstalowanie. Parametry do skryptów (po angielsku):
@@ -146,18 +150,21 @@ Protokół, liczenie czasu i ścieżki plików (po angielsku): [`docs/architectu
 
 ## Co Vigil zatrzyma, a czego nie
 
-Większość rodzin daje dziecku konto administratora, więc Vigil to zakłada. Administrator może wyłączyć każdą
-usługę i odczytać każdy plik, więc na samym PC nic nie jest odporne na manipulację. To, co ważne, jest na
-serwerze, resztę trudno odkręcić, a rodzic widzi próby.
+Daj dziecku własne **konto standardowe**, a dla siebie zostaw konto administratora z hasłem: Windows odmówi wtedy
+dziecku tego, co wyłączyłoby Vigila, a liczą się tylko sesje dziecka. Vigil działa też z jednym kontem
+administratora, wspólnym dla dziecka i Ciebie, ale administrator może wyłączyć każdą usługę i odczytać każdy plik:
+to, co ważne, nadal jest na serwerze, resztę tylko trudno odkręcić, a Ty widzisz próby.
 
-| | Co to znaczy | Na przykład |
+| | Konto standardowe | Jedno konto administratora |
 |---|---|---|
-| **Chroni** | Działa także przeciw administratorowi — stan jest na serwerze | limity, cisza nocna, blokada i licznik czasu; jednorazowe kody parowania; kody TOTP działające raz |
-| **Utrudnia** | Zatrzymuje programy bez uprawnień administratora i przypadkowe próby | podpisane żądania, blokada bez serwera, usługa, której nie zatrzyma zwykłe polecenie, strażnik cofający manipulacje, ekran blokady na każdym monitorze |
-| **Wykrywa** | Alert w Dzienniku do potwierdzenia przez rodzica | zatrzymana, zamrożona albo ponownie uruchomiona usługa, wielokrotnie zamykany ekran blokady, każda naprawa strażnika, serie błędnych kodów |
+| Limity, cisza nocna, blokada i licznik czasu; jednorazowe kody parowania; kody TOTP działające raz | **Chroni** — stan jest na serwerze | **Chroni** |
+| Zatrzymanie usługi, podmiana jej plików, odczyt jej klucza, zamknięcie ekranu blokady, zmiana zegara; blokada bez serwera | **Chroni** — Windows na to nie pozwala | **Utrudnia** — strażnik cofa manipulacje |
+| Zatrzymana, zamrożona albo ponownie uruchomiona usługa, wielokrotnie zamykany ekran blokady, każda naprawa strażnika, konto, które dostało uprawnienia administratora, serie błędnych kodów | **Wykrywa** — alert w Dzienniku | **Wykrywa** |
 
-**Nie wykrywa:** usługi zatrzymanej na stałe, usuniętej konfiguracji ani innego systemu uruchomionego
-z pendrive'a — panel pokazuje wtedy PC jako offline.
+**Nie wykrywa:** innego systemu uruchomionego z pendrive'a albo środowiska odzyskiwania Windows, zresetowanego
+komputera, usuniętej konfiguracji — panel pokazuje wtedy PC jako offline — ani korzystania przez dziecko z Twojej
+odblokowanej sesji. Przeciw pierwszym: hasło firmware'u, wyłączony rozruch z USB i szyfrowanie urządzenia
+([fizyczny dostęp](docs/threat-model.pl.md#fizyczny-dostęp)).
 
 > [!IMPORTANT]
 > Serwer mówi zwykłym HTTP, a parowanie i logowanie do panelu wysyłają swoje sekrety niezaszyfrowane. W sieci,
@@ -226,7 +233,7 @@ w menedżerze haseł.
 | | Co jest potrzebne |
 |---|---|
 | **Serwer** | Docker na Linuksie. Obraz z wydania jest dla x86-64 (amd64); na innych architekturach zbuduj go z `server/`. Wyjście na UDP 123, żeby sprawdzać jego zegar z NTP (opcjonalnie, Ustawienia). |
-| **PC dziecka** | Windows 10 albo 11, x64, Home albo Pro. Konto dziecka jest jedynym kontem użytkownika i może mieć uprawnienia administratora; rodzic obsługuje PC z tego samego konta. |
+| **PC dziecka** | Windows 10 albo 11, x64, Home albo Pro. Zalecane: konto standardowe dla dziecka (instalator je zakłada) i konto administratora z hasłem dla rodzica. Wspierane: konto administratora dziecka jest jedynym kontem, a rodzic obsługuje PC z niego. Instalator zakłada konto lokalne; ustawienia rodzinne Microsoft nie są potrzebne. |
 | **Rodzic** | Przeglądarka i aplikacja TOTP w telefonie. |
 
 ## Rozwój

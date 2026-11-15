@@ -4,7 +4,7 @@ The panel uses a cookie, the watchdog signed requests. SameSite=Strict against C
 script access, the itsdangerous signature (key `admin_session_key`) against forged cookies.
 
 Revocation: the cookie carries `admin_session_generation`; a logout or a password change bumps it, which
-ends every session issued before. The parent often logs in on the child's PC (one Windows account, D12),
+ends every session issued before. The parent often logs in on the child's PC (in the one-account setup, D12),
 where the child can copy the browser's cookies: after a logout such a copy is worthless.
 
 The parent's password is an argon2id hash in `config.parent_password_hash`.

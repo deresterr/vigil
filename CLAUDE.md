@@ -15,7 +15,8 @@ everywhere the same problem occurs, not only where it was reported.
   parameter mode for scripts and CI — both only call the core; `vigil_setup.exe guardian` is the guardian task,
   run as SYSTEM from the copy the installer puts in `C:\ProgramData\Vigil`, see `docs/guardian.md`),
   `shared/` linked into the projects that need it: `IpcMessages.cs` (watchdog + ui), `VigilLayout.cs` (paths,
-  file names, entropy, service, SDDL, guardian event IDs, per-user policy table) and `FileAcls.cs` (watchdog + setup).
+  file names, entropy, service, SDDL, guardian event IDs, per-user policy table), `FileAcls.cs`, `VigilToml.cs` (the
+  `vigil.toml` reader/writer) and `LocalAdmins.cs` (watchdog + setup).
 - `build-package.ps1 -Version` → `dist\vigil_setup.exe`, the whole client in one file (#76: the watchdog,
   vigil_ui and its native WPF libraries appended, format in `client/setup/Core/Package.cs`) + `build\parts\`
   (the files on their own). `Build.cmd` runs it. `docs/installer.md` describes the installer, the README
@@ -24,11 +25,11 @@ everywhere the same problem occurs, not only where it was reported.
   (server of the same commit on localhost; install of the latest release → update with this package (the
   parent's update, #141) → one-file package checks → broken installs →
   re-pair → uninstall → install → six guardian repairs reported to the journal → folder deleted "from WinRE" →
-  uninstall, then the wizard and the menu through a key script). Never on a real PC.
+  uninstall → install with a new standard child account (`-CreateChildAccount`, D30) → update → uninstall, then the wizard and the menu through a key script). Never on a real PC.
   `e2e/ui-standalone.ps1` (CI, before it): vigil_ui's test mode for every lock reason must close itself after
   `--exit-after`; it prints the CPU use and ui.log.
 - `docs/architecture.md` — protocol, IPC, file paths, time accounting. Read it before touching those.
-- `docs/decisions.md` — the design decisions D1–D28 the code refers to. `docs/installer.md`, `docs/guardian.md`
+- `docs/decisions.md` — the design decisions D1–D30 the code refers to. `docs/installer.md`, `docs/guardian.md`
   describe those parts. `docs/threat-model.md` (+ `.pl.md`) is the full threat model the READMEs and SECURITY
   sum up; `docs/releasing.md` the CHANGELOG template and how a release is made. When a doc and the code disagree, the code wins: fix the doc.
 
@@ -61,14 +62,20 @@ everywhere the same problem occurs, not only where it was reported.
 - **DPAPI entropy strings** (`Vigil-SigningKey-v1`, `Vigil-Totp-v1`) and file
   names under `C:\ProgramData\Vigil\` are a compatibility contract with existing installs. They live in
   `client/shared/VigilLayout.cs`. No compatibility with installs from before v0.8 (D23).
-- **Threat model**: the child MAY have an administrator account. Against an admin nothing on the PC is
-  tamper-proof, so every mechanism is one of: protection (holds even against admin, e.g. server-side state),
-  friction (stops a non-elevated process / casual attempt), or detection (reports tampering to the parent panel).
-  Say explicitly which one a change is. Secrets on the PC are SYSTEM-only, knowing an admin can still read them.
+- **Threat model**: the child MAY have an administrator account (the one-account setup), or a standard one (D30).
+  Against an admin nothing on the PC is tamper-proof, so every mechanism is one of: protection (holds against the
+  child: server-side state, or what Windows refuses a standard account), friction (stops a non-elevated process /
+  casual attempt), or detection (reports tampering to the parent panel). Say explicitly which one a change is, in
+  each setup; in the standard-account setup a way round Vigil from that account is a vulnerability (SECURITY.md). Secrets on the PC are SYSTEM-only, knowing an admin can still read them.
 - **Target**: Windows 10/11 x64, **Home and Pro**. No Pro-only features (gpedit, AppLocker, secpol, BitLocker
   as a requirement); policies only as registry values, which Home honours.
-- **One account**: the child's account is the only interactive account on the PC and is an administrator.
-  The parent maintains the PC through that same account, so per-user policies (HKCU) hit the parent too.
+- **Accounts (D30)**: recommended, the child has a standard account and the parent an administrator one;
+  `child_sid` in `vigil.toml` names the child, and only that account's active session is counted, locked and gets
+  vigil_ui (`SessionDetector`) — another account's session never is, also without a server (fail-closed is about
+  the child's session). Supported, one administrator account (D12): no `child_sid`, every active session is the
+  child's, and the parent maintains the PC through it, so per-user policies (HKCU) hit the parent too. The installer
+  writes `child_sid` only when the child's account is not an administrator (an account a child-administrator creates
+  stays enforced); `update` keeps what is installed.
 - Service DACL (`sc sdset`, `VigilLayout.ServiceSddl`) gives admins query/start only — no stop (WP), no delete (SD).
   Stop/delete through a one-off SYSTEM task (`ServiceControl.ScAsSystem`): a normal stop, so the watchdog says goodbye.
   Admin `sc.exe stop`/`Stop-Service` always fail; killing the process skips the goodbye (server: restart alert).
@@ -85,8 +92,16 @@ everywhere the same problem occurs, not only where it was reported.
 - PowerShell: `"$var:"` parses as a drive-scoped variable — write `"${var}:"`.
 - PowerShell: variable names are case-insensitive (a local `$want` overwrites a `[hashtable]$Want` parameter).
 - PowerShell 5.1 + `$ErrorActionPreference='Stop'`: `& native.exe 2>&1` turns stderr into a terminating error.
-- One account (D12): per-user policies the installer sets in HKCU hit the parent and the installer too; it edits
-  hives through the registry API, never `reg.exe`.
+- One-account setup (D12): per-user policies the installer sets in HKCU hit the parent and the installer too. In
+  both setups it edits the child's hive through the registry API (loaded as an app hive when nobody is signed in),
+  never `reg.exe`.
+- The blank-password test (`LocalAccounts.HasBlankPassword`: `LogonUser` with an empty password; OK or 1327 = no
+  password, 1326 = has one) is a failed logon on an account with a password and counts toward the lockout
+  threshold: it runs once, at install, never in verify. The parent's first password is set with
+  `NetUserChangePassword` (a change as the user), never `NetUserSetInfo`: a reset cuts the account off its DPAPI data
+  (saved browser passwords, Credential Manager, EFS). Passwords reach parameter mode only through the environment
+  (`VIGIL_CHILD_PASSWORD`, `VIGIL_PARENT_PASSWORD`), never an argument. Groups are found by SID, their names are
+  localized (`Administratorzy`).
 - `.ps1` syntax is checked in CI with Windows PowerShell 5.1; locally a Linux `pwsh` can run the same parser.
 - C#: never filter with `when (ex is not OperationCanceledException)` — an `HttpClient` timeout is a
   `TaskCanceledException` and slipped past the fail-closed check (#31). Filter on the caller's token:
@@ -108,7 +123,11 @@ everywhere the same problem occurs, not only where it was reported.
   them with `-Keys <file>` (`ScriptedConsole`: plain-text output, throws when the script runs out — exit 3).
   Windows 10 conhost (Consolas, no font fallback) has no ✓/✗, braille spinners or rounded borders: `Theme` uses
   √/× and the line spinner unless `WT_SESSION` is set, square borders everywhere. The screens write through
-  `App.C`, an `IndentedConsole` (left margin, tracked line start): never `AnsiConsole` directly.
+  `App.C`, an `IndentedConsole` (left margin, tracked line start): never `AnsiConsole` directly. A Spectre update can
+  add members to `IAnsiConsole` (0.57: `WriteAnsi`) that `IndentedConsole` and `ScriptedConsole` must forward.
+- `vigil.toml` is read by `VigilToml` (shared), not a TOML library: one `key = "string"` per line, comments and blank
+  lines (the file vigil_setup writes); anything else is refused. Tomlyn was dropped (#167): one reader for the
+  watchdog and vigil_setup, one dependency fewer.
 - PowerShell: an MSBuild property with a dot after a dash in a splatted array (`-p:Version=0.0.0-ci.89`) reached
   dotnet mangled (MSB1001). Pass such arguments as one quoted string: `"-p:Version=$Version"`.
 - `client/ui` has `UseWindowsForms` (Screen, NotifyIcon) with the implicit `System.Windows.Forms` using

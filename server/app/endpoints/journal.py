@@ -35,7 +35,7 @@ JOURNAL_TYPES = (
     "watchdog_started", "watchdog_shutdown", "watchdog_offline", "clock_drift",
     "lock_started", "pause_toggled",
     "manual_lock_set", "manual_lock_cleared", "manual_unlock", "grant_applied", "extensions_cleared",
-    "offline_unlock", "device_paired", "device_unpaired", "child_added", "child_removed",
+    "offline_unlock", "device_paired", "device_unpaired", "child_added", "child_removed", "child_admin_removed",
 )
 
 MAX_DAYS = 14

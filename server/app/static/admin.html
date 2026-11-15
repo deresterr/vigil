@@ -779,6 +779,7 @@ const JOURNAL = {
   pairing_code_invalidated:  () => ({title: t('Kod parowania unieważniony'), sub: t('Po 5 błędnych próbach')}),
   server_clock_off:          d => ({title: t('Zegar serwera różni się od NTP o {time}', {time: mins(Math.abs(d.offset_seconds))}),
                              sub: t('Kody TOTP mogą nie działać — ustaw synchronizację czasu (NTP) na serwerze')}),
+  child_admin_removed:() => ({cat: 'pc', tone: 'ok', icon: 'check', title: t('Konto dziecka nie jest już administratorem')}),
   device_paired:      () => ({cat: 'pc', tone: 'accent', icon: 'plus', title: t('Sparowano komputer')}),
   device_unpaired:    () => ({cat: 'parent', tone: 'muted', icon: 'minus', title: t('Rodzic odłączył komputer')}),
   child_added:        () => ({cat: 'parent', tone: 'accent', icon: 'plus', title: t('Dodano dziecko')}),

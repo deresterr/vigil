@@ -85,3 +85,19 @@ again. A notes-only change after a successful release: edit the release on GitHu
 
 If the image push ends with `denied`: the package's settings → **Manage Actions access** → this repository with
 the **Write** role, then **Re-run failed jobs**.
+
+## Versions and servicing
+
+From 1.0 the version says what changed for the parent (D29): **X.Y.Z** — a patch release fixes, a minor one adds,
+and 2.0 is the first that breaks the contract (the `/v1` protocol, the files on the PC, the installer's parameters,
+the database, `.env`/`compose.yaml`). The server is updated first; a 1.x server works with every 1.x client.
+
+What a release ships ages without a commit:
+
+- **The .NET 10 runtime.** `vigil_setup.exe` carries it (self-contained). After each Patch Tuesday, check the
+  [.NET 10 release notes](https://github.com/dotnet/core/tree/main/release-notes/10.0): a security fix in the
+  runtime or WPF is a patch release built by the release workflow (it takes the newest 10.0 SDK), with
+  `Children's PCs: **Yes.**`. Dependabot keeps the NuGet packages on 10.0.x.
+- **The server image's base** (`python:X.Y-slim`). It is pulled when a release is built; a security fix in
+  Python or Debian that matters to the server is a patch release with `Server: **Yes.**`. Dependabot proposes
+  new Python versions.

@@ -45,9 +45,9 @@
 </table>
 
 > [!NOTE]
-> **Before 1.0, in daily use.** Give the child a standard account — the installer creates one — and Windows itself
-> refuses what would switch Vigil off. A child with administrator rights can get around Vigil: it makes that harder
-> and shows it to the parent, but does not make it impossible. See [what Vigil can and cannot stop](#what-vigil-can-and-cannot-stop).
+> Give the child a **standard account** — the installer creates one — and Windows itself refuses what would switch
+> Vigil off. A child with administrator rights can get around Vigil: it makes that harder and shows it to the
+> parent, but does not make it impossible. See [what Vigil can and cannot stop](#what-vigil-can-and-cannot-stop).
 
 ## Features
 
@@ -84,7 +84,7 @@ In an empty folder, create `compose.yaml`:
 ```yaml
 services:
   vigil:
-    image: ghcr.io/deresterr/vigil-server:latest   # or a version, e.g. :0.9.1
+    image: ghcr.io/deresterr/vigil-server:latest   # or a version, e.g. :1.0.0
     container_name: vigil
     restart: unless-stopped
     ports:
@@ -180,7 +180,9 @@ Every mechanism, group by group: [`docs/threat-model.md`](docs/threat-model.md).
 | **Server** | `docker compose pull && docker compose up -d`. The database is updated at start: back up `data/` first. |
 | **Child's PC** | Run the new `vigil_setup.exe` → **Update to …**. The server address and the pairing stay. |
 
-Each [release](https://github.com/deresterr/vigil/releases) says which of the two it needs.
+Each [release](https://github.com/deresterr/vigil/releases) says which of the two it needs. **Update the server
+first**, then the PCs: a 1.x server works with every 1.x PC, so the PCs can follow when convenient. Only the latest
+release gets fixes.
 
 **Backup.** Everything the server keeps is in `data/`. Copy it with the container stopped, so the database is
 complete: `docker compose stop && sudo cp -a data data-backup && docker compose start`. To restore, stop the

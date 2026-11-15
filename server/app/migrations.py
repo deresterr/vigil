@@ -108,10 +108,16 @@ def _m003_online_window(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM config WHERE key = 'heartbeat_grace_seconds'")
 
 
+def _m004_client_version(conn: sqlite3.Connection) -> None:
+    """The client version each PC reports in its heartbeat (#159); NULL until it does (clients up to 0.9)."""
+    conn.execute("ALTER TABLE devices ADD COLUMN client_version TEXT")
+
+
 MIGRATIONS: list[tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("baseline v0.8", _m001_baseline),
     ("devices.delta_carry_ms", _m002_delta_carry),
     ("config.heartbeat_grace_seconds removed", _m003_online_window),
+    ("devices.client_version", _m004_client_version),
 ]
 
 LATEST_VERSION = len(MIGRATIONS)

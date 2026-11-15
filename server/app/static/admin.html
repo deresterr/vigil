@@ -308,6 +308,7 @@
     ul.devs .grow { flex: 1; min-width: 0; }
     ul.devs .nm { margin: 0; font-size: .95rem; }
     ul.devs .st { margin: 2px 0 0; font-size: .84rem; color: var(--text-3); }
+    ul.devs .st .upd { color: var(--accent-text); }  /* #159: a newer client exists */
     ul.devs .mins { font-size: .9rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
     ul.devs .acts { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding-left: 20px; }
     .btn-sm { min-height: 40px; padding: 0 12px; background: transparent; border: 1px solid var(--border-strong); border-radius: 8px;
@@ -1002,7 +1003,9 @@ function fillChildSettings(force) {
   filledFor = c.id;
   document.getElementById('settingsDevices').innerHTML = c.devices.length ? c.devices.map(d =>
     `<li><span class="dd${d.online ? ' on' : ''}"></span><div class="grow"><p class="nm">${esc(d.name)}</p>` +
-    `<p class="st">${t('Sparowany {date}', {date: esc(d.paired_local)})}</p></div><div class="acts">` +
+    `<p class="st">${t('Sparowany {date}', {date: esc(d.paired_local)})}` +
+    (d.client_version ? ` · Vigil ${esc(d.client_version)}` : '') +
+    (d.update_needed ? ` · <span class="upd">${t('Do aktualizacji')}</span>` : '') + `</p></div><div class="acts">` +
     `<button class="btn-sm" onclick="renameDevice(${d.id})">${t('Zmień nazwę')}</button>` +
     `<button class="btn-sm" onclick="repairDevice(${d.id})">${t('Sparuj ponownie')}</button>` +
     `<button class="btn-sm danger" onclick="unpairDevice(${d.id})">${t('Odłącz')}</button></div></li>`).join('')

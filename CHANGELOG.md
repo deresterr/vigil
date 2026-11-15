@@ -7,6 +7,10 @@ reasoning behind each design decision (D1–D27) is in [`docs/decisions.md`](doc
 
 ## [Unreleased]
 
+### Panel
+- Settings show which version of Vigil each computer runs, and "Update needed" when a newer one for the PCs has
+  been released. Computers with Vigil up to 0.9 show only "Update needed": they do not report their version.
+
 ### Server
 - Behind a reverse proxy: a new `FORWARDED_ALLOW_IPS` setting in `.env` (the proxy's address). Before, the panel's
   login limit counted wrong passwords for everyone behind the proxy together, so a child locking itself out locked

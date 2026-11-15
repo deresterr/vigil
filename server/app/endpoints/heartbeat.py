@@ -89,9 +89,9 @@ async def heartbeat(
     db.execute(
         "UPDATE devices SET last_heartbeat_utc = ?, last_active_utc = COALESCE(?, last_active_utc), "
         "seconds_today = CASE WHEN seconds_date = ? THEN seconds_today + ? ELSE ? END, seconds_date = ?, "
-        "delta_carry_ms = ? WHERE id = ?",
+        "delta_carry_ms = ?, client_version = ? WHERE id = ?",
         (now_utc.isoformat(), now_utc.isoformat() if active else None, today_local.isoformat(), seconds_added,
-         seconds_added, today_local.isoformat(), carry_ms, device.id),
+         seconds_added, today_local.isoformat(), carry_ms, body.client_version, device.id),
     )
     new_seconds_used = state["seconds_used"] + seconds_added
     if seconds_added:

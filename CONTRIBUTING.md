@@ -30,6 +30,8 @@ the client gets the package as a build artifact. **Never run the e2e test on a r
 removes Vigil on purpose. Test the package on a virtual machine; for the lock screen alone there is
 `vigil_ui.exe --standalone-test` (see [`docs/architecture.md`](docs/architecture.md)).
 
+**README screenshots** of the panel: `.github/scripts/panel_shots.py` (a seeded local server and Chrome).
+
 ## Rules
 
 - **One issue, one branch, one pull request to `main`.** Keep it focused; no stacked pull requests.

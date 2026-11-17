@@ -74,6 +74,9 @@ An alert in the Journal, for the parent to confirm, when:
 - someone typed a run of wrong TOTP codes, failed to log in to the panel repeatedly, or guessed at a pairing code
   until it was invalidated.
 
+A guardian alert can be forged: any account may write to Windows' Application log, also under the
+guardian's name. That gives a false alert, never a hidden one.
+
 ## Does not detect
 
 | What happens | What the parent sees |

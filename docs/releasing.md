@@ -86,6 +86,10 @@ again. A notes-only change after a successful release: edit the release on GitHu
 If the image push ends with `denied`: the package's settings → **Manage Actions access** → this repository with
 the **Write** role, then **Re-run failed jobs**.
 
+Every tag also pushes `:latest`, so a prerelease or a release candidate needs a change in `release.yml` first. The
+package page lists `unknown/unknown` next to the two platforms: that is the build attestation, not an image. The
+repository's Packages section shows only to signed-in users; leave the package's visibility as it is.
+
 ## Versions and servicing
 
 From 1.0 the version says what changed for the parent (D29): **X.Y.Z** — a patch release fixes, a minor one adds,

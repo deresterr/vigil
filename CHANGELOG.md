@@ -7,6 +7,9 @@ reasoning behind each design decision (D1–D30) is in [`docs/decisions.md`](doc
 
 ## [Unreleased]
 
+### Documentation
+- The threat model says that a guardian alert can be forged: it gives a false alert, never a hidden one.
+
 ## [1.0.1] - 2026-11-15
 
 The server image now also runs on ARM64, such as a Raspberry Pi 4 or 5.

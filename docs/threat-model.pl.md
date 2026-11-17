@@ -75,6 +75,9 @@ Alert w Dzienniku, do potwierdzenia przez rodzica, gdy:
 - ktoś wpisał serię błędnych kodów TOTP, wielokrotnie nie zalogował się do panelu albo zgadywał kod parowania,
   aż został unieważniony.
 
+Alert strażnika da się podrobić: każde konto może pisać do dziennika Aplikacja Windows, także pod nazwą
+strażnika. Daje to fałszywy alert, nigdy ukryty.
+
 ## Nie wykrywa
 
 | Co się dzieje | Co widzi rodzic |

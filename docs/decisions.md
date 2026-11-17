@@ -36,6 +36,23 @@ requests named next to it; the threat model in full is in [`threat-model.md`](th
 | D29 | What 1.0 makes a contract (#169): the `/v1` protocol and its signatures; the files under `C:\ProgramData\Vigil\` and the DPAPI entropy; `vigil_setup.exe`'s `-Mode` parameters and its environment variables; the database schema, migrated forward only (D26); `.env` and `compose.yaml`. Breaking one of them means 2.0. Compatibility: the server is updated first, a 1.x server works with every 1.x client (and with a 0.9 one), and only the latest release is supported. The client is self-contained, so a .NET 10 security fix is a rebuild and a patch release, like a fix in the server image's base (`docs/releasing.md`). |
 | D30 | Two setups (#160). **Recommended**: the child has a standard account of its own and the parent an administrator one. `vigil.toml` names the child's account (`child_sid`); only its sessions are counted and locked and get the lock screen, another account's session is neither, also without a server. What Windows refuses a standard user — stopping the service, replacing files, the guardian task, reading the secrets, setting the clock — then protects instead of impeding. **Supported**: one administrator account (D12), no `child_sid`, every session is the child's. The installer creates the child's account (local, standard, its profile at once), first makes the parent's account have a password (a change as that user, never a reset: a reset cuts it off its DPAPI data) and turns automatic sign-in to another account off; an existing standard account is used as it is. `child_sid` is written only when the child's account is not an administrator, so an account a child-administrator creates stays enforced. Switching = uninstall + install; uninstall never deletes an account. |
 
+## Not planned
+
+Left out of 1.0 on purpose (#169); taking one up is a new decision. Idle detection and notifications outside the
+panel are D16 and D20.
+
+- F1 help and pause from the tray menu.
+- A server container that runs without root.
+- A signed `vigil_setup.exe`.
+- Resetting the panel password from the panel (the README says what to do instead), and signing in to the panel
+  with a TOTP code: the secret is on the PC, so a child with an administrator account could take the panel over.
+- Setting the server's clock from NTP (D28).
+- Creating Microsoft accounts; switching the account setup without reinstalling (D30).
+- Several children on one PC. If ever: a key per account and a SID → key map in the watchdog, the server unchanged.
+- Automatic client updates.
+- Systems other than Windows (D11).
+- .NET 11 (STS): the client stays on .NET 10 LTS; moving to .NET 12 LTS is a change of its own.
+
 ## Open
 
 - WinRE stays enabled unless the installer is told otherwise (`-DisableWinRE`): it is how a parent frees a PC

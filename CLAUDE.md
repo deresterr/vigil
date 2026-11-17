@@ -45,7 +45,10 @@ everywhere the same problem occurs, not only where it was reported.
   for a runtime test into one PR and hand over one test checklist with the CI artifact; the server runs from the
   same PR branch. What the e2e cannot see (Windows 10/11 Home, Polish Windows, the child's session: vigil_ui,
   the lock, the console wizard) waits for that session. Server-only changes go one issue per PR. No stacked PRs:
-  every PR targets `main`.
+  every PR targets `main`. The checklist builds on `vigil_setup.exe -Mode verify`; by hand only what verify cannot
+  see (vigil_ui, the lock, the wizard and the menu, "Shut down" on a real lock, switching users). The lock screen
+  alone: `vigil_ui.exe --standalone-test --mode=… --lang=en --no-keyboard-blocker --exit-after=15` — never kill it;
+  the way out is Ctrl+Alt+Del → Sign out, or `Stop-Process -Name explorer -Force`.
 - New server behaviour gets a test. Known bugs are `xfail(strict=True)` — remove the marker when fixed.
 - Dependabot (`.github/dependabot.yml`, #168): one grouped pull request a month per ecosystem (pip, NuGet, Actions,
   the Docker base). A NuGet one is a client change: it waits for the next VM session and is merged with it; NuGet
@@ -88,9 +91,18 @@ everywhere the same problem occurs, not only where it was reported.
   Admin `sc.exe stop`/`Stop-Service` always fail; killing the process skips the goodbye (server: restart alert).
 
 ## Gotchas that already cost time
-- Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. The maintainer
-  merges and creates releases/tags in the GitHub UI (merged branches are deleted automatically); open PRs with
-  `gh api` (REST).
+- Claude's cloud session: `git push` works for branches only — no tags, no branch deletion. No merges, releases,
+  repository settings or taking a PR out of draft either: the maintainer does those in the GitHub UI ("Ready for
+  review"; merged branches are deleted automatically). GitHub through `gh api` (REST) only: GraphQL is refused, so
+  `gh pr list`/`gh issue list` fail. No ghcr.io and no NuGet: an image is checked by the release log, package
+  versions come from CI. The clone is shallow and tracks `main` only: after a rebase, force-push with an explicit
+  `--force-with-lease=<branch>:<sha>`. No Docker daemon: run the server with uvicorn, look at pages with Playwright.
+  Commit with `-c user.name=Derester -c user.email=351725681+deresterr@users.noreply.github.com` (D10). Delete CI
+  artifacts no VM session will use: every PR touching `server/app/**`, `server/requirements.txt` or
+  `server/Dockerfile` builds one through the client job.
+- CI: GitHub sometimes assigns no Windows runner — Re-run failed jobs. `windows-latest` has an active console
+  session of `runneradmin`; the e2e checks the standard-account setup on it. `vigil_setup`'s build warns IL2104
+  (Spectre.Console under trimming): known, harmless.
 - The server image is multi-arch (#188): `release.yml` builds `linux/amd64` + `linux/arm64` with buildx (arm64 under
   QEMU) in one push; CI's server job runs on `ubuntu-latest` and `ubuntu-24.04-arm`, so a dependency without an
   arm64 wheel fails the PR. 32-bit ARM is not built (no wheels; a compiler in the image).
@@ -196,7 +208,8 @@ everywhere the same problem occurs, not only where it was reported.
 - Server log (`app/logs.py`, #100): the server's own state and its errors only — start/stop, migrations,
   warnings, unhandled errors with the request. What happens on the PCs goes to `events` (the panel journal), never
   to the log; HTTP requests are not logged (uvicorn's access log is off, its INFO lines replaced by the
-  lifespan's). A condition that repeats (healthcheck every 30 s) is logged when it starts and when it ends.
+  lifespan's). A condition that repeats (healthcheck every 30 s) is logged when it starts and when it ends. The
+  exception, on purpose: a failing database gives an `Unhandled error` with its traceback on every heartbeat.
 - Python: plain `sqlite3` via `get_db()`; request bodies are Pydantic models (`app/models.py` for `/v1`, strict;
   panel bodies next to their endpoints); config through `get_config_value()`/`get_config_values()`, defaults in
   `config.CONFIG_DEFAULTS`, no caches. Schema changes = a new entry at the end of `migrations.MIGRATIONS`
@@ -213,9 +226,14 @@ everywhere the same problem occurs, not only where it was reported.
   lines; never paste a section by hand.
 - `README.md` and `README.pl.md` carry the same content; change both — likewise `docs/threat-model.md` and
   `threat-model.pl.md`. The READMEs are for a parent deciding to try Vigil: short sections, the quick start near
-  the top, details in `docs/` behind a link. Panel screenshots are English in both, the lock screen in the
-  README's language; `docs/images/logo.svg` and `social-preview.svg` use `theme.css` colors. The "How it works" diagram is hand-written
+  the top, details in `docs/` behind a link. Panel screenshots are English in both (made by
+  `.github/scripts/panel_shots.py`, which says how to crop them), the lock screen in the README's language; `docs/images/logo.svg` and `social-preview.svg` use `theme.css` colors. The "How it works" diagram is hand-written
   SVG, `docs/images/how-it-works.svg` and `how-it-works.pl.svg` (Mermaid was scaled to ~9 px text in the README
   column): change both when the architecture changes; keep them 900 px wide with text of 13 px or more.
   `CONTRIBUTING.md` is the human version of this file's rules — keep them in step. Nothing from the maintainer's environment (addresses, host names, paths,
   test data) goes into the repo, issues, PRs or release notes.
+- UI changes: variants first, as mockups (the real panel with injected HTML/CSS, Polish, on
+  `panel_shots.py`'s seeded server); the maintainer picks one, then it is built. A color change is shown on the
+  whole page, not as swatches; colors stay muted. Panel texts: a fragment that starts a line or follows "·"/"•"
+  starts with a capital letter; moving night time is "przesunięcie", never "przedłużenie". Codes are shown and typed
+  in groups (TOTP `123 456`, pairing `1234 5678`) and sent as digits only.
